@@ -5,7 +5,7 @@ I had an idea that I've carried with me 'in the back' for a long time. In that p
 
 I want to make a programming language without any reserved words.
 
-There are pretty significant differences between the list of reserved words of say C, Pascal and SQL. There's this special status of them with any Lisp-related language. There's Qalb and UOF. Ever used formulas in Microsoft Excel in another language? Reserved words tie a programming language to one and only one natural language, and already start limiting you as a programming since they are no longer available to you as identifiers.
+There are pretty significant differences between the list of reserved words of say C, Pascal and SQL. There's this special status of them with any Lisp-related language. There's [Qalb](http://nas.sr/%D9%82%D9%84%D8%A8/) and [UOF](https://en.wikipedia.org/wiki/Uniform_Office_Format). Ever used formulas in Microsoft Excel in another language? Reserved words tie a programming language to one and only one natural language, and already start limiting you as a programming since they are no longer available to you as identifiers.
 
 I agree that reading written code is important. I agree that code should read as if it is by itself explaining what it's supposed to do. That is very strongly so with COBOL and SQL; it goes for BASIC; a little less for Pascal and Fortran, bringing with it tidbits of mathematical notation; and sometimes totally not so for for example C and Perl. But code in these exert the virtue of being concise. I want both. When reading code it's important to get a good view of the structure and flow, exactly what punctuation is for. Well chosen identifiers will tell you what the code is about, but it's the operators that make it all happen.
 
@@ -162,37 +162,39 @@ ref counting
 
 TODO
 ====
-heap (malloc, check stack overflow)
-strings on heap, strings from/to array of chars
-struct initial values
-arguments: pass by ref, output
-function variable, also as result x(x)(x) etc.
-JSON, array literals
-syscall loadlibrary, COM...
-output LLVMIR? GCC? C?
-threads (or whichever fancy async thing in vogue by then)
-thread local vars
-types, classes! (proper polymorphism)
-constructors, destructor
-getters, setters
-protected, private (-, -- prefix?)
-interfaces
-accept object reference as selection boolean
-accept "0" as null reference
-foreach like &(item=collection) Enumerable interface
-calling conventions?
-something to avoid pre-processors (function versions like in D?)
-call stacks on exception
-'declared but never used'
-generics/templates
-something like 'parameters into' a code block
-enable self-referencing classes (forward?)
-switch,case syntax
-proper docs/guide/specs/tutorials
+
+* heap (malloc, check stack overflow)
+* strings on heap, strings from/to array of chars
+* struct initial values
+* arguments: pass by ref, output
+* function variable, also as result x(x)(x) etc.
+* JSON, array literals
+* syscall loadlibrary, COM...
+* output LLVMIR? GCC? C?
+* threads (or whichever fancy async thing in vogue by then)
+* thread local vars
+* types, classes! (proper polymorphism)
+* constructors, destructor
+* getters, setters
+* protected, private (-, -- prefix?)
+* interfaces
+* accept object reference as selection boolean
+* accept "0" as null reference
+* foreach like &(item=collection) Enumerable interface
+* calling conventions?
+* something to avoid pre-processors (function versions like in D?)
+* call stacks on exception
+* 'declared but never used'
+* generics/templates
+* something like 'parameters into' a code block
+* enable self-referencing classes (forward?)
+* switch,case syntax
+* proper docs/guide/specs/tutorials
 
 IDEA'S
 ======
-dump: store errors in sphere data file and show inbetween things
+
+* dump: store errors in sphere data file and show inbetween things
 
 Considerations
 ==============

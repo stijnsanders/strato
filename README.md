@@ -9,4 +9,4 @@ I wanted to roll the muscle on writing an interpreter and perhaps a compiler (lo
 
 Also I'm curious if it's at all doable and workable to have a programming language without any reserved words. If there's anything there and it grows from here, that would be nice but not at all what I'm after.
 
-Read more in "About_Strato.txt"
+Read more in "About_Strato.md"
