@@ -29,26 +29,27 @@ const
 
   tt__Resolvable = $0010;
     //[bitmask: things that use FirstItem]
+  tt__Typed      = $0020;
+    //[bitmask: things that use EvaluateTo]
+  tt__IsType     = $0040;
+    //[bitmask: things allowed as EvaluatesTo]
 
   ttNameSpace    = $0011;
     //FirstItem (*)
 
-  ttTypeDecl     = $0012;
+  ttTypeDecl     = $0050;
     //ByteSize: memory used by var of type
     //FirstItem (ttFunction)
     //InheritsFrom (ttTypeDecl)
 
-  ttRecord       = $0013;
+  ttRecord       = $0051;
     //ByteSize
     //FirstItem (ttVar, ttFunction)
     //InheritsFrom (ttRecord)
 
-  ttEnumeration  = $0014;
+  ttEnumeration  = $0052;
     //ByteSize
     //FirstItem (ttConstant)
-
-  tt__Typed      = $0020;
-    //[bitmask: things that use EvaluateTo]
 
   ttLiteral      = $0021;
     //EvaluatesTo (ttTypeDecl)
@@ -69,20 +70,20 @@ const
     //FirstItem (ttVar): local variables
     //FirstStatement (*)
 
-  tt__Directed   = $0040;
+  tt__Directed   = $0080;
     //[bitmask: things that use Subject]
 
-  ttImport       = $0041;
+  ttImport       = $0081;
     //Subject
 
-  ttAlias        = $0042;
+  ttAlias        = $0082;
     //Subject
 
-  ttGlobal       = $0043;
+  ttGlobal       = $0083;
     //Subject (ttVar)
 
 
-  ttSignature    = $0061;
+  ttSignature    = $00E0;
     //Subject: function subject (this)
     //EvaluatesTo (ttTypeDecl): return value
     //FirstArgument (*)
@@ -93,13 +94,13 @@ const
     //Body (ttCodeBlock): first overload body
     //FirstArgument (*): first argument value in overload body
 
-  ttFnCall       = $0044;
+  ttFnCall       = $0084;
     //Subject (ttFunction, ttVarIndex)
     //FirstArgument (*)
     //Signature (ttSignature): matching signature
     //Body (ttCodeBlock): body from overload with matching signature (see ttFunction)
 
-  ttArgument     = $0062;
+  ttArgument     = $00A0;
     //Subject (*): argument value
     //EvaluatesTo (ttTypeDecl): argument type (used to find suitable signature)
     //InitialValue (ttLiteral): default value (signature only)
@@ -121,7 +122,7 @@ const
     //Left (*)
     //Right (*)
 
-  ttCast         = $0063;
+  ttCast         = $00A1;
     //Subject (*)
     //EvaluatesTo (ttTypeDecl)
 
@@ -154,7 +155,7 @@ const
     //FirstItem (ttVar): exception object reference
 
 
-  ttArray        = $0002;
+  ttArray        = $0041;
     //ByteSize
     //ItemType (ttTypeDecl)
 
@@ -164,14 +165,12 @@ const
     //EvaluateTo
     //FirstArgument: index value
 
-  tt__Reference  = $0080;
-
-  ttThis         = $0081;
+  ttThis         = $0007;
     //Offset
     //EvaluatesTo (ttTypeDecl)
 
-  ttPointer      = $0045;
-    //ByteSize
+  ttPointer      = $00C0;
+    //ByteSize: SystemWordSize
     //EvaluatesTo (ttTypeDecl)
 
   ttAddressOf    = $0028;
@@ -182,6 +181,10 @@ const
     //EvaluatesTo (ttTypeDecl): from pointer
     //ValueFrom (ttVar): of type pointer
 
+  ttInterface    = $00D0;
+    //ByteSize: SystemWordSize (since it's a pointer!)
+    //FirstItem (ttVar, ttFunction)
+    //InheritsFrom (ttRecord)
 
 type
   TStratoThing=record

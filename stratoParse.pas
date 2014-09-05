@@ -600,8 +600,9 @@ var
           Result:=Sphere[Result].EvaluatesTo;//take var's type
         ttAlias:
           Result:=Sphere[Result].Subject;
-        ttTypeDecl,ttRecord,ttSignature,ttArray,ttEnumeration:;//OK
-        else Source.Error(tname+' is not a type');
+        else
+          if (Sphere[Result].ThingType and tt__IsType)=0 then
+            Source.Error(tname+' is not a type');
       end;
       //array
       if Source.IsNext([stBOpen]) then
@@ -761,7 +762,6 @@ var
         else Source.Error('unsupported argument syntax');
       end;
     //TODO: check default values with type
-    SetSrc(Result,ns);
     if Sphere[ns].ThingType<>ttNameSpace then //strRecord,strTypeDecl
       Sphere[Result].Subject:=ns;
     if Source.IsNext([stColon,stIdentifier]) then
@@ -794,6 +794,51 @@ var
         stComma:;//ignore
         stPClose:;//done
         else Source.Error('unsupported enumeration syntax');
+      end;
+  end;
+
+  procedure ParseInterfaceDecl(x:TStratoIndex);
+  var
+    p,q:TStratoIndex;
+    st:TStratoToken;
+    fn:UTF8String;
+  begin
+    //assert previous token stAOpen
+    while not(Source.IsNext([stAClose])) and Source.NextToken(st) do
+      case st of
+
+        stIdentifier:
+         begin
+          fn:=Source.GetID;
+          case Source.Token of
+            stColon:
+              case Source.Token of
+                stIdentifier:
+                 begin
+                  p:=LookUpType('field type');
+                  q:=Sphere.AddTo(Sphere[x].FirstItem,ttVar,fn);
+                  if q=0 then
+                    Source.Error('duplicate interface field')
+                  else
+                    SetSrc(q,x).EvaluatesTo:=p;
+                 end;
+                //more?
+                else Source.Error('unsupported interface field type syntax');
+              end;
+            stPOpen://signature
+             begin
+              p:=ParseSignature(x,fn);
+              if p=0 then
+                Source.Error('duplicate identifier')
+              else
+                Sphere.AddTo(Sphere[x].FirstItem,p);
+             end;
+            else Source.Error('unsupported interface field syntax');
+          end;
+          Source.Skip(stSemiColon);
+         end;
+
+        else Source.Error('unsupported interface field syntax');
       end;
   end;
 
@@ -1377,7 +1422,7 @@ begin
                       if px.InitialValue<>0 then
                         px.EvaluatesTo:=Sphere[px.InitialValue].EvaluatesTo;
                      end;
-                    //TODO: stPOpen://enumeration
+                    //stPOpen://enumeration: see above
                     stAOpen://record (aka struct)
                      begin
                       p:=Sphere.AddTo(Sphere[ns].FirstItem,ttRecord,nn);
@@ -1463,12 +1508,64 @@ begin
             end;
            end;
 
-          //stQuestionMark://interface
-
           stStringLiteral,stNumericLiteral:
            begin
             Source.Error('unexpected literal');
             ParseLiteral(st);
+           end;
+
+          stQuestionMark: //interface
+           begin
+            p:=0;
+            b:=false;
+            ID(n,nn);
+            fqn:=nn;
+            ns:=Locals[0];
+            while Source.IsNext([stPeriod,stIdentifier]) do
+             begin
+              LookUpNext(n,nn,p,ns,b);
+              ID(n,nn);
+              fqn:=fqn+'.'+nn;
+             end;
+            if b then Source.Error('unknown namespace '''+string(fqn)+'''');
+
+            st:=Source.Token;
+            case st of
+              stPOpen:
+                if Source.IsNextID([stPClose,stAOpen]) or
+                  Source.IsNextID([stPClose,stOpEQ,stAOpen]) then
+                 begin //inherit this interface
+                  q:=LookUp;
+                  if q=0 then
+                    Source.Error('undeclared base interface');
+                  Source.Skip(stPClose);
+                  Source.Skip(stOpEQ);//if?
+                  Source.Skip(stAOpen);
+                  p:=Sphere.AddTo(Sphere[ns].FirstItem,ttInterface,nn);
+                  if p=0 then
+                   begin
+                    Source.Error('duplicate identifier');
+                    p:=Sphere.Add(ttInterface,nn);
+                   end;
+                  px:=SetSrc(p,ns);
+                  px.ByteSize:=SystemWordSize;
+                  px.InheritsFrom:=q;
+                  ParseInterfaceDecl(p);
+                 end;
+              stAOpen:
+               begin
+                p:=Sphere.AddTo(Sphere[ns].FirstItem,ttInterface,nn);
+                if p=0 then
+                 begin
+                  Source.Error('duplicate identifier');
+                  p:=Sphere.Add(ttInterface,nn);
+                 end;
+                SetSrc(p,ns).ByteSize:=SystemWordSize;
+                ParseInterfaceDecl(p);
+               end;
+              else
+                Source.Error('unsupported interface syntax');
+            end;
            end;
 
           stSemiColon:;//stray semicolon? ignore

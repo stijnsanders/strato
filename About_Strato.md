@@ -183,6 +183,7 @@ TODO
 * foreach like &(item=collection) Enumerable interface
 * calling conventions?
 * something to avoid pre-processors (function versions like in D?)
+* disallow adding to namespaces from 'outside'
 * call stacks on exception
 * 'declared but never used'
 * generics/templates

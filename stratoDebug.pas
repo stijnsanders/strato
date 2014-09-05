@@ -160,6 +160,9 @@ begin
             ttDereference:
               x:=Format('%s dref %d t=%d',
                 [x,p.ValueFrom,p.EvaluatesTo]);
+            ttInterface:
+              x:=Format('%s intf %s  ->%d <-%d',
+                [x,s.FQN(i),p.FirstItem,p.InheritsFrom]);
             else
               x:=Format('%s ?    "%s" (%.4x) %d,%d,%d,%d',
                 [x,s.FQN(i),p.ThingType,p.ByteSize

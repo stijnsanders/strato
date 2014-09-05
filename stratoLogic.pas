@@ -26,6 +26,8 @@ var
 begin
   //TODO: auto-cast?
   //TODO: stAlias?
+  //TODO: stSignature!!
+  //TODO: stInterface!!!
   ptr1:=0;
   while (s1<>0) and (Sphere[s1].ThingType=ttPointer) do
    begin
