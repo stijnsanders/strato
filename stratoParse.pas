@@ -296,17 +296,23 @@ var
   var
     px:PStratoThing;
   begin
-    if p=0 then Result:=0 else
+    Result:=0;//default
+    if p<>0 then
      begin
       px:=Sphere[p];
       if (px.ThingType and tt__Typed)<>0 then
         Result:=px.EvaluatesTo
       else
-      if (px.ThingType=ttFnCall) and (px.Signature<>0) then
-        Result:=Sphere[px.Signature].EvaluatesTo
-      //TODO: strAlias?
-      else
-        Result:=0;
+        case px.ThingType of
+          ttFnCall:
+            if px.Signature<>0 then
+              Result:=Sphere[px.Signature].EvaluatesTo;
+          //TODO: ttAlias?
+          //TODO: ttFunction: px.Signature?
+          ttFunction:
+            Result:=px.Signature;//TODO:  stAssignment check
+          //else Result:=0;//see default
+        end;
      end;
   end;
 
@@ -1087,7 +1093,7 @@ var
           pAssignment:
            begin
             x0.ValueFrom:=s1;
-            x0.EvaluatesTo:=ResType(s1);
+            x0.EvaluatesTo:=ResType(x0.AssignTo);//ResType(s1);
             if x0.EvaluatesTo<>0 then
              begin
               s1:=x0.AssignTo;
@@ -1341,7 +1347,7 @@ begin
                   //type or constant declaration
                   st:=Source.Token;
                   case st of
-                    stIdentifier://constant by reference
+                    stIdentifier:
                      begin
                       p:=Lookup;
                       px:=Sphere[p];
@@ -1502,6 +1508,8 @@ begin
                     else Source.Error('unsupported signature syntax');
                   end;
                  end;
+
+              //stAOpen:?
 
               else
                 Source.Error('unexpected stray identifier');
@@ -1666,8 +1674,6 @@ begin
           stColon:
            begin
             //Combine(p_ArgList_Item,p);
-            Combine(p_Juxta,p);//TODO: use stack, add to precendence
-            //TODO: check s1?
             if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then //local declaration(s)?
              begin
               p:=0;
@@ -1693,6 +1699,7 @@ begin
              end
             else //cast
              begin
+              //Combine(p_Juxta,p);//TODO: use stack, add to precendence
               q:=Sphere.Add(ttCast,'');
               qx:=SetSrc(q,cb);
               qx.Subject:=p;

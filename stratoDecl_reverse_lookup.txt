@@ -27,7 +27,7 @@
 0083 ttGlobal
 0084 ttFnCall
 00A0 ttArgument
-00A2 ttCast
+00A1 ttCast
 00C0 ttPointer
 00D0 ttInterface
 00E0 ttSignature
