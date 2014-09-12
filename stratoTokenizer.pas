@@ -2,8 +2,6 @@ unit stratoTokenizer;
 
 interface
 
-{$D-}
-
 type
   TStratoToken=(
     stIdentifier,

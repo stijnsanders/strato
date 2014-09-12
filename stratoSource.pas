@@ -4,8 +4,6 @@ interface
 
 uses SysUtils, Classes, stratoTokenizer;
 
-{$D-}
-
 type
   TStratoSource=class(TObject)
   private

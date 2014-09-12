@@ -2,8 +2,6 @@ unit stratoRunTime;
 
 interface
 
-{$D-}
-
 uses stratoSphere, stratoDecl, stratoLogic, stratoFn;
 
 const

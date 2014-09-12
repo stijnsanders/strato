@@ -403,6 +403,8 @@ begin
              end
             else
              begin
+              //TODO: function's parent interface? determine implementing object
+
               //push function's code block (also for Addr)
               Push(px.Body,0,0,np);
               qx:=Sphere[p1];

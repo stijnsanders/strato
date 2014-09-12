@@ -605,7 +605,16 @@ var
         ttVar:
           Result:=Sphere[Result].EvaluatesTo;//take var's type
         ttAlias:
-          Result:=Sphere[Result].Subject;
+          Result:=Sphere[Result].Subject;//assert never another ttAlias
+        ttSignature:
+         begin
+          //TODO: ttDelegate? (keep signature and subject)
+          p:=Result;
+          Result:=Sphere.Add(ttPointer,Sphere.Dict.Str[Sphere[p].Name]);
+          qx:=SetSrc(Result,Sphere[p].Parent);
+          qx.ByteSize:=SystemWordSize;
+          qx.EvaluatesTo:=p;
+         end;
         else
           if (Sphere[Result].ThingType and tt__IsType)=0 then
             Source.Error(tname+' is not a type');
@@ -620,7 +629,7 @@ var
           Source.Skip(stBClose);//TODO: force
           p:=Result;
           Result:=Sphere.Add(ttArray,Sphere.Dict.Str[Sphere[p].Name]);
-          qx:=SetSrc(Result,Sphere[Result].Parent);
+          qx:=SetSrc(Result,Sphere[p].Parent);
           qx.ItemType:=p;
           qx.ByteSize:=Sphere[p].ByteSize*i;
          end;
@@ -807,7 +816,8 @@ var
   var
     p,q:TStratoIndex;
     st:TStratoToken;
-    fn:UTF8String;
+    n:TStratoName;
+    nn:UTF8String;
   begin
     //assert previous token stAOpen
     while not(Source.IsNext([stAClose])) and Source.NextToken(st) do
@@ -815,14 +825,14 @@ var
 
         stIdentifier:
          begin
-          fn:=Source.GetID;
+          ID(n,nn);
           case Source.Token of
             stColon:
               case Source.Token of
                 stIdentifier:
                  begin
                   p:=LookUpType('field type');
-                  q:=Sphere.AddTo(Sphere[x].FirstItem,ttVar,fn);
+                  q:=Sphere.AddTo(Sphere[x].FirstItem,ttVar,nn);
                   if q=0 then
                     Source.Error('duplicate interface field')
                   else
@@ -833,11 +843,15 @@ var
               end;
             stPOpen://signature
              begin
-              p:=ParseSignature(x,fn);
-              if p=0 then
-                Source.Error('duplicate identifier')
-              else
-                Sphere.AddTo(Sphere[x].FirstItem,p);
+              p:=Sphere.Lookup(Sphere[x].FirstItem,n);
+              if (p=0) or (Sphere[p].ThingType<>ttFunction) then
+               begin
+                if p<>0 then Source.Error('duplicate identifier');
+                p:=Sphere.AddTo(Sphere[x].FirstItem,ttFunction,nn);
+                SetSrc(p,x);
+               end;
+              StratoFunctionAddOverload(Sphere,Source,p,
+                ParseSignature(x,nn),0,nn);
              end;
             else Source.Error('unsupported interface field syntax');
           end;
@@ -928,7 +942,10 @@ var
           while (s=0) and (r<>0) and (Sphere[r].ThingType=ttRecord) do
            begin
             r:=Sphere[r].InheritsFrom;
-            s:=Sphere.Lookup(Sphere[r].FirstItem,n);
+            if r=0 then
+              s:=0
+            else
+              s:=Sphere.Lookup(Sphere[r].FirstItem,n);
            end;
           r:=s;
          end;
@@ -937,7 +954,8 @@ var
           p:=Sphere.Add(ttVarIndex,Sphere.Dict.Str[n]);
           px:=SetSrc(p,q);
           px.Subject:=r;
-          px.EvaluatesTo:=Sphere[r].EvaluatesTo;
+          if (Sphere[r].ThingType and tt__Typed)<>0 then
+            px.EvaluatesTo:=Sphere[r].EvaluatesTo;
          end;
        end;
      end;
@@ -1713,10 +1731,21 @@ begin
               Push(pParentheses,0)
             else
              begin
+              //Combine here?
               px:=Sphere[p];
               if (px.ThingType=ttFunction)
                 or (px.ThingType=ttVarIndex) //and px.Subject.ThingType=ttFunction
                 then
+               begin
+                q:=Sphere.Add(ttFnCall,nn);
+                SetSrc(q,cb).Subject:=p;
+                Push(pArgList,q);
+               end
+              else
+              if (px.ThingType=ttVar) and (px.EvaluatesTo<>0)
+                and (Sphere[px.EvaluatesTo].ThingType=ttPointer)
+                and (Sphere[Sphere[px.EvaluatesTo].EvaluatesTo].ThingType=ttSignature)
+                then //TODO: dedicated function GivesSignature
                begin
                 q:=Sphere.Add(ttFnCall,nn);
                 SetSrc(q,cb).Subject:=p;
