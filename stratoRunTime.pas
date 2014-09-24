@@ -8,15 +8,16 @@ const
   SystemWordSize=4;//32-bits? 64-bits?
 
   stratoSysCall_writeln=1;
+  stratoSysCall_malloc=2;
+  stratoSysCall_realloc=3;
+  stratoSysCall_mfree=4;
   //TODO: malloc, free
 
 procedure DefaultTypes(Sphere:TStratoSphere;ns:TStratoIndex);
-procedure PerformSysCall(Sphere:TStratoSphere;Fn:TStratoIndex;
-  const Value:UTF8String);
 
 var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
-  TypeDecl_number,TypeDecl_variant:TStratoIndex;
+  TypeDecl_number,TypeDecl_variant,TypeDecl_pointer:TStratoIndex;
 
 implementation
 
@@ -36,9 +37,79 @@ var
     if p=nil then Sphere[ns].FirstItem:=Result else p.Next:=Result;
     p:=q;
   end;
+  procedure C(const FunctionName,SignatureName:UTF8String;Op:cardinal;
+    const Arguments:array of TStratoIndex;ReturnType:TStratoIndex);
+  var
+    i:integer;
+    n,p1,p2:TStratoIndex;
+    q,r:PStratoThing;
+  begin
+    //n:=Sphere.Lookup(ns.FirstItem,FunctionName);
+    //if n=0 then
+     begin
+      n:=Sphere.Add(ttFunction,FunctionName);
+      q:=Sphere[n];
+      q.Parent:=ns;
+     end;
+
+    q.Signature:=Sphere.Add(ttSignature,SignatureName);
+    r:=Sphere[q.Signature];
+    r.Parent:=ns;
+    r.EvaluatesTo:=ReturnType;
+
+    p2:=0;
+    for i:=0 to Length(Arguments)-1 do
+     begin
+      p1:=Sphere.Add(ttArgument,'');
+      if p2=0 then r.FirstArgument:=p1 else Sphere[p2].Next:=p1;
+      p2:=p1;
+      r:=Sphere[p1];
+      r.Parent:=q.Signature;
+      r.EvaluatesTo:=Arguments[i];
+     end;
+
+    q.Body:=Sphere.Add(ttCodeBlock,'');
+    r:=Sphere[q.Body];
+    r.Parent:=n;
+    r.FirstStatement:= Sphere.Add(ttSysCall,'');
+    r:=Sphere[r.FirstStatement];
+    r.Parent:=n;
+    r.Op:=Op;
+
+    if ReturnType<>0 then
+     begin
+      p1:=Sphere.Add(ttVar,FunctionName);
+      r:=Sphere[p1];
+      r.Parent:=q.Body;
+      r.EvaluatesTo:=ReturnType;
+      r.Offset:=Sphere[q.Body].ByteSize;
+      inc(Sphere[q.Body].ByteSize,Sphere[ReturnType].ByteSize);
+     end;
+
+    p2:=0;
+    for i:=0 to Length(Arguments)-1 do
+     begin
+      p1:=Sphere.Add(ttVar,'');
+      if p2=0 then
+       begin
+        q.FirstArgument:=p1;
+        Sphere[q.Body].FirstItem:=p1;
+       end
+      else Sphere[p2].Next:=p1;
+      p2:=p1;
+      r:=Sphere[p1];
+      r.Parent:=q.Body;
+      r.EvaluatesTo:=Arguments[i];
+      r.Offset:=Sphere[q.Body].ByteSize;
+      inc(Sphere[q.Body].ByteSize,Sphere[Arguments[i]].ByteSize);
+     end;
+
+    p.Next:=n;
+    p:=q;
+  end;
 var
-  n,m:TStratoIndex;
-  q,r:PStratoThing;
+  n:TStratoIndex;
+  q:PStratoThing;
 begin
   p:=nil;
   TypeDecl_void:=A('void',0);
@@ -60,59 +131,22 @@ begin
   A('hash',SystemWordSize);
   //TODO: auto-casting
 
-  //for ...
-   begin
-    n:=Sphere.Add(ttFunction,'__writeln');
-    q:=Sphere[n];
-    q.Parent:=ns;
-    q.Op:=stratoSysCall_writeln;
+  n:=Sphere.Add(ttPointer,'pointer');
+  q:=Sphere[n];
+  q.Parent:=ns;
+  q.ByteSize:=SystemWordSize;
+  p.Next:=n;
+  p:=q;
+  TypeDecl_pointer:=n;
 
-    q.Signature:=Sphere.Add(ttSignature,'__writeln(string)');
-    r:=Sphere[q.Signature];
-    r.Parent:=ns;
-    r.EvaluatesTo:=0;//void
-
-      r.FirstArgument:=Sphere.Add(ttArgument,'');
-      r:=Sphere[r.FirstArgument];
-      r.Parent:=q.Signature;
-      r.EvaluatesTo:=TypeDecl_string;
-
-    q.Body:=Sphere.Add(ttCodeBlock,'');
-    r:=Sphere[q.Body];
-    r.Parent:=n;
-    r.FirstStatement:=n;//!
-
-      m:=Sphere.Add(ttVar,'');
-      r:=Sphere[m];
-      r.Parent:=q.Body;
-      //r.Offset:=0;
-      r.EvaluatesTo:=TypeDecl_string;
-      q.FirstArgument:=m;
-      Sphere[q.Body].FirstItem:=m;
-
-      r.Offset:=Sphere[q.Body].ByteSize;
-      inc(Sphere[q.Body].ByteSize,SystemWordSize);
-
-    p.Next:=n;
-    p:=q;
-   end;
+  C('__writeln','__writeln(string)',
+    stratoSysCall_writeln,[TypeDecl_string],0);
+  C('__malloc','__malloc(number)',
+    stratoSysCall_malloc,[TypeDecl_number],TypeDecl_pointer);
 
   //TODO: exitcode (and all system things)
-  //TODO: malloc, free  
   //TODO: objects with reference counting
   //TODO: strings with reference counting, copy-on-write, etc
-end;
-
-procedure PerformSysCall(Sphere:TStratoSphere;Fn:TStratoIndex;
-  const Value:UTF8String);
-begin
-  case Sphere[Fn].Op of
-
-    stratoSysCall_writeln:
-      Writeln(Value);
-
-    else Sphere.Error(Fn,'unknown system call '+IntToStr(Sphere[Fn].Op));
-  end;
 end;
 
 end.

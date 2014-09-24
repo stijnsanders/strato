@@ -110,7 +110,7 @@ begin
               x:=Format('%s call %s  fn=%d s=%d b=%d ->%d',
                 [x,s.FQN(i),p.Subject,p.Signature,p.Body,p.FirstArgument]);
             ttArgument:
-              x:=Format('%s arg  %s t=%d d=%d v=%d',
+              x:=Format('%s arg  %s  t=%d d=%d v=%d',
                 [x,s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Subject]);
             ttThis:
               x:=Format('%s this @%d t=%d',
@@ -151,6 +151,8 @@ begin
                 [x,p.ItemType,p.FirstItem,p.Subject]);
             ttThrow:
               x:=Format('%s !!!  ->%d',[x,p.Subject]);
+            ttSysCall:
+              x:=Format('%s sys  %d',[x,p.Op]);
             ttPointer:
               x:=Format('%s ptr  %s  t=%d',
                 [x,s.FQN(i),p.EvaluatesTo]);

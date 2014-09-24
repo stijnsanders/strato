@@ -9,11 +9,12 @@ type
   private
     FMem:array of byte; //TODO: array of cardinal?int64? or other way to force alignment?
 
-    FMemSize,FMemIndex:cardinal;
+    FMemSize,FMemIndex,FMemAllocIndex:cardinal;
     //FGlobals:array of Sphere:TStratoSphere; Address:cardinal; end;?
     procedure AllocateGlobals(Sphere:TStratoSphere);
     procedure Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
     procedure LiteralToMemory(Sphere:TStratoSphere;p:TStratoIndex;addr:cardinal);
+    procedure PerformSysCall(Sphere:TStratoSphere;Fn:TStratoIndex;Ptr:cardinal);
   public
     constructor Create;
     destructor Destroy; override;
@@ -25,8 +26,11 @@ implementation
 uses stratoFn, stratoRunTime, stratoTokenizer, stratoLogic;
 
 const
-  //BaseMemPtr=$400;//some null-pointer safe-guard
-  BaseMemPtr=4;//TODO:
+  InitialMemSize=$10000;//?
+  //BaseMemPtr=$100;//some null-pointer safe-guard
+  BaseMemPtr=8;
+  FirstAllocMemPtr=$2000;
+  MaxStackMemPtr=FirstAllocMemPtr-$10;
 
   SphereBasePtr=BaseMemPtr;//TODO: replace with lookup in TStratoMachine.FGlobals
 
@@ -41,9 +45,10 @@ type
 constructor TStratoMachine.Create;
 begin
   inherited Create;
-  FMemSize:=$10000;//?
+  FMemSize:=InitialMemSize;
   SetLength(FMem,FMemSize);
   FMemIndex:=BaseMemPtr;
+  FMemAllocIndex:=FirstAllocMemPtr;
 end;
 
 destructor TStratoMachine.Destroy;
@@ -130,6 +135,7 @@ end;
 
 procedure TStratoMachine.Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
 var
+  //TODO: store stack in FMem
   stackIndex,stackLength:integer;
   stack:array of record
     p,p1,p2:TStratoIndex;
@@ -358,7 +364,9 @@ begin
         if (p1=0) and (px.Subject<>0)
           and (Sphere[px.Subject].ThingType=ttVarIndex) then
          begin //get address for 'this' ("@@")
-          q:=Sphere.Lookup(Sphere[px.Body].FirstItem,Sphere.Dict.StrIdx('@@'));
+          //q:=Sphere.Lookup(Sphere[px.Body].FirstItem,Sphere.Dict.StrIdx('@@'));
+          q:=Sphere[px.Body].FirstItem;
+          while (q<>0) and (Sphere[q].ThingType<>ttThis) do q:=Sphere[q].Next;
           if q=0 then
             Sphere.Error(pe,'Could not find "@@"')
           else
@@ -373,9 +381,9 @@ begin
           qx:=Sphere[px.Subject];
           if p1=TypeDecl_void then //store address for 'this'
            begin
-            if vt=0 then
-              Sphere.Error(pe,'Could not get value for "@@"')
-            else
+//            if vt=0 then
+//              Sphere.Error(pe,'Could not get value for "@@"')
+//            else
              begin
               //TODO: SameType? vt px.Signature.Subject
               {
@@ -403,7 +411,7 @@ begin
              end
             else
              begin
-              //TODO: function's parent interface? determine implementing object
+              //TODO: function's parent an interface? determine implementing object (see if px.Body=0 above)
 
               //push function's code block (also for Addr)
               Push(px.Body,0,0,np);
@@ -528,16 +536,26 @@ begin
       ttCatch://when p1=0: don't run now, see ttThrow
         ;//if p1<>0 then p:=px.Subject;//see ttThrow
 
-      ttFunction://syscall
+      ttSysCall:
         try
-          //assert chain is there: strFnCall>strArgument>strVar with string data
-          //Move(FMem[Addr(Sphere[px.Body].FirstItem)],i,SystemWordSize);
-          Move(FMem[np-SystemWordSize],i,SystemWordSize);
-          PerformSysCall(Sphere,p,Sphere.GetBinaryData(i));
+          PerformSysCall(Sphere,p,np);
         except
           on e:Exception do //TODO: in-lang throw
             Sphere.Error(pe,'['+e.ClassName+']'+e.Message);
         end;
+
+      ttFunction:
+       begin
+        //address of
+        //TODO: get type!
+        q:=Sphere.Add(ttPointer,'');
+        qx:=Sphere[q];
+        qx.ByteSize:=SystemWordSize;
+        qx.EvaluatesTo:=px.Signature;
+        vtp(q,np);
+        Move(p,FMem[np],SystemWordSize);
+        inc(np,Sphere[vt].ByteSize);
+       end;
       ttVar,ttVarIndex,ttThis://vp:=Addr(p);
        begin
         if p1=0 then vtp(px.EvaluatesTo,0);
@@ -1138,6 +1156,9 @@ begin
       Sphere.Error(pe,'unused resulting value');//warning? info(q)?
       vt:=0;
      end;
+    //check stack overflow
+    if np>=MaxStackMemPtr then
+      raise Exception.Create('Stack Overflow');//TODO: Throw(
     //pop
     while (p=0) and (stackIndex<>0) do Pop(p,p1,p2,mp);
     //TODO: except here? (create exception object, Throw()...)
@@ -1175,6 +1196,42 @@ begin
      end
     else
       Sphere.Error(p,'unsupported literal type');
+end;
+
+procedure TStratoMachine.PerformSysCall(Sphere: TStratoSphere;
+  Fn: TStratoIndex; Ptr: cardinal);
+var
+  i,j:cardinal;
+begin
+  case Sphere[Fn].Op of
+
+    stratoSysCall_writeln:
+     begin
+      //assert chain is there: strFnCall>strArgument>strVar with string data
+      Move(FMem[Ptr-SystemWordSize],i,SystemWordSize);
+      Writeln(Sphere.GetBinaryData(i));
+     end;
+    stratoSysCall_malloc:
+     begin
+      Move(FMem[Ptr-SystemWordSize],i,SystemWordSize);
+      j:=FMemAllocIndex;
+      inc(FMemAllocIndex,i);
+      while FMemAllocIndex>FMemSize do
+       begin
+        inc(FMemSize,InitialMemSize);//grow
+        SetLength(FMem,FMemSize);
+        //TODO: out of memory?
+       end;
+      //TODO: register mem as in use
+      Move(j,FMem[Ptr-SystemWordSize-SystemWordSize],SystemWordSize);
+     end;
+
+    //TODO:
+    //stratoSysCall_realloc:
+    //stratoSysCall_mfree:
+
+    else Sphere.Error(Fn,'unknown system call '+IntToStr(Sphere[Fn].Op));
+  end;
 end;
 
 end.

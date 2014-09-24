@@ -1126,6 +1126,9 @@ var
                 inc(Sphere[cb].ByteSize,Sphere[s2].ByteSize);
                end;
              end;
+            //TODO: check types here? (or at run-time?)
+            //TODO: auto-cast?
+            //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
            end;
           pUnTypedVar:
            begin
@@ -1164,13 +1167,13 @@ var
         n:=Sphere.Add(ttSelection,'?');
         SetSrc(n,cb).DoIf:=p;//cb?
         Push(pIfThen,n);
-        p:=0;
        end
       else
        begin
         Combine(pIfThen,p);
         if p<>0 then Source.Error('missing operator or semicolon');
        end;
+      p:=0;
      end;
   end;
 
@@ -1623,6 +1626,7 @@ begin
               ID(n,nn);
               fqn:=fqn+'.'+nn;
              end;
+            r:=p;
             CodeLookup(n,p);
             if p=0 then
               if b then
@@ -1638,8 +1642,33 @@ begin
                end
               else
                begin
-                Source.Error('undeclared identifier '''+string(fqn)+'''');
-                p:=Sphere.Add(ttVar,nn);//silence further errors
+                //check variable object method/field pointer
+                //TODO: this recursive??!! (via stack!)
+                if r<>0 then
+                 begin
+                  b:=false;
+                  q:=0;
+                  CodeLookup(n,q);
+                  while Source.IsNext([stPeriod,stIdentifier]) do
+                   begin
+                    ID(n,nn);
+                    fqn:=fqn+'.'+nn;
+                    if p<>0 then CodeLookup(n,q);
+                   end;
+                  if q<>0 then
+                   begin
+                    p:=Sphere.Add(ttVarIndex,nn);
+                    px:=SetSrc(p,r);
+                    px.Subject:=q;
+                    //qx.EvaluatesTo:=ResType(p);
+                   end;
+                 end;
+                //really found nothing?
+                if p=0 then
+                 begin
+                  Source.Error('undeclared identifier '''+string(fqn)+'''');
+                  p:=Sphere.Add(ttVar,nn);//silence further errors
+                 end;
                end;
            end;
 

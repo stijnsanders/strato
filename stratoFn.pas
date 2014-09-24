@@ -2,8 +2,6 @@ unit stratoFn;
 
 interface
 
-{$D-}
-
 uses stratoDecl, stratoSphere, stratoSource;
 
 function StratoSignatureAddArgument(Sphere:TStratoSphere;
@@ -77,84 +75,94 @@ begin
   px.Signature:=Signature;
   px.Body:=CodeBlock;
 
-  //populate code block
-  sx:=Sphere[Signature];
-  cx:=Sphere[CodeBlock];
-  bs:=cx.ByteSize;
-  //this "@@"
-  if sx.Subject<>0 then
+  if CodeBlock<>0 then
    begin
-    q:=Sphere.AddTo(cx.FirstItem,ttThis,'@@');
-    if q=0 then
-      Source.Error('duplicate identifier ''@@''')
-    else
+    //populate code block
+    sx:=Sphere[Signature];
+    cx:=Sphere[CodeBlock];
+    bs:=cx.ByteSize;
+    //this "@@"
+    if sx.Subject<>0 then
      begin
-      qx:=Sphere[q];
-      qx.Parent:=CodeBlock;
-      qx.Offset:=bs;
-      qx.EvaluatesTo:=sx.Subject;
-      inc(bs,SystemWordSize);
-     end;
-   end;
-  //return value
-  if sx.EvaluatesTo<>0 then
-   begin
-    q:=Sphere.AddTo(cx.FirstItem,ttVar,Name);
-    if q=0 then
-      Source.Error('duplicate identifier '''+string(Name)+'''')
-    else
-     begin
-      qx:=Sphere[q];
-      qx.Parent:=CodeBlock;
-      qx.Offset:=bs;
-      qx.EvaluatesTo:=sx.EvaluatesTo;
-      if qx.EvaluatesTo<>0 then
-        inc(bs,Sphere[qx.EvaluatesTo].ByteSize);
-     end;
-   end;
-  //arguments
-  p:=sx.FirstArgument;
-  b:=true;
-  while p<>0 do
-   begin
-    px:=Sphere[p];
-    q:=Sphere.AddTo(cx.FirstItem,ttVar,Sphere.Dict.Str[px.Name]);
-    if q=0 then
-      Source.Error('duplicate identifier '''+string(Sphere.Dict.Str[px.Name])+'''')
-    else
-     begin
-      qx:=Sphere[q];
-      qx.Parent:=CodeBlock;
-      qx.Offset:=bs;
-      qx.EvaluatesTo:=px.EvaluatesTo;
-      if qx.EvaluatesTo<>0 then
-        inc(bs,Sphere[qx.EvaluatesTo].ByteSize);
-      if b then //store first arg value on function overload index
+      q:=Sphere.AddTo(cx.FirstItem,ttThis,'@@');
+      if q=0 then
+        Source.Error('duplicate identifier ''@@''')
+      else
        begin
-        Sphere[Fn].FirstArgument:=q;
-        b:=false;
+        qx:=Sphere[q];
+        qx.Parent:=CodeBlock;
+        qx.Offset:=bs;
+        qx.EvaluatesTo:=sx.Subject;
+        inc(bs,SystemWordSize);
        end;
      end;
-    p:=px.Next;
+    //return value
+    if sx.EvaluatesTo<>0 then
+     begin
+      q:=Sphere.AddTo(cx.FirstItem,ttVar,Name);
+      if q=0 then
+        Source.Error('duplicate identifier '''+string(Name)+'''')
+      else
+       begin
+        qx:=Sphere[q];
+        qx.Parent:=CodeBlock;
+        qx.Offset:=bs;
+        qx.EvaluatesTo:=sx.EvaluatesTo;
+        if qx.EvaluatesTo<>0 then
+          inc(bs,Sphere[qx.EvaluatesTo].ByteSize);
+       end;
+     end;
+    //arguments
+    p:=sx.FirstArgument;
+    b:=true;
+    while p<>0 do
+     begin
+      px:=Sphere[p];
+      q:=Sphere.AddTo(cx.FirstItem,ttVar,Sphere.Dict.Str[px.Name]);
+      if q=0 then
+        Source.Error('duplicate identifier '''+string(Sphere.Dict.Str[px.Name])+'''')
+      else
+       begin
+        qx:=Sphere[q];
+        qx.Parent:=CodeBlock;
+        qx.Offset:=bs;
+        qx.EvaluatesTo:=px.EvaluatesTo;
+        if qx.EvaluatesTo<>0 then
+          inc(bs,Sphere[qx.EvaluatesTo].ByteSize);
+        if b then //store first arg value on function overload index
+         begin
+          Sphere[Fn].FirstArgument:=q;
+          b:=false;
+         end;
+       end;
+      p:=px.Next;
+     end;
+    cx.ByteSize:=bs;
    end;
-  cx.ByteSize:=bs;
 end;
 
 function StratoFnCallAddArgument(Sphere:TStratoSphere;
   FnCall,Value:TStratoIndex):TStratoIndex;
 var
   p,q:TStratoIndex;
-  px:PStratoThing;
+  px,vx:PStratoThing;
 begin
   p:=Sphere.Add(ttArgument,'');
   px:=Sphere[p];
-  px.Name:=Sphere[Value].Name;
+  vx:=Sphere[Value];
+  px.Name:=vx.Name;
   px.Parent:=FnCall;
   px.Subject:=Value;
   if Value=0 then
     px.EvaluatesTo:=0
   else
-    px.EvaluatesTo:=Sphere[Value].EvaluatesTo;
+  if vx.ThingType=ttFnCall then
+    px.EvaluatesTo:=Sphere[vx.Signature].EvaluatesTo
+  else
+  if (vx.ThingType and tt__Typed)<>0 then
+    px.EvaluatesTo:=vx.EvaluatesTo
+  else
+    px.EvaluatesTo:=0;//Source.Error?
   q:=Sphere[FnCall].FirstArgument;
   if q=0 then
     Sphere[FnCall].FirstArgument:=p
@@ -179,8 +187,17 @@ begin
   fn:=p.Subject;
   if (fn<>0) and (Sphere[fn].ThingType=ttVarIndex) then
     fn:=Sphere[fn].Subject;
+  if (fn<>0) and (Sphere[fn].ThingType=ttVar) then
+    fn:=Sphere[fn].EvaluatesTo;
+  //if (fn<>0) and (Sphere[fn].ThingType=ttInterface) then
   while fn<>0 do
    begin
+
+//TODO: debug more! raise?
+if Sphere[fn].Signature=0 then
+p0:=0
+else
+
     p0:=Sphere[Sphere[fn].Signature].FirstArgument;
     p1:=p.FirstArgument;
     //TODO: default argument values

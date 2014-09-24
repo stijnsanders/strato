@@ -89,7 +89,6 @@ const
     //FirstArgument (*)
 
   ttFunction     = $0001;
-    //Op : internal value (see PerformSysCall)
     //Signature (ttSignature): first overload signature
     //Body (ttCodeBlock): first overload body
     //FirstArgument (*): first argument value in overload body
@@ -153,6 +152,9 @@ const
     //Subject: exception handling command(s)
     //ItemType: exception object mask
     //FirstItem (ttVar): exception object reference
+
+  ttSysCall      = $0008;
+    //Op : internal value (see PerformSysCall)
 
 
   ttArray        = $0041;
