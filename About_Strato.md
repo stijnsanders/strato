@@ -140,6 +140,7 @@ Operator:
 	@	address of
 
 Specials
+	??	result (like return, but not breaking!)
 	@@	this
 	@@@	inherited
 	!!!	raise/break
@@ -169,8 +170,9 @@ TODO
 * arguments: pass by ref, output
 * function variable, also as result x(x)(x) etc.
 * JSON, array literals
-* syscall loadlibrary, COM...
+* syscall loadlibrary, COM/OLE/ActiveX...
 * output LLVMIR? GCC? C?
+* initialization/finalization per unit/module/namespace
 * threads (or whichever fancy async thing in vogue by then)
 * thread local vars
 * types, classes! (proper polymorphism)
@@ -178,6 +180,7 @@ TODO
 * getters, setters
 * protected, private (-, -- prefix?)
 * interfaces
+* field not found? "[]"(x:string) method? parse into call
 * accept object reference as selection boolean
 * accept "0" as null reference
 * foreach like &(item=collection) Enumerable interface

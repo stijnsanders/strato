@@ -15,7 +15,7 @@ const
   TokenName:array[TStratoToken] of string=(
     'id','string','numeric','',
     ';',',','.',':','@','^','?','&','(',')','{','}','[',']',
-    '<<<','>>>',':::','???','!!!','@@','@@@',
+    '<<<','>>>',':::','???','!!!','@@','@@@','??',
     ':=','+=','-=','*=','/=','%=','||=','&&=',
     '=','<>','<','<=','>','>=','&&','||','!','|!',
     '+','-','*','/','%','++','--','<<','>>','?=',
@@ -165,6 +165,12 @@ begin
             ttInterface:
               x:=Format('%s intf %s  ->%d <-%d',
                 [x,s.FQN(i),p.FirstItem,p.InheritsFrom]);
+            ttArgByRef:
+              x:=Format('%s ^arg %s  t=%d',
+                [x,s.FQN(i),p.EvaluatesTo]);
+            ttVarByRef:
+              x:=Format('%s ^var %s  @%d t=%d',
+                [x,s.FQN(i),p.Offset,p.EvaluatesTo]);
             else
               x:=Format('%s ?    "%s" (%.4x) %d,%d,%d,%d',
                 [x,s.FQN(i),p.ThingType,p.ByteSize

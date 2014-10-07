@@ -4,10 +4,6 @@ interface
 
 uses stratoDecl, stratoSphere, stratoSource;
 
-function StratoSignatureAddArgument(Sphere:TStratoSphere;
-  Signature,ArgType,Defaultvalue:TStratoIndex;const ArgName:UTF8String):TStratoIndex;
-procedure StratoSignatureRetype(Sphere:TStratoSphere;
-  Signature,ArgType:TStratoIndex;Count:cardinal);
 function StratoFunctionAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
   Fn,Signature,Codeblock:TStratoIndex;const Name:UTF8String):TStratoIndex;
 function StratoFnCallAddArgument(Sphere:TStratoSphere;
@@ -18,40 +14,6 @@ implementation
 
 uses stratoLogic, stratoRunTime;
 
-function StratoSignatureAddArgument(Sphere:TStratoSphere;
-  Signature,ArgType,Defaultvalue:TStratoIndex;const ArgName:UTF8String):TStratoIndex;
-var
-  p:PStratoThing;
-begin
-  Result:=Sphere.AddTo(Sphere[Signature].FirstArgument,ttArgument,ArgName);
-  if Result<>0 then
-   begin
-    p:=Sphere[Result];
-    p.Parent:=Signature;
-    //p.Offset:=??? see strFnCall
-    p.EvaluatesTo:=ArgType;
-    p.InitialValue:=Defaultvalue;
-   end;
-end;
-
-procedure StratoSignatureRetype(Sphere:TStratoSphere;
-  Signature,ArgType:TStratoIndex;Count:cardinal);
-var
-  x:cardinal;
-  p:PStratoThing;
-begin
-  x:=Count;
-  //assert arguments to retype at the end!
-  while x<>0 do
-   begin
-    dec(x);
-    p:=Sphere[Sphere[Signature].FirstArgument];
-    while (p<>nil) and (p.Next<>0) do p:=Sphere[p.Next];
-    if (p<>nil) and (p.EvaluatesTo=0) then p.EvaluatesTo:=ArgType;
-    //p.Offset? see strFnCall
-   end;
-end;
-
 function StratoFunctionAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
   Fn,Signature,Codeblock:TStratoIndex;const Name:UTF8String):TStratoIndex;
 var
@@ -59,6 +21,7 @@ var
   p,q:TStratoIndex;
   px,qx,sx,cx:PStratoThing;
   b:boolean;
+  tt:cardinal;
 begin
   //TODO: detect duplicates, ambigiousness
   if Sphere[Fn].Signature=0 then
@@ -118,7 +81,8 @@ begin
     while p<>0 do
      begin
       px:=Sphere[p];
-      q:=Sphere.AddTo(cx.FirstItem,ttVar,Sphere.Dict.Str[px.Name]);
+      if px.ThingType=ttArgByRef then tt:=ttVarByRef else tt:=ttVar;
+      q:=Sphere.AddTo(cx.FirstItem,tt,Sphere.Dict.Str[px.Name]);
       if q=0 then
         Source.Error('duplicate identifier '''+string(Sphere.Dict.Str[px.Name])+'''')
       else
@@ -127,6 +91,9 @@ begin
         qx.Parent:=CodeBlock;
         qx.Offset:=bs;
         qx.EvaluatesTo:=px.EvaluatesTo;
+        if tt=ttVarByRef then
+          inc(bs,SystemWordSize)
+        else
         if qx.EvaluatesTo<>0 then
           inc(bs,Sphere[qx.EvaluatesTo].ByteSize);
         if b then //store first arg value on function overload index
@@ -176,7 +143,7 @@ end;
 
 procedure StratoFnCallFindSignature(Sphere:TStratoSphere;FnCall:TStratoIndex);
 var
-  p,q:PStratoThing;
+  p,q,x0,x1:PStratoThing;
   fn,p0,p1:TStratoIndex;
 begin
   //assert all Arguments added
@@ -201,12 +168,24 @@ else
     p0:=Sphere[Sphere[fn].Signature].FirstArgument;
     p1:=p.FirstArgument;
     //TODO: default argument values
-    //TODO: arg by reference!
-    while (p0<>0) and (p1<>0)
-      and SameType(Sphere,Sphere[p0].EvaluatesTo,Sphere[p1].EvaluatesTo) do
+    while (p0<>0) and (p1<>0) do
      begin
-      p0:=Sphere[p0].Next;
-      p1:=Sphere[p1].Next;
+      x0:=Sphere[p0];
+      x1:=Sphere[p1];
+      if SameType(Sphere,x0.EvaluatesTo,x1.EvaluatesTo) then
+       begin
+        if (x0.ThingType=ttArgByRef) and
+          (x1.ValueFrom<>0) and
+          (Sphere[x1.ValueFrom].ThingType<>ttVar) then //=ttLiteral then Error?
+          p0:=0;
+       end
+      else
+        p0:=0;
+      if p0<>0 then
+       begin
+        p0:=x0.Next;
+        p1:=x1.Next;
+       end;
      end;
     if (p0=0) and (p1=0) then
      begin

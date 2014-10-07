@@ -292,30 +292,6 @@ var
      end;
   end;
 
-  function ResType(p:TStratoIndex):TStratoIndex;
-  var
-    px:PStratoThing;
-  begin
-    Result:=0;//default
-    if p<>0 then
-     begin
-      px:=Sphere[p];
-      if (px.ThingType and tt__Typed)<>0 then
-        Result:=px.EvaluatesTo
-      else
-        case px.ThingType of
-          ttFnCall:
-            if px.Signature<>0 then
-              Result:=Sphere[px.Signature].EvaluatesTo;
-          //TODO: ttAlias?
-          //TODO: ttFunction: px.Signature?
-          ttFunction:
-            Result:=px.Signature;//TODO:  stAssignment check
-          //else Result:=0;//see default
-        end;
-     end;
-  end;
-
   function ParseLiteral(st0:TStratoToken):TStratoIndex;
   const
     stackGrowSize=$10;
@@ -718,51 +694,80 @@ var
   function ParseSignature(ns:TStratoIndex;const name:UTF8String):TStratoIndex;
   var
     st:TStratoToken;
-    p,q:TStratoIndex;
-    sametypecount:integer;
+    p,q,Signature,NoType:TStratoIndex;
+    rx:PStratoThing;
     argName:UTF8String;
+    byref:boolean;
+
+    function AddArgument:boolean;
+    var
+      tt:cardinal;
+      r:TStratoIndex;
+    begin
+      if byref then tt:=ttArgByRef else tt:=ttArgument;
+      byref:=false;
+      r:=Sphere.AddTo(Sphere[Signature].FirstArgument,tt,argName);
+      if (p=0) and (NoType=0) then NoType:=r;
+      rx:=SetSrc(r,Signature);
+      Result:=rx<>nil;
+      if Result then
+       begin
+        //rx.Offset:=??? see strFnCall
+        rx.EvaluatesTo:=p;
+        //rx.InitialValue:=
+       end
+      else
+        Source.Error('duplicate argument');
+    end;
+
   begin
     //assert one past token stPOpen
-    Result:=Sphere.Add(ttSignature,name);
-    SetSrc(Result,ns);
-    sametypecount:=0;
+    Signature:=Sphere.Add(ttSignature,name);
+    SetSrc(Signature,ns);
+    Result:=Signature;
+    NoType:=0;
+    byref:=false;
     st:=stIdentifier;//default (something not stPClose really)
     while (st<>stPClose) and Source.NextToken(st) do
       case st of
 
+        stCaret:
+          if byref then
+            Source.Error('unsupported argument syntax')
+          else
+            byref:=true;
+
         stIdentifier:
          begin
           argName:=Source.GetID;
+          p:=0;//default
           q:=0;//default
-          //TODO: byref
           st:=Source.Token;
           case st of
             stColon: //argument type
              begin
               p:=LookUpType('argument type');
-              if sametypecount<>0 then
+              while NoType<>0 do
                begin
-                StratoSignatureRetype(Sphere,Result,p,sametypecount);
-                sametypecount:=0;
+                rx:=Sphere[NoType];
+                //assert rx.EvaluatesTo=0
+                rx.EvaluatesTo:=p;
+                //rx.Offset? see strFnCall
+                rx:=Sphere[rx.Next];
                end;
               if Source.IsNext([stOpEQ]) then //default value
                 q:=ParseLiteral(Source.Token);
-              if SetSrc(StratoSignatureAddArgument(Sphere,Result,p,q,argName),Result)=nil then
-                Source.Error('duplicate argument');
+              if AddArgument then rx.InitialValue:=q;
               if Source.IsNext([stComma]) or Source.IsNext([stSemiColon]) then ;//skip
              end;
             stComma:
-             begin
-              inc(sametypecount);
-              if SetSrc(StratoSignatureAddArgument(Sphere,Result,0,0,argName),Result)=nil then
-                Source.Error('duplicate argument');
-             end;
+              AddArgument;
             stOpEq:
              begin
               q:=ParseLiteral(Source.Token);
-              inc(sametypecount);
-              if SetSrc(StratoSignatureAddArgument(Sphere,Result,0,q,argName),Result)=nil then
-                Source.Error('duplicate argument');
+              if byref then
+                Source.Error('default value on by-reference-argument not supported');
+              if AddArgument then rx.InitialValue:=q;
               if not Source.IsNext([stComma]) then
                 Source.Error('argument with default value but no type'+
                   ' requires a subsequent argument with type');
@@ -778,9 +783,9 @@ var
       end;
     //TODO: check default values with type
     if Sphere[ns].ThingType<>ttNameSpace then //strRecord,strTypeDecl
-      Sphere[Result].Subject:=ns;
+      Sphere[Signature].Subject:=ns;
     if Source.IsNext([stColon,stIdentifier]) then
-      Sphere[Result].EvaluatesTo:=LookUpType('returns type');
+      Sphere[Signature].EvaluatesTo:=LookUpType('returns type');
   end;
 
   procedure ParseEnumeration(p:TStratoIndex;px:PStratoThing);
@@ -933,7 +938,7 @@ var
         p:=Sphere.Lookup(Sphere[p].FirstItem,n);
       if p=0 then//nothing, is it typed? search typedecl
        begin
-        r:=ResType(q);
+        r:=ResType(Sphere,q);
         if (r<>0) and (Sphere[r].ThingType=ttArray) then
           r:=Sphere[r].ItemType;
         if r<>0 then
@@ -1013,7 +1018,7 @@ var
             else
               s2:=Sphere.Add(ttVarIndex,Sphere.Dict.Str[x0.Name]);
             x1:=SetSrc(s2,s0);
-            x1.EvaluatesTo:=ResType(s0);
+            x1.EvaluatesTo:=ResType(Sphere,s0);
             x1.FirstArgument:=s1;
             s0:=s2;
             done:=true;//always only one (need to parse "]" correctly)
@@ -1046,7 +1051,7 @@ var
            begin
             if s1<>0 then
              begin
-              if not SameType(Sphere,ResType(s1),TypeDecl_bool) then
+              if not SameType(Sphere,ResType(Sphere,s1),TypeDecl_bool) then
                 Source.Error('iteration criterium does not evaluate to boolean');
               x0.DoIf:=s1;
              end;
@@ -1082,14 +1087,14 @@ var
            end;
           pUnary:
            begin
-            x0.EvaluatesTo:=ResType(s1);
+            x0.EvaluatesTo:=ResType(Sphere,s1);
             x0.Right:=s1;
            end;
           pAddressOf:
            begin
             //TODO: check ttVar?
             x0.ValueFrom:=s1;
-            s1:=ResType(s1);
+            s1:=ResType(Sphere,s1);
             while (s1<>0) and (Sphere[s1].ThingType=ttArray) do
               s1:=Sphere[s1].ItemType;
             x0.EvaluatesTo:=Sphere.Add(ttPointer,
@@ -1111,27 +1116,36 @@ var
           pAssignment:
            begin
             x0.ValueFrom:=s1;
-            x0.EvaluatesTo:=ResType(x0.AssignTo);//ResType(s1);
+            if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then
+             begin
+              x0.EvaluatesTo:=ResType(Sphere,s1);
+              Sphere[stack[stackIndex-1].t].EvaluatesTo:=x0.EvaluatesTo;
+              if x0.EvaluatesTo<>0 then
+                inc(Sphere[cb].ByteSize,Sphere[x0.EvaluatesTo].ByteSize);
+             end
+            else
+              x0.EvaluatesTo:=ResType(Sphere,x0.AssignTo);
+            //TODO: check types here? (or at run-time?)
+            //TODO: auto-cast?
+            //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
             if x0.EvaluatesTo<>0 then
              begin
               s1:=x0.AssignTo;
               x1:=Sphere[s1];
               if (s1<>0) and (x1.ThingType=ttVar) and (x1.EvaluatesTo=0)
-                and (ResType(s0)<>0)
+                and (ResType(Sphere,s0)<>0)
                 then
                begin
-                s2:=ResType(x0.ValueFrom);
+                s2:=ResType(Sphere,x0.ValueFrom);
                 x1.EvaluatesTo:=s2;
                 x1.Offset:=Sphere[cb].ByteSize;
                 inc(Sphere[cb].ByteSize,Sphere[s2].ByteSize);
                end;
              end;
-            //TODO: check types here? (or at run-time?)
-            //TODO: auto-cast?
-            //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
            end;
           pUnTypedVar:
            begin
+            //see also pAssignment above and stColon below
             //assert x0.ThingType=strVar
             if x0.EvaluatesTo=0 then
               Source.Error('no type for local var '''+string(Sphere.FQN(s0))+'''');
@@ -1162,7 +1176,7 @@ var
     if p<>0 then Combine(p_Juxta,p);
     if p<>0 then
      begin
-      if SameType(Sphere,ResType(p),TypeDecl_bool) then
+      if SameType(Sphere,ResType(Sphere,p),TypeDecl_bool) then
        begin
         n:=Sphere.Add(ttSelection,'?');
         SetSrc(n,cb).DoIf:=p;//cb?
@@ -1519,6 +1533,9 @@ begin
                        begin
                         if q<>0 then Source.Error('duplicate identifier');
                         q:=Sphere.AddTo(Sphere[ns].FirstItem,ttFunction,nn);
+//TODO: constructor/destructor?
+if q=0 then
+q:=Sphere.Add(ttFunction,nn);
                         SetSrc(q,ns);
                        end;
                       cb:=Sphere.Add(ttCodeBlock,'');
@@ -1781,7 +1798,7 @@ begin
                 Push(pArgList,q);
                end
               else
-              if SameType(Sphere,ResType(p),TypeDecl_bool) then
+              if SameType(Sphere,ResType(Sphere,p),TypeDecl_bool) then
                begin
                 //see also Juxta
                 q:=Sphere.Add(ttSelection,'');
@@ -1840,7 +1857,7 @@ begin
                begin
                 stack[stackIndex-1].p:=pForThen;
                 Sphere[stack[stackIndex-1].t].DoIf:=p;
-                if not SameType(Sphere,ResType(p),TypeDecl_bool) then
+                if not SameType(Sphere,ResType(Sphere,p),TypeDecl_bool) then
                   Source.Error('iteration criterium does not evaluate to boolean');
                 p:=0;
                end
@@ -1858,7 +1875,7 @@ begin
             Combine(p_Statement,p);
             if p<>0 then
              begin
-              r:=ResType(p);
+              r:=ResType(Sphere,p);
               Sphere[cb].EvaluatesTo:=r;
               CheckPassed(p);
               CbAdd(p);
@@ -1932,7 +1949,7 @@ begin
                 end;
 
               //add to parent chain
-              if (p<>0) and (ResType(p)=0) then CbAdd(p);
+              if (p<>0) and (ResType(Sphere,p)=0) then CbAdd(p);
              end;
             p:=0;
            end;
@@ -2003,7 +2020,7 @@ begin
               q:=Sphere.Add(ttUnaryOp,'');
               qx:=SetSrc(q,cb);
               qx.Op:=cardinal(st);
-              qx.EvaluatesTo:=ResType(p);
+              qx.EvaluatesTo:=ResType(Sphere,p);
               qx.Right:=p;
               p:=q;
              end;

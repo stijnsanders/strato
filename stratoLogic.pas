@@ -7,6 +7,7 @@ uses stratoDecl, stratoSphere;
 const
   OffsetUseDefault=cardinal(-1);
 
+function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;
   const FieldName:UTF8String;FieldType:TStratoIndex;Offset:cardinal):TStratoIndex;
@@ -17,6 +18,30 @@ procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
   MergeOnto:TStratoIndex);
 
 implementation
+
+function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
+var
+  px:PStratoThing;
+begin
+  Result:=0;//default
+  if p<>0 then
+   begin
+    px:=Sphere[p];
+    if (px.ThingType and tt__Typed)<>0 then
+      Result:=px.EvaluatesTo
+    else
+      case px.ThingType of
+        ttFnCall:
+          if px.Signature<>0 then
+            Result:=Sphere[px.Signature].EvaluatesTo;
+        //TODO: ttAlias?
+        //TODO: ttFunction: px.Signature?
+        ttFunction:
+          Result:=px.Signature;//TODO:  stAssignment check
+        //else Result:=0;//see default
+      end;
+   end;
+end;
 
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 var
@@ -73,28 +98,26 @@ end;
 
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 var
-  p,s1,s2:PStratoThing;
+  p:PStratoThing;
+  p1,p2:TStratoIndex;
 begin
   p:=Sphere[pp];
-  if p.DoThen=0 then s1:=nil else s1:=Sphere[p.DoThen];
-  if p.DoElse=0 then s2:=nil else s2:=Sphere[p.DoElse];
-  if s1=nil then
-    if s2=nil then
-      p.EvaluatesTo:=0
-    else
-      p.EvaluatesTo:=s2.EvaluatesTo
+  if p.DoThen=0 then p1:=0 else p1:=ResType(Sphere,p.DoThen);
+  if p.DoElse=0 then p2:=0 else p2:=ResType(Sphere,p.DoElse);
+  if p1=0 then
+    p.EvaluatesTo:=p2
   else
-    if s2=nil then
-      p.EvaluatesTo:=s1.EvaluatesTo
+    if p2=0 then
+      p.EvaluatesTo:=p1
     else
-      if s1.EvaluatesTo=s2.EvaluatesTo then
-        p.EvaluatesTo:=s1.EvaluatesTo
+      if p1=p2 then
+        p.EvaluatesTo:=p1
       else
-        if (s1.EvaluatesTo<>0) and (SameType(Sphere,s1.EvaluatesTo,s2.EvaluatesTo)) then
-          p.EvaluatesTo:=s2.EvaluatesTo
+        if (p1<>0) and SameType(Sphere,p1,p2) then
+          p.EvaluatesTo:=p2
         else
-        if (s2.EvaluatesTo<>0) and (SameType(Sphere,s2.EvaluatesTo,s1.EvaluatesTo)) then
-          p.EvaluatesTo:=s1.EvaluatesTo
+        if (p2<>0) and SameType(Sphere,p2,p1) then //?
+          p.EvaluatesTo:=p1
         else
           ;//TODO: auto-expand on numerics?
 end;
@@ -102,15 +125,23 @@ end;
 procedure StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 var
   p:PStratoThing;
+  p1,p2:TStratoIndex;
 begin
   p:=Sphere[pp];
   if (p.Left<>0) and (p.Right<>0) then
-    if (Sphere[p.Left].EvaluatesTo=Sphere[p.Right].EvaluatesTo) then
-      p.EvaluatesTo:=Sphere[p.Left].EvaluatesTo
+   begin
+    p1:=ResType(Sphere,p.Left);
+    p2:=ResType(Sphere,p.Right);
+    if p1=p2 then
+      p.EvaluatesTo:=p1
     else
-    if SameType(Sphere,Sphere[p.Right].EvaluatesTo,Sphere[p.Left].EvaluatesTo) then
-      p.EvaluatesTo:=Sphere[p.Right].EvaluatesTo;
+    if SameType(Sphere,p1,p2) then
+      p.EvaluatesTo:=p2
+    else
+    if SameType(Sphere,p2,p1) then //?
+      p.EvaluatesTo:=p1
     //TODO: auto-expand on numerics?
+   end;
 end;
 
 procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;

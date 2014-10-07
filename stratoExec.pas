@@ -415,7 +415,10 @@ begin
 
               //push function's code block (also for Addr)
               Push(px.Body,0,0,np);
+
+              //start getting the first argument
               qx:=Sphere[p1];
+              //if qx.ThingType<>ttArgByRef then
               if qx.InitialValue<>0 then
                 LiteralToMemory(Sphere,qx.InitialValue,np+Sphere[p2].Offset);
               Push(p,p1,p2,np);
@@ -444,9 +447,14 @@ begin
               string(Sphere.Dict.Str[Sphere[p1].Name])+'"')
           else
            begin
-            //assert p2.ThingType=strArgument
-            i:=Sphere[vt].ByteSize;
-            if i<>0 then Move(FMem[vp],FMem[mp+Sphere[p2].Offset],i);
+            if Sphere[p2].ThingType=ttVarByRef then
+              Move(vp,FMem[mp+Sphere[p2].Offset],SystemWordSize)
+            else
+             begin
+              //assert p2.ThingType=ttArgument
+              i:=Sphere[vt].ByteSize;
+              if i<>0 then Move(FMem[vp],FMem[mp+Sphere[p2].Offset],i);
+             end;
             vt:=0;
            end;
           //next argument
@@ -597,6 +605,7 @@ begin
                 Push(q,q,vt,vp);
                 vt:=0;
                 p:=qx.FirstArgument;
+                //TODO: multi-dim-array?
                end
               else
               if vt=0 then
@@ -1134,6 +1143,19 @@ begin
           Move(FMem[vp],vp,SystemWordSize);
           //TODO: access violation? bounds check?
          end;
+      ttVarByRef:
+       begin
+        q:=px.Parent;//assert code block
+        vp:=px.Offset;
+        i:=stackIndex;
+        while (i<>0) and (stack[i-1].p<>q) do dec(i);
+        if i=0 then
+          Sphere.Error(pe,'var-by-ref relative to code block not currently in execution')
+        else
+          inc(vp,stack[i-1].bp);
+        Move(FMem[vp],i,SystemWordSize);
+        vtp(px.EvaluatesTo,i);
+       end;
 
       //TODO: more
 

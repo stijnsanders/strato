@@ -188,6 +188,13 @@ const
     //FirstItem (ttVar, ttFunction)
     //InheritsFrom (ttRecord)
 
+  ttArgByRef     = $00A2;
+    //EvaluatesTo (ttTypeDecl)
+
+  ttVarByRef     = $00A3;
+    //Offset
+    //EvaluatesTo (ttTypeDecl)
+
 type
   TStratoThing=record
     ThingType:cardinal;

@@ -31,6 +31,7 @@ type
 
     stThis,//"@@"
     stInherited,//"@@@"
+    stResult,//"??"
 
     stOpAssign, //":="
     stOpAssignAdd, //"+="
@@ -281,6 +282,7 @@ begin
       '=':
         case CodeNext(1) of
           '?':Add(2,stOpTypeIs);
+          '=':Add(2,stOpEq);//raise?
           else Add(1,stOpEq);
         end;
       '?':
@@ -288,7 +290,7 @@ begin
           '?':
             case CodeNext(2) of
               '?':Add(3,stCatch);
-              else Add(2,st_Unknown);
+              else Add(2,stResult);
             end;
           else Add(1,stQuestionMark);//stOpIf
         end;
@@ -298,7 +300,7 @@ begin
           '!':
             case CodeNext(2) of
               '!':Add(3,stThrow);
-              else Add(2,st_Unknown);//raise?
+              else Add(2,st_Unknown);//raise? Add(1,stOpNot)?
             end;
           else Add(1,stOpNot);
         end;
