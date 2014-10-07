@@ -2037,6 +2037,17 @@ q:=Sphere.Add(ttFunction,nn);
               SetSrc(p,cb);
              end;
            end;
+          stResult://"??"
+           begin
+            Juxta(p);
+            p:=Sphere.Lookup(Sphere[cb].FirstItem,Sphere[Sphere[cb].Parent].Name);
+            if p=0 then
+             begin
+              Source.Error('"??" undefined');
+              p:=Sphere.Add(ttVar,'??');//add anyway to avoid further errors
+              SetSrc(p,cb);
+             end;
+           end;
 
           stAmpersand://"&": iteration
             case Source.Token of

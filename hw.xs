@@ -50,11 +50,11 @@ main(p:shell){
 */
 
 
-
+somevalue():number{??:=500;}
 
 test(^x:number)
 {
-	x+=500;
+	x+=somevalue();
 }
 
 //test(x,^y:number){y:=x+5;}
