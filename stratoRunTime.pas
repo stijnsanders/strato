@@ -7,10 +7,12 @@ uses stratoSphere, stratoDecl, stratoLogic, stratoFn;
 const
   SystemWordSize=4;//32-bits? 64-bits?
 
-  stratoSysCall_writeln=1;
-  stratoSysCall_malloc=2;
-  stratoSysCall_realloc=3;
-  stratoSysCall_mfree=4;
+  stratoSysCall_xinc=1;
+  stratoSysCall_xdec=2;
+  stratoSysCall_malloc=$100;
+  stratoSysCall_realloc=$101;
+  stratoSysCall_mfree=$102;
+  stratoSysCall_writeln=$200;
   //TODO: malloc, free
 
 procedure DefaultTypes(Sphere:TStratoSphere;ns:TStratoIndex);
@@ -26,6 +28,7 @@ uses SysUtils;
 procedure DefaultTypes(Sphere:TStratoSphere;ns:TStratoIndex);
 var
   p:PStratoThing;
+
   function A(const Name:UTF8String;s:integer): TStratoIndex;
   var
     q:PStratoThing;
@@ -37,6 +40,10 @@ var
     if p=nil then Sphere[ns].FirstItem:=Result else p.Next:=Result;
     p:=q;
   end;
+
+  const
+    C_ByRef=$10000;
+
   procedure C(const FunctionName,SignatureName:UTF8String;Op:cardinal;
     const Arguments:array of TStratoIndex;ReturnType:TStratoIndex);
   var
@@ -65,7 +72,13 @@ var
       p2:=p1;
       r:=Sphere[p1];
       r.Parent:=q.Signature;
-      r.EvaluatesTo:=Arguments[i];
+      if (Arguments[i] and C_ByRef)=0 then
+        r.EvaluatesTo:=Arguments[i]
+      else
+       begin
+        r.ThingType:=ttArgByRef;
+        r.EvaluatesTo:=(Arguments[i] xor C_ByRef);
+       end;
      end;
 
     q.Body:=Sphere.Add(ttCodeBlock,'');
@@ -84,6 +97,7 @@ var
       r.EvaluatesTo:=ReturnType;
       r.Offset:=Sphere[q.Body].ByteSize;
       inc(Sphere[q.Body].ByteSize,Sphere[ReturnType].ByteSize);
+      Sphere[q.Body].FirstItem:=p1;
      end;
 
     p2:=0;
@@ -93,20 +107,31 @@ var
       if p2=0 then
        begin
         q.FirstArgument:=p1;
-        Sphere[q.Body].FirstItem:=p1;
+        if Sphere[q.Body].FirstItem=0 then
+          Sphere[q.Body].FirstItem:=p1;
        end
       else Sphere[p2].Next:=p1;
       p2:=p1;
       r:=Sphere[p1];
       r.Parent:=q.Body;
-      r.EvaluatesTo:=Arguments[i];
       r.Offset:=Sphere[q.Body].ByteSize;
-      inc(Sphere[q.Body].ByteSize,Sphere[Arguments[i]].ByteSize);
+      if (Arguments[i] and C_ByRef)=0 then
+       begin
+        r.EvaluatesTo:=Arguments[i];
+        inc(Sphere[q.Body].ByteSize,Sphere[Arguments[i]].ByteSize);
+       end
+      else
+       begin
+        r.ThingType:=ttVarByRef;
+        r.EvaluatesTo:=Arguments[i] xor C_ByRef;
+        inc(Sphere[q.Body].ByteSize,SystemWordSize);
+       end;
      end;
 
     p.Next:=n;
     p:=q;
   end;
+  
 var
   n:TStratoIndex;
   q:PStratoThing;
@@ -139,6 +164,10 @@ begin
   p:=q;
   TypeDecl_pointer:=n;
 
+  C('__xinc','__xinc(^number)',
+    stratoSysCall_xinc,[TypeDecl_number or C_ByRef],TypeDecl_number);
+  C('__xdec','__xdec(^number)',
+    stratoSysCall_xdec,[TypeDecl_number or C_ByRef],TypeDecl_number);
   C('__writeln','__writeln(string)',
     stratoSysCall_writeln,[TypeDecl_string],0);
   C('__malloc','__malloc(number)',

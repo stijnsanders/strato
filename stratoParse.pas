@@ -1654,7 +1654,7 @@ q:=Sphere.Add(ttFunction,nn);
                   p:=Sphere.Add(ttVar,nn);//silence further errors
                   Source.Error('duplicate identifier '''+string(fqn)+'''');
                  end;
-                SetSrc(p,cb);
+                SetSrc(p,cb).Offset:=Sphere[cb].ByteSize;
                 Push(pUnTypedVar,p);//see stColon below
                end
               else

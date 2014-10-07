@@ -23,7 +23,7 @@ type
 
 implementation
 
-uses stratoFn, stratoRunTime, stratoTokenizer, stratoLogic;
+uses Windows, stratoFn, stratoRunTime, stratoTokenizer, stratoLogic;
 
 const
   InitialMemSize=$10000;//?
@@ -432,11 +432,9 @@ begin
          begin
           if Sphere[px.Signature].EvaluatesTo<>0 then
            begin
-            q:=Sphere.Lookup(Sphere[px.Body].FirstItem,Sphere[px.Signature].Name);
-            if q=0 then
-              Sphere.Error(pe,'return value not found')
-            else
-              vtp(Sphere[px.Signature].EvaluatesTo,mp+Sphere[q].Offset);
+            //assert first value in code block is return value
+            q:=Sphere[px.Body].FirstItem;
+            vtp(Sphere[px.Signature].EvaluatesTo,mp+Sphere[q].Offset);
            end;
          end
         else
@@ -1223,9 +1221,21 @@ end;
 procedure TStratoMachine.PerformSysCall(Sphere: TStratoSphere;
   Fn: TStratoIndex; Ptr: cardinal);
 var
-  i,j:cardinal;
+  i,j,k:cardinal;
 begin
   case Sphere[Fn].Op of
+
+    stratoSysCall_xinc,stratoSysCall_xdec:
+     begin
+      Move(FMem[Ptr-SystemWordSize],i,SystemWordSize);
+      Move(FMem[i],j,SystemWordSize);
+      case Sphere[Fn].Op of
+        stratoSysCall_xinc:k:=cardinal(InterlockedIncrement(integer(j)));
+        stratoSysCall_xdec:k:=cardinal(InterlockedDecrement(integer(j)));
+      end;
+      Move(j,FMem[i],SystemWordSize);
+      Move(k,FMem[Ptr-SystemWordSize*2],SystemWordSize);
+     end;
 
     stratoSysCall_writeln:
      begin

@@ -50,20 +50,14 @@ main(p:shell){
 */
 
 
-somevalue():number{??:=500;}
-
-test(^x:number)
-{
-	x+=somevalue();
-}
-
 //test(x,^y:number){y:=x+5;}
 
 <<<shell
 main(p:shell){
 	x:=200;
-	test(x);
+	y:=__xinc(x);
 	p.write(x:string);
+	p.write(y:string);
 }
 
 /*
