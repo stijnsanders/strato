@@ -144,7 +144,7 @@ end;
 procedure StratoFnCallFindSignature(Sphere:TStratoSphere;FnCall:TStratoIndex);
 var
   p,q,x0,x1:PStratoThing;
-  fn,p0,p1:TStratoIndex;
+  fn,p0,p1,r:TStratoIndex;
 begin
   //assert all Arguments added
   p:=Sphere[FnCall];
@@ -174,13 +174,17 @@ else
       x1:=Sphere[p1];
       if SameType(Sphere,x0.EvaluatesTo,x1.EvaluatesTo) then
        begin
-        if (x0.ThingType=ttArgByRef) and
-          (x1.ValueFrom<>0) and
-          (Sphere[x1.ValueFrom].ThingType<>ttVar) then //=ttLiteral then Error?
-          p0:=0;
+        if x0.ThingType=ttArgByRef then
+         begin
+          r:=x1.Subject;
+          while (r<>0) and (Sphere[r].ThingType=ttAssign) do
+            r:=Sphere[r].AssignTo;
+          if (r<>0) and (Sphere[r].ThingType<>ttVar) then //=ttLiteral then Error?
+            p0:=0;//TODO: warning like 'unsuitable argument for byref'?
+         end;
        end
       else
-        p0:=0;
+        p0:=0;//not OK, break loop
       if p0<>0 then
        begin
         p0:=x0.Next;

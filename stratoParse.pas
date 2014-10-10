@@ -753,7 +753,7 @@ var
                 //assert rx.EvaluatesTo=0
                 rx.EvaluatesTo:=p;
                 //rx.Offset? see strFnCall
-                rx:=Sphere[rx.Next];
+                NoType:=rx.Next;
                end;
               if Source.IsNext([stOpEQ]) then //default value
                 q:=ParseLiteral(Source.Token);
@@ -1115,6 +1115,8 @@ var
            end;
           pAssignment:
            begin
+            while (x0.ValueFrom<>0) and (Sphere[x0.ValueFrom].ThingType=ttAssign) do
+              x0:=Sphere[x0.ValueFrom];
             x0.ValueFrom:=s1;
             if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then
              begin
@@ -1764,6 +1766,8 @@ q:=Sphere.Add(ttFunction,nn);
             else //cast
              begin
               //Combine(p_Juxta,p);//TODO: use stack, add to precendence
+              if ResType(Sphere,p)=0 then
+                Source.Error('no value to cast');
               q:=Sphere.Add(ttCast,'');
               qx:=SetSrc(q,cb);
               qx.Subject:=p;
@@ -1977,8 +1981,18 @@ q:=Sphere.Add(ttFunction,nn);
               q:=Sphere.Add(ttAssign,'');
               qx:=SetSrc(q,cb);
               qx.Op:=cardinal(st);
-              qx.AssignTo:=p;
-              Push(pAssignment,q);
+              px:=Sphere[p];
+              if px.ThingType=ttAssign then
+               begin
+                qx.AssignTo:=px.ValueFrom;
+                px.ValueFrom:=q;
+                Push(pAssignment,p);
+               end
+              else
+               begin
+                qx.AssignTo:=p;
+                Push(pAssignment,q);
+               end;
               p:=0;
              end;
            end;

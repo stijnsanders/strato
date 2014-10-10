@@ -100,7 +100,7 @@ const
     //Body (ttCodeBlock): body from overload with matching signature (see ttFunction)
 
   ttArgument     = $00A0;
-    //Subject (*): argument value
+    //Subject (*): argument value (not ValueFrom!)
     //EvaluatesTo (ttTypeDecl): argument type (used to find suitable signature)
     //InitialValue (ttLiteral): default value (signature only)
 

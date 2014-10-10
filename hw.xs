@@ -50,14 +50,12 @@ main(p:shell){
 */
 
 
-//test(x,^y:number){y:=x+5;}
+test(x,^y:number):number{test:=y:=x+50;}
 
 <<<shell
 main(p:shell){
-	x:=200;
-	y:=__xinc(x);
-	p.write(x:string);
-	p.write(y:string);
+	p.write(test(100,z:=30):string);
+	p.write(z:string);
 }
 
 /*

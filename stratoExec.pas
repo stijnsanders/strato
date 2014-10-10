@@ -428,12 +428,14 @@ begin
            end;
          end
         else
-        if p1=p then//output result value
+        if p1=p then
          begin
+          //output result value
           if Sphere[px.Signature].EvaluatesTo<>0 then
            begin
-            //assert first value in code block is return value
+            //assert first value in code block is return value (after this)
             q:=Sphere[px.Body].FirstItem;
+            if (q<>0) and (Sphere[q].ThingType=ttThis) then q:=Sphere[q].Next;
             vtp(Sphere[px.Signature].EvaluatesTo,mp+Sphere[q].Offset);
            end;
          end
@@ -458,13 +460,13 @@ begin
           //next argument
           p1:=Sphere[p1].Next;
           p2:=Sphere[p2].Next;//assert sequence of arguments correctly added as vars to codeblock
-          np:=mp;
+          np:=mp+Sphere[px.Body].ByteSize;
           if p1<>0 then
            begin
             qx:=Sphere[p1];
             if qx.InitialValue<>0 then
               LiteralToMemory(Sphere,qx.InitialValue,mp+Sphere[p2].Offset);
-            Push(p,p1,p2,np);
+            Push(p,p1,p2,mp);
             p:=qx.Subject;
            end;
           //else p:=px.Body: pushed onto stack already
@@ -475,7 +477,7 @@ begin
          begin
           if px.FirstStatement<>0 then
            begin
-            Push(p,px.FirstStatement,0,np);
+            Push(p,px.FirstStatement,0,mp);
             //initial values
             r:=px.FirstItem;
             while r<>0 do
@@ -486,8 +488,8 @@ begin
               r:=rx.Next;
              end;
             //first statement
-            inc(np,px.ByteSize);
             p:=px.FirstStatement;
+            np:=mp+px.ByteSize;
            end;
          end
         else
@@ -509,15 +511,14 @@ begin
               Push(q,q,p2,mp);
               p:=Sphere[q].Subject;
              end;
-            np:=mp;
            end
           else//next statement
            begin
             Push(p,q,p2,mp);
             p:=q;
             vt:=0;
-            np:=mp+px.ByteSize;
            end;
+          np:=mp+px.ByteSize;
          end;
       ttDeferred://when p1=0: don't run now, see ttThrow,ttCodeBlock
         if p1<>0 then
@@ -931,7 +932,7 @@ begin
                 else
                   Sphere.Error(pe,'//TODO: assignment operators');
               end;
-            vt0:=0;
+            vtp(q,xp);
             np:=mp;
            end;
       ttSelection:
