@@ -167,7 +167,7 @@ TODO
 * heap (malloc, check stack overflow)
 * strings on heap, strings from/to array of chars
 * struct initial values
-* arguments: pass by ref, output
+* arguments: read-only (except when by ref)
 * function variable, also as result x(x)(x) etc.
 * JSON, array literals
 * syscall loadlibrary, COM/OLE/ActiveX...

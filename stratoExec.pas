@@ -358,21 +358,31 @@ begin
     case px.ThingType of
 
       ttFnCall:
-        if (px.Signature=0) or (px.Body=0) then
+        if (px.Signature=0) or (px.Subject=0) then
           Sphere.Error(pe,'call without function overload')
         else
         if (p1=0) and (px.Subject<>0)
           and (Sphere[px.Subject].ThingType=ttVarIndex) then
-         begin //get address for 'this' ("@@")
-          //q:=Sphere.Lookup(Sphere[px.Body].FirstItem,Sphere.Dict.StrIdx('@@'));
-          q:=Sphere[px.Body].FirstItem;
-          while (q<>0) and (Sphere[q].ThingType<>ttThis) do q:=Sphere[q].Next;
-          if q=0 then
-            Sphere.Error(pe,'Could not find "@@"')
-          else
+         begin
+
+          if px.Body=0 then
            begin
-            Push(p,TypeDecl_void,q,mp);
-            p:=px.Subject;
+            //get subject
+            Push(p,TypeDecl_void,0,mp);
+            p:=Sphere[px.Subject].Parent;
+           end
+          else
+           begin //get address for 'this' ("@@")
+            //q:=Sphere.Lookup(Sphere[px.Body].FirstItem,Sphere.Dict.StrIdx('@@'));
+            q:=Sphere[px.Body].FirstItem;
+            while (q<>0) and (Sphere[q].ThingType<>ttThis) do q:=Sphere[q].Next;
+            if q=0 then
+              Sphere.Error(pe,'Could not find "@@"')
+            else
+             begin
+              Push(p,TypeDecl_void,q,mp);
+              p:=px.Subject;
+             end;
            end;
          end
         else
@@ -380,24 +390,21 @@ begin
          begin
           qx:=Sphere[px.Subject];
           if p1=TypeDecl_void then //store address for 'this'
-           begin
-//            if vt=0 then
-//              Sphere.Error(pe,'Could not get value for "@@"')
-//            else
+            if p2=0 then
+             begin
+              Sphere.Error(pe,'//TODO: lookup implementation '+
+                Format('%d %d',[vp,vt]));
+             end
+            else
              begin
               //TODO: SameType? vt px.Signature.Subject
-              {
-              i:=Sphere[vt].ByteSize;
-              if i<>0 then Move(FMem[vp],FMem[np+Sphere[p2].Offset],i);
-              }
               Move(vp,FMem[np+Sphere[p2].Offset],SystemWordSize);//see ttThis
               vt:=0;
+              qx:=Sphere[qx.Subject];
              end;
-            qx:=Sphere[qx.Subject];
-           end;
           //start evaluating arguments
           p1:=px.FirstArgument;
-          p2:=qx.FirstArgument;
+          if qx=nil then p2:=0 else p2:=qx.FirstArgument;
           if (p1<>0) and (p2=0) then
             Sphere.Error(pe,'overload without argument values in code block')
           else
@@ -597,7 +604,15 @@ begin
 
             ttVarIndex:
               if qx.FirstArgument=0 then
-                inc(vp,Sphere[qx.Subject].Offset)
+               begin
+                qx:=Sphere[qx.Subject];
+                if qx<>nil then
+                  case qx.ThingType of
+                    ttVar,ttVarByRef:inc(vp,qx.Offset);
+                    ttFunction:;
+                    else Sphere.Error(pe,'unexpected ttVarIndex subject');
+                  end;
+               end
               else
               if p1=0 then
                begin

@@ -2,8 +2,6 @@ unit stratoSphere;
 
 interface
 
-{$D-}
-
 uses SysUtils, Classes, stratoDict, stratoSource, stratoDecl;
 
 type
