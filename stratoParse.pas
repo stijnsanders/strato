@@ -896,12 +896,13 @@ var
     px:PStratoThing;
   begin
     //TODO: strImport, strAlias
+    r:=0;
     if p=0 then
      begin
       p:=Sphere.Lookup(Sphere[cb].FirstItem,n);
+      //not found? check stack
       if p=0 then
        begin
-        //nothing in scope, check stack
         i:=stackIndex;
         while (i<>0) and (p=0) do
          begin
@@ -917,26 +918,37 @@ var
              end;
           end;
          end;
-        if p=0 then //nothing in scopes, check locals
+       end;
+      //not found? check under 'this'
+      if (p=0) and (Sphere[cb].FirstItem<>0) and
+        (Sphere[Sphere[cb].FirstItem].ThingType=ttThis) then
+       begin
+        p:=Sphere[cb].FirstItem;
+        r:=p;//see below
+       end;
+      //not found? check locals
+      if p=0 then
+       begin
+        l:=Length(Locals);
+        i:=0;
+        while (i<>l) and (p=0) do
          begin
-          l:=Length(Locals);
-          i:=0;
-          while (i<>l) and (p=0) do
-           begin
-            p:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
-            inc(i);
-           end;
-          if p=0 then //still nothing, check namespaces
-            p:=Sphere.Lookup(Sphere.Header.FirstNameSpace,n);
+          p:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
+          inc(i);
          end;
+        if p=0 then //still nothing, check namespaces
+          p:=Sphere.Lookup(Sphere.Header.FirstNameSpace,n);
        end;
      end
     else
+      r:=p;
+    if r<>0 then
      begin
       q:=p;
       if (Sphere[p].ThingType and tt__Resolvable)=0 then p:=0 else
         p:=Sphere.Lookup(Sphere[p].FirstItem,n);
-      if p=0 then//nothing, is it typed? search typedecl
+      //nothing, is it typed? search typedecl
+      if p=0 then
        begin
         r:=ResType(Sphere,q);
         if (r<>0) and (Sphere[r].ThingType=ttArray) then

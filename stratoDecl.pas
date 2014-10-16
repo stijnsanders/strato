@@ -153,7 +153,7 @@ const
     //ItemType: exception object mask
     //FirstItem (ttVar): exception object reference
 
-  ttSysCall      = $0008;
+  ttSysCall      = $0007;
     //Op : internal value (see PerformSysCall)
 
 
@@ -167,7 +167,7 @@ const
     //EvaluateTo
     //FirstArgument: index value
 
-  ttThis         = $0007;
+  ttThis         = $0028;
     //Offset
     //EvaluatesTo (ttTypeDecl)
 
@@ -175,11 +175,11 @@ const
     //ByteSize: SystemWordSize
     //EvaluatesTo (ttTypeDecl)
 
-  ttAddressOf    = $0028;
+  ttAddressOf    = $0029;
     //EvaluatesTo (ttTypeDecl)
     //ValueFrom (ttVar)
 
-  ttDereference  = $0029;
+  ttDereference  = $002A;
     //EvaluatesTo (ttTypeDecl): from pointer
     //ValueFrom (ttVar): of type pointer
 

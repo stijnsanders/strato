@@ -199,6 +199,7 @@ IDEA'S
 ======
 
 * dump: store errors in sphere data file and show inbetween things
+* merge xsu's?
 
 Considerations
 ==============

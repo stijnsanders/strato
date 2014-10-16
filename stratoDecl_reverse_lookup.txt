@@ -3,8 +3,7 @@
 0004 ttThrow
 0005 ttDeferred
 0006 ttCatch
-0007 ttThis
-0008 ttSysCall
+0007 ttSysCall
 0010 tt__Resolvable
 0011 ttNameSpace
 0020 tt__Typed
@@ -15,8 +14,9 @@
 0025 ttUnaryOp
 0026 ttBinaryOp
 0027 ttVarIndex
-0028 ttAddressOf
-0029 ttDereference
+0028 ttThis
+0029 ttAddressOf
+002A ttDereference
 0040 tt__IsType
 0041 ttArray
 0050 ttTypeDecl
