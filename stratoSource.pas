@@ -137,20 +137,22 @@ end;
 
 function TStratoSource.IsNextID(const st: array of TStratoToken): boolean;
 var
-  i,l:integer;
+  i,j,l:integer;
 begin
-  l:=Length(st);
-  if FTIndex+l+1>FTLength then Result:=false else
+  i:=FTIndex;
+  while (i<>FTLength) and (FTokens[i].Token=stIdentifier) do
    begin
-    i:=0;
-    while (i<>l) and (FTokens[FTIndex+i].Token=stIdentifier) do
-      if (i+1<l) and (FTokens[FTIndex+i+1].Token=stPeriod) then
-        inc(i,2)
-      else
-        inc(i);
-    while (i<>l) and (FTokens[FTIndex+i].Token=st[i]) do inc(i);
-    Result:=i=l;
+    inc(i);
+    if (i<>FTLength) and (FTokens[i].Token=stPeriod) then inc(i);
    end;
+  l:=Length(st);
+  j:=0;
+  while (i<>FTLength) and (j<>l) and (FTokens[i].Token=st[j]) do
+   begin
+    inc(i);
+    inc(j);
+   end;
+  Result:=j=l;
 end;
 
 function TStratoSource.IsNextBetween(st1, st2: TStratoToken): boolean;

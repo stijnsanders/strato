@@ -19,7 +19,8 @@ procedure DefaultTypes(Sphere:TStratoSphere;ns:TStratoIndex);
 
 var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
-  TypeDecl_number,TypeDecl_variant,TypeDecl_pointer:TStratoIndex;
+  TypeDecl_number,TypeDecl_variant,TypeDecl_pointer,
+  TypeDecl_object:TStratoIndex;
 
 implementation
 
@@ -96,7 +97,7 @@ var
       r.Parent:=q.Body;
       r.EvaluatesTo:=ReturnType;
       r.Offset:=Sphere[q.Body].ByteSize;
-      inc(Sphere[q.Body].ByteSize,Sphere[ReturnType].ByteSize);
+      inc(Sphere[q.Body].ByteSize,ByteSize(Sphere,ReturnType));
       Sphere[q.Body].FirstItem:=p1;
      end;
 
@@ -143,6 +144,7 @@ begin
   TypeDecl_string:=A('string',SystemWordSize);
   TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
   TypeDecl_variant:=A('variant',16);//TODO: OLE compatible variants
+  TypeDecl_object:=0;//see StratoParseSource: allow only one object()={}
   A('int8',1);
   A('int16',2);
   A('int32',4);

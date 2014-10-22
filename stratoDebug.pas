@@ -80,8 +80,8 @@ begin
               x:=Format('%s type %s  #%d ->%d',
                 [x,s.FQN(i),p.ByteSize,p.FirstItem]);
             ttRecord:
-              x:=Format('%s rec  %s  #%d ->%d <-%d',
-                [x,s.FQN(i),p.ByteSize,p.FirstItem,p.InheritsFrom]);
+              x:=Format('%s rec  %s  #%d ->%d',
+                [x,s.FQN(i),p.ByteSize,p.FirstItem]);
             ttEnumeration:
               x:=Format('%s enum %s',
                 [x,s.FQN(i)]);
@@ -104,11 +104,11 @@ begin
               x:=Format('%s sig  %s  "%d.(%d):%d"',
                 [x,s.FQN(i),p.Subject,p.FirstArgument,p.EvaluatesTo]);
             ttFunction:
-              x:=Format('%s fn   %s  %d,%d ->%d',
-                [x,s.FQN(i),p.Signature,p.Body,p.FirstArgument]);
+              x:=Format('%s fn   %s  %d(%d){%d}',
+                [x,s.FQN(i),p.Signature,p.FirstArgument,p.Body]);
             ttFnCall:
-              x:=Format('%s call %s  fn=%d s=%d b=%d ->%d',
-                [x,s.FQN(i),p.Subject,p.Signature,p.Body,p.FirstArgument]);
+              x:=Format('%s call %s  fn=%d  %d(%d){%d}',
+                [x,s.FQN(i),p.Subject,p.Signature,p.FirstArgument,p.Body]);
             ttArgument:
               x:=Format('%s arg  %s  t=%d d=%d v=%d',
                 [x,s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Subject]);
@@ -162,6 +162,15 @@ begin
             ttDereference:
               x:=Format('%s dref %d t=%d',
                 [x,p.ValueFrom,p.EvaluatesTo]);
+            ttClass:
+              x:=Format('%s cls  %s  #%d ->%d <-%d',
+                [x,s.FQN(i),p.ByteSize,p.FirstItem,p.InheritsFrom]);
+            ttConstructor:
+              x:=Format('%s ctor %d: %d(%d){%d}',
+                [x,p.Parent,p.Signature,p.FirstArgument,p.Body]);
+            ttDestructor:
+              x:=Format('%s dtor %d: (){%d}',
+                [x,p.Parent,p.Body]);
             ttInterface:
               x:=Format('%s intf %s  ->%d <-%d',
                 [x,s.FQN(i),p.FirstItem,p.InheritsFrom]);

@@ -72,7 +72,7 @@ begin
         qx.Offset:=bs;
         qx.EvaluatesTo:=sx.EvaluatesTo;
         if qx.EvaluatesTo<>0 then
-          inc(bs,Sphere[qx.EvaluatesTo].ByteSize);
+          inc(bs,ByteSize(Sphere,qx.EvaluatesTo));
        end;
      end;
     //arguments
@@ -95,7 +95,7 @@ begin
           inc(bs,SystemWordSize)
         else
         if qx.EvaluatesTo<>0 then
-          inc(bs,Sphere[qx.EvaluatesTo].ByteSize);
+          inc(bs,ByteSize(Sphere,qx.EvaluatesTo));
         if b then //store first arg value on function overload index
          begin
           Sphere[Fn].FirstArgument:=q;

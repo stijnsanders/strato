@@ -36,13 +36,11 @@ Start a code file with the namespace name.
 
 Declare a type by writing it's name (identifier), "=" and the name of an other type. Depending on the run-time library I suppose there will be basic types like "int8", "uint32" etc.
 
-Declare a record (struct) by writing it's identifier, "=", "{" and none or more field definitions, close with "}". Optionally refer to another record type between parentheses ("(", ")") between the identifier and "=" to inherit this definition and extend it.
+Declare a record (struct) by writing it's identifier, "=", "{" and none or more field definitions, close with "}". By default the members of the structure are placed in memory in sequence (//TODO: alignment), but this can be overriden by "@" followed by a numerical literal for the relative position to the start of the record.
 
 Declare an enumeration by writing an identifier, "=", "(" and none or more enumeration labels, optionally set to a specific value with "=" and a numerical literal. Comma's to separate labels are optional. Close with ")".
 
 Declare an array by refering to a type and suffix it with "[]".
-
-Declare a structure by following with a block enclosed in braces "{ }", declaring none or more members.
 
 Declare a function by writing an identifier, "(", none or more arguments, ")". Then either write a semocolon (";") to define a function signature by that name, or start a code block ("{", "}") with none or more statements to perform when the function gets called. Optionally precede the option with a record type, which will be available inside of the function's code block with the 'this' reference ("@@").
 
@@ -52,6 +50,10 @@ Declare a function by writing an identifier, "(", none or more arguments, ")". T
 Ah, good old polymorphic design. It had a good run. Slowly changing things, first with SmallTalk in the 60's (!). Then C++ and later Java and every other language. But then by the end of the century, the poly-inheritance discussion led to interfaces and duck-typing. In practice generics and unit-tests also changed a lot about the way we work.
 
 So in theory it's a kind of a step back: What's important is that the data exists in collections of the same build-up (struct, record), and poly-morphism still lets us extend the definitions with specializations. But the functions or methods that operate on the data exist in a different realm, only taking a reference to pieces of those classes (this, self). And sets of those define the behaviour of the entities (interface, vtable) with their own pedigree of inheritance and specialization.
+
+At the base there's still this thing called class. Defining a class is much similar to defining a struct/record, but follow the identifier with "(" and a base class to inherit from ")", then "=", "{" and none or more data members. Close with "}".
+
+An important difference is that values of this 'type' will actually hold a reference to the actual place in memory where the object 'lives'. (Objects live on the heap, never on the stack.) Also an object has one or more constructors and a destructor. Assignments to values of this type are counted, so that the destructor is called when the last reference is removed.
 
 Technics
 ==========
@@ -160,6 +162,7 @@ compiler
 (in that order)
 to js? LLIR? C? D?
 ref counting
+weak ref
 
 TODO
 ====
@@ -169,7 +172,7 @@ TODO
 * struct initial values
 * arguments: read-only (except when by ref)
 * function variable, also as result x(x)(x) etc.
-* JSON, array literals
+* JSON, array literals (requires 'standard' key-value storage solution)
 * syscall loadlibrary, COM/OLE/ActiveX...
 * output LLVMIR? GCC? C?
 * initialization/finalization per unit/module/namespace
@@ -188,10 +191,12 @@ TODO
 * something to avoid pre-processors (function versions like in D?)
 * disallow adding to namespaces from 'outside'
 * call stacks on exception
-* 'declared but never used'
+* detect 'declared but never used'
+* detect variable unassigned or no initial value prior to first use
 * generics/templates
-* something like 'parameters into' a code block
+* something like 'parameters into' a code block (i.e. lambda)
 * enable self-referencing classes (forward?)
+* 'check' method to call on each varindex (stateful objects)
 * switch,case syntax
 * proper docs/guide/specs/tutorials
 
@@ -200,6 +205,7 @@ IDEA'S
 
 * dump: store errors in sphere data file and show inbetween things
 * merge xsu's?
+* still to InheritedFrom on ttRecord?
 
 Considerations
 ==============

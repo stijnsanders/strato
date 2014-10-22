@@ -1,19 +1,10 @@
 hw
 //hello world example program
 
-/*
-object={
+object()={
 	_basetype:pointer;//class
 	_refcount:number;
 	//implemented interfaces?
-}
-
-object._addref(){
-	__xinc(_refcount);
-}
-
-object._release(){
-	__xdec(_refcount)==0 _destroy(); ;
 }
 
 object(){
@@ -23,6 +14,18 @@ object(){
 
 -object(){
 	//assert _refcount=0
+}
+
+object._destroy(){
+	//TODO dealloc
+}
+
+object._addref(){
+	__xinc(_refcount);
+}
+
+object._release(){
+	__xdec(_refcount)==0 -@@(); ;
 }
 
 object."[]"(x:string):string{
@@ -46,16 +49,6 @@ main(p:shell){
 	y:type;
 	y:=test1;
 	(?x=y)p.write('test');;
-}
-*/
-
-
-test(x,^y:number):number{test:=y:=x+50;}
-
-<<<shell
-main(p:shell){
-	p.write(test(100,z:=30):string);
-	p.write(z:string);
 }
 
 /*
@@ -86,8 +79,6 @@ test.Next():string{
 }
 
 main(p:shell){
-	p.write("Hello world!");
-
 	x:someintf;
 	x.Wait();
 	
@@ -100,5 +91,4 @@ main(p:shell){
 	p.write(y.xx(1));
 	
 }
-
 */

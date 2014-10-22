@@ -2,8 +2,10 @@
 0003 ttTry
 0004 ttThrow
 0005 ttDeferred
-0006 ttCatch
+0006 ttCatchByte
 0007 ttSysCall
+000A ttConstructor
+000B ttDestructor
 0010 tt__Resolvable
 0011 ttNameSpace
 0020 tt__Typed
@@ -32,7 +34,8 @@
 00A2 ttArgByRef
 00A3 ttVarByRef
 00C0 ttPointer
-00D0 ttInterface
+00D0 ttClass
+00D1 ttInterface
 00E0 ttSignature
 0100 ttSourceFile
 0101 ttIteration

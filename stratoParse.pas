@@ -607,7 +607,7 @@ var
           Result:=Sphere.Add(ttArray,Sphere.Dict.Str[Sphere[p].Name]);
           qx:=SetSrc(Result,Sphere[p].Parent);
           qx.ItemType:=p;
-          qx.ByteSize:=Sphere[p].ByteSize*i;
+          qx.ByteSize:=ByteSize(Sphere,p)*i;
          end;
      end;
     if Result<>0 then
@@ -896,9 +896,11 @@ var
     px:PStratoThing;
   begin
     //TODO: strImport, strAlias
-    r:=0;
-    if p=0 then
+    if p<>0 then
+      r:=p //see below: search by type
+    else
      begin
+      r:=0;
       p:=Sphere.Lookup(Sphere[cb].FirstItem,n);
       //not found? check stack
       if p=0 then
@@ -924,24 +926,9 @@ var
         (Sphere[Sphere[cb].FirstItem].ThingType=ttThis) then
        begin
         p:=Sphere[cb].FirstItem;
-        r:=p;//see below
+        r:=p;//see below: search by type
        end;
-      //not found? check locals
-      if p=0 then
-       begin
-        l:=Length(Locals);
-        i:=0;
-        while (i<>l) and (p=0) do
-         begin
-          p:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
-          inc(i);
-         end;
-        if p=0 then //still nothing, check namespaces
-          p:=Sphere.Lookup(Sphere.Header.FirstNameSpace,n);
-       end;
-     end
-    else
-      r:=p;
+     end;
     if r<>0 then
      begin
       q:=p;
@@ -956,7 +943,7 @@ var
         if r<>0 then
          begin
           s:=Sphere.Lookup(Sphere[r].FirstItem,n);
-          while (s=0) and (r<>0) and (Sphere[r].ThingType=ttRecord) do
+          while (s=0) and (r<>0) and (Sphere[r].ThingType=ttClass) do
            begin
             r:=Sphere[r].InheritsFrom;
             if r=0 then
@@ -975,6 +962,19 @@ var
             px.EvaluatesTo:=Sphere[r].EvaluatesTo;
          end;
        end;
+     end;
+    //not found? check locals
+    if p=0 then
+     begin
+      l:=Length(Locals);
+      i:=0;
+      while (i<>l) and (p=0) do
+       begin
+        p:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
+        inc(i);
+       end;
+      if p=0 then //still nothing, check namespaces
+        p:=Sphere.Lookup(Sphere.Header.FirstNameSpace,n);
      end;
   end;
 
@@ -1135,7 +1135,7 @@ var
               x0.EvaluatesTo:=ResType(Sphere,s1);
               Sphere[stack[stackIndex-1].t].EvaluatesTo:=x0.EvaluatesTo;
               if x0.EvaluatesTo<>0 then
-                inc(Sphere[cb].ByteSize,Sphere[x0.EvaluatesTo].ByteSize);
+                inc(Sphere[cb].ByteSize,ByteSize(Sphere,x0.EvaluatesTo));
              end
             else
               x0.EvaluatesTo:=ResType(Sphere,x0.AssignTo);
@@ -1153,7 +1153,7 @@ var
                 s2:=ResType(Sphere,x0.ValueFrom);
                 x1.EvaluatesTo:=s2;
                 x1.Offset:=Sphere[cb].ByteSize;
-                inc(Sphere[cb].ByteSize,Sphere[s2].ByteSize);
+                inc(Sphere[cb].ByteSize,ByteSize(Sphere,s2));
                end;
              end;
            end;
@@ -1449,7 +1449,7 @@ begin
                                  begin
                                   qx:=SetSrc(q,ns);
                                   qx.ItemType:=p;
-                                  if p<>0 then qx.ByteSize:=Sphere[p].ByteSize*i;
+                                  if p<>0 then qx.ByteSize:=ByteSize(Sphere,p)*i;
                                  end;
                                end
                             else //type alias
@@ -1515,22 +1515,43 @@ begin
 
               stPOpen:
                 if Source.IsNextID([stPClose,stOpEQ,stAOpen]) then
-                 begin //inherit this struct
-                  q:=LookUp;
-                  if q=0 then
-                    Source.Error('undeclared base record type');
-                  Source.Skip(stPClose);
-                  Source.Skip(stOpEQ);
-                  Source.Skip(stAOpen);
-                  p:=Sphere.AddTo(Sphere[ns].FirstItem,ttRecord,nn);
-                  if p=0 then
+                 begin
+                  //accept only one object()={}
+                  if (TypeDecl_object=0) and Source.IsNext([stPClose]) then
                    begin
-                    Source.Error('duplicate identifier');
-                    p:=Sphere.Add(ttRecord,nn);
+                    Source.Skip(stPClose);
+                    Source.Skip(stOpEQ);
+                    Source.Skip(stAOpen);
+                    p:=Sphere.AddTo(Sphere[ns].FirstItem,ttClass,nn);
+                    if p=0 then
+                     begin
+                      Source.Error('duplicate identifier');
+                      p:=Sphere.Add(ttClass,nn);
+                     end;
+                    SetSrc(p,ns);
+                    TypeDecl_object:=p;
+                   end
+                  else
+                   begin
+                    q:=LookUp;//inherit this struct
+                    if q=0 then
+                      Source.Error('undeclared base class')
+                    else
+                    if Sphere[q].ThingType<>ttClass then
+                      Source.Error('base class must be a class');
+                    Source.Skip(stPClose);
+                    Source.Skip(stOpEQ);
+                    Source.Skip(stAOpen);
+                    p:=Sphere.AddTo(Sphere[ns].FirstItem,ttClass,nn);
+                    if p=0 then
+                     begin
+                      Source.Error('duplicate identifier');
+                      p:=Sphere.Add(ttClass,nn);
+                     end;
+                    px:=SetSrc(p,ns);
+                    px.InheritsFrom:=q;
+                    if q<>0 then px.ByteSize:=Sphere[q].ByteSize;
                    end;
-                  px:=SetSrc(p,ns);
-                  px.InheritsFrom:=q;
-                  if q<>0 then px.ByteSize:=Sphere[q].ByteSize;
                   ParseRecordDecl(p);
                  end
                 else //parameter list
@@ -1543,15 +1564,39 @@ begin
                     stAOpen://code block
                      begin
                       q:=Sphere.Lookup(Sphere[ns].FirstItem,n);
-                      if (q=0) or (Sphere[q].ThingType<>ttFunction) then
+                      if q=0 then
                        begin
-                        if q<>0 then Source.Error('duplicate identifier');
                         q:=Sphere.AddTo(Sphere[ns].FirstItem,ttFunction,nn);
-//TODO: constructor/destructor?
-if q=0 then
-q:=Sphere.Add(ttFunction,nn);
-                        SetSrc(q,ns);
-                       end;
+                        if q=0 then
+                         begin
+                          Source.Error('duplicate identifier');
+                          q:=Sphere.Add(ttFunction,nn);
+                          SetSrc(q,ns);
+                         end;
+                       end
+                      else
+                        case Sphere[q].ThingType of
+                          ttFunction:;//ok!
+                          ttClass://constructor
+                           begin
+                            r:=Sphere.Lookup(Sphere[q].FirstItem,n);
+                            if (r=0) or (Sphere[r].ThingType<>ttConstructor) then
+                              r:=Sphere.AddTo(Sphere[q].FirstItem,ttConstructor,nn);
+                            if r=0 then
+                             begin
+                              Source.Error('unable to find constructor');
+                              r:=Sphere.Add(ttConstructor,nn);
+                             end;
+                            SetSrc(r,q);
+                            q:=r;
+                           end;
+                          else
+                           begin
+                            Source.Error('duplicate identifier');
+                            q:=Sphere.Add(ttFunction,nn);
+                            SetSrc(q,ns);
+                           end;
+                        end;
                       cb:=Sphere.Add(ttCodeBlock,'');
                       SetSrc(cb,q);
                       StratoFunctionAddOverload(Sphere,Source,q,p,cb,nn);
@@ -1627,6 +1672,56 @@ q:=Sphere.Add(ttFunction,nn);
                 Source.Error('unsupported interface syntax');
             end;
            end;
+
+          stOpSub://'-': destructor?
+            if Source.IsNextID([stPOpen,stPClose,stAOpen]) then
+             begin
+              //lookup
+              p:=0;
+              b:=false;
+              ID(n,nn);
+              fqn:=nn;
+              ns:=Locals[0];
+              while Source.IsNext([stPeriod,stIdentifier]) do
+               begin
+                LookUpNext(n,nn,p,ns,b);
+                ID(n,nn);
+                fqn:=fqn+'.'+nn;
+               end;
+              if b then Source.Error('unknown namespace '''+string(fqn)+'''');
+              //ParseSignature? destructor doesn't have arguments/overloads
+              Source.Skip(stPOpen);
+              Source.Skip(stPClose);
+              Source.Skip(stAOpen);
+              //find class destructor is for
+              q:=Sphere.Lookup(Sphere[ns].FirstItem,n);
+              if q=0 then
+               begin
+                Source.Error('destructor for unknown class');
+                q:=Sphere.Add(ttClass,nn);
+               end
+              else
+                if Sphere[q].ThingType<>ttClass then
+                 begin
+                  Source.Error('destructor only supported on class');
+                  q:=Sphere.Add(ttClass,nn);
+                 end;
+              //check any destructor already
+              r:=Sphere[q].FirstItem;
+              while (r<>0) and (Sphere[r].ThingType<>ttDestructor) do
+                r:=Sphere[r].Next;
+              if r<>0 then
+                Source.Error('duplicate destructor');
+              //add, start code block
+              r:=Sphere.Add(ttDestructor,nn);
+              cb:=Sphere.Add(ttCodeBlock,'');
+              SetSrc(cb,r);
+              SetSrc(r,q).Body:=cb;
+              Sphere.AddTo(Sphere[q].FirstItem,r);
+              p:=0;
+             end
+            else
+              Source.Error('unexpected token');
 
           stSemiColon:;//stray semicolon? ignore
 
@@ -1766,7 +1861,7 @@ q:=Sphere.Add(ttFunction,nn);
                 if q<>0 then
                  begin
                   rx.Offset:=Sphere[cb].ByteSize;
-                  inc(Sphere[cb].ByteSize,Sphere[q].ByteSize);
+                  inc(Sphere[cb].ByteSize,ByteSize(Sphere,q));
                  end;
                 {$IFDEF DEBUG}
                 stack[stackIndex].p:=p___;
@@ -1823,7 +1918,11 @@ q:=Sphere.Add(ttFunction,nn);
                end
               else
                begin
-                Source.Error('function expected '''+string(Sphere.FQN(p))+'''');
+                if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) and
+                  (stack[stackIndex-1].t=p) then
+                  Source.Error('unknown function  '''+string(Sphere.Dict[px.Name])+'''')
+                else
+                  Source.Error('function expected '''+string(Sphere.FQN(p))+'''');
                 //create one to silence errors
                 q:=Sphere.Add(ttFnCall,nn);
                 SetSrc(q,cb);
@@ -1932,6 +2031,7 @@ q:=Sphere.Add(ttFunction,nn);
                     Sphere[stack[stackIndex-1].t].DoFirst:=p;//assert was 0
                     //re-link declared items //TODO: detect duplicate ids?
                     px:=Sphere[p];
+                    //assert px.ThingType=ttCodeBlock
                     MoveChain(Sphere,px.FirstItem,cb);
                     inc(Sphere[cb].ByteSize,px.ByteSize);
                     px.ByteSize:=0;
@@ -1955,6 +2055,7 @@ q:=Sphere.Add(ttFunction,nn);
                       stack[stackIndex-1].p:=pForCritOnly;
                     Sphere[stack[stackIndex-1].t].Body:=p;//assert was 0
                     px:=Sphere[p];
+                    //assert px.ThingType=ttCodeBlock
                     MoveChain(Sphere,px.FirstItem,cb);
                     inc(Sphere[cb].ByteSize,px.ByteSize);
                     px.ByteSize:=0;

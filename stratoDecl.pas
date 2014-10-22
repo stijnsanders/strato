@@ -183,17 +183,30 @@ const
     //EvaluatesTo (ttTypeDecl): from pointer
     //ValueFrom (ttVar): of type pointer
 
-  ttInterface    = $00D0;
-    //ByteSize: SystemWordSize (since it's a pointer!)
-    //FirstItem (ttVar, ttFunction)
-    //InheritsFrom (ttRecord)
-
   ttArgByRef     = $00A2;
     //EvaluatesTo (ttTypeDecl)
 
   ttVarByRef     = $00A3;
     //Offset
     //EvaluatesTo (ttTypeDecl)
+
+  ttClass        = $00D0;
+    //ByteSize (of data, not value since it's a pointer)
+    //FirstItem (ttVar, ttFunction)
+    //InheritsFrom (ttRecord)
+
+  ttConstructor  = $000A;
+    //Signature (ttSignature): first overload signature
+    //Body (ttCodeBlock): first overload body
+    //FirstArgument (*): first argument value in overload body
+
+  ttDestructor   = $000B;
+    //Body (ttCodeBlock)
+
+  ttInterface    = $00D1;
+    //ByteSize: SystemWordSize (since it's a pointer!)
+    //FirstItem (ttVar, ttFunction)
+    //InheritsFrom (ttRecord)
 
 type
   TStratoThing=record

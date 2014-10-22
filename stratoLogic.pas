@@ -8,6 +8,7 @@ const
   OffsetUseDefault=cardinal(-1);
 
 function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
+function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;
   const FieldName:UTF8String;FieldType:TStratoIndex;Offset:cardinal):TStratoIndex;
@@ -18,6 +19,8 @@ procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
   MergeOnto:TStratoIndex);
 
 implementation
+
+uses SysUtils, stratoRunTime;
 
 function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 var
@@ -41,6 +44,24 @@ begin
         //else Result:=0;//see default
       end;
    end;
+end;
+
+function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
+begin
+  //TODO: if? ResType?
+  if p=0 then
+    raise Exception.Create('request for byte size of nothing')//Result:=0
+  else
+    case Sphere[p].ThingType of
+      ttEnumeration,ttSignature,ttPointer,ttClass,ttInterface:
+        Result:=SystemWordSize;
+      ttTypeDecl,ttRecord,ttArray:
+        Result:=Sphere[p].ByteSize;
+      else
+        raise Exception.Create('request for byte size of unsupported item '+
+          IntToHex(Sphere[p].ThingType,4));
+      //else raise?Sphere.Error?
+    end;
 end;
 
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
@@ -81,7 +102,7 @@ begin
     q:=Sphere[Result];
     q.Parent:=Struct;
     q.EvaluatesTo:=FieldType;
-    if FieldType=0 then s:=0 else s:=Sphere[FieldType].ByteSize;
+    if FieldType=0 then s:=0 else s:=ByteSize(Sphere,FieldType);
     if Offset=OffsetUseDefault then
      begin
       q.Offset:=p.ByteSize;

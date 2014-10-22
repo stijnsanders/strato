@@ -81,7 +81,7 @@ begin
     p:=Sphere.Lookup(Sphere.Header.FirstNameSpace,n);
     if p=0 then shell:=0 else
       shell:=Sphere.Lookup(Sphere[p].FirstItem,n);
-    if (shell=0) or (Sphere[shell].ThingType<>ttRecord) then
+    if (shell=0) or (Sphere[shell].ThingType<>ttRecord) then //TODO: ttClass
       Sphere.Error(0,'No declaration for "shell.shell"')
     else
      begin
@@ -306,10 +306,10 @@ var
 
       //TODO: proper allocation! since catch var is set post cb.ByteSize, that memory could be in use!!
       //vt:=//TODO: cast to cc.ItemType
-      i:=Sphere[vt].ByteSize;
+      i:=ByteSize(Sphere,vt);
       Move(FMem[vp],FMem[xp+Sphere[Sphere[cc].FirstItem].Offset],i);
 
-      bp:=xp+Sphere[p].ByteSize+i;
+      bp:=xp+ByteSize(Sphere,p)+i;
 
       //but first any deferred from interrupted code blocks
       while (ddi<>0) do
@@ -459,7 +459,7 @@ begin
             else
              begin
               //assert p2.ThingType=ttArgument
-              i:=Sphere[vt].ByteSize;
+              i:=ByteSize(Sphere,vt);
               if i<>0 then Move(FMem[vp],FMem[mp+Sphere[p2].Offset],i);
              end;
             vt:=0;
@@ -568,7 +568,7 @@ begin
         qx.EvaluatesTo:=px.Signature;
         vtp(q,np);
         Move(p,FMem[np],SystemWordSize);
-        inc(np,Sphere[vt].ByteSize);
+        inc(np,ByteSize(Sphere,vt));
        end;
       ttVar,ttVarIndex,ttThis://vp:=Addr(p);
        begin
@@ -636,7 +636,7 @@ begin
                 if Sphere[px.EvaluatesTo].ThingType=ttArray then
                  begin
                   p2:=Sphere[px.EvaluatesTo].ItemType;
-                  j:=Sphere[p2].ByteSize;
+                  j:=ByteSize(Sphere,p2);
                  end
                 else
                   Sphere.Error(pe,'Unexpected index not into array');
@@ -673,13 +673,13 @@ begin
       ttConstant:
        begin
         vtp(px.EvaluatesTo,np);
-        inc(np,Sphere[vt].ByteSize);
+        inc(np,ByteSize(Sphere,vt));
         LiteralToMemory(Sphere,px.InitialValue,vp);
        end;
       ttLiteral:
        begin
         vtp(px.EvaluatesTo,np);
-        inc(np,Sphere[vt].ByteSize);
+        inc(np,ByteSize(Sphere,vt));
         LiteralToMemory(Sphere,p,vp);
        end;
       ttUnaryOp:
@@ -901,7 +901,7 @@ begin
             else
               case TStratoToken(px.Op) of
                 stOpAssign:
-                  Move(FMem[vp],FMem[xp],Sphere[vt].ByteSize);
+                  Move(FMem[vp],FMem[xp],ByteSize(Sphere,vt));
                 stOpAssignAdd:
                   if vt=TypeDecl_number then
                    begin
