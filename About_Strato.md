@@ -7,7 +7,7 @@ I want to make a programming language without any reserved words.
 
 There are pretty significant differences between the list of reserved words of say C, Pascal and SQL. There's this special status of them with any Lisp-related language. There's [Qalb](http://nas.sr/%D9%82%D9%84%D8%A8/) and [UOF](https://en.wikipedia.org/wiki/Uniform_Office_Format). Ever used formulas in Microsoft Excel in another language? Reserved words tie a programming language to one and only one natural language, and already start limiting you as a programming since they are no longer available to you as identifiers.
 
-I agree that reading written code is important. I agree that code should read as if it is by itself explaining what it's supposed to do. That is very strongly so with COBOL and SQL; it goes for BASIC; a little less for Pascal and Fortran, bringing with it tidbits of mathematical notation; and sometimes totally not so for for example C and Perl. But code in these exert the virtue of being concise. I want both. When reading code it's important to get a good view of the structure and flow, exactly what punctuation is for. Well chosen identifiers will tell you what the code is about, but it's the operators that make it all happen.
+I agree that reading written code is important. I agree that code should read as if it is by itself explaining what it's supposed to do. That is very strongly so with COBOL and SQL; it goes for BASIC; a little less for Pascal and Fortran, bringing with it tidbits of mathematical notation; and sometimes totally not so for for example C and Perl. But code in these exert the virtue of being concise. I want both. When reading code it's important to get a good view of the structure and flow, exactly what punctuation is for. Well chosen identifiers will tell you what the code is about, but it's the perators that make it all happen.
 
 1 Basics
 ========
@@ -42,7 +42,10 @@ Declare an enumeration by writing an identifier, "=", "(" and none or more enume
 
 Declare an array by refering to a type and suffix it with "[]".
 
-Declare a function by writing an identifier, "(", none or more arguments, ")". Then either write a semocolon (";") to define a function signature by that name, or start a code block ("{", "}") with none or more statements to perform when the function gets called. Optionally precede the option with a record type, which will be available inside of the function's code block with the 'this' reference ("@@").
+Declare a function by writing an identifier, "(", none or more arguments, ")", and optionally ":" and a return value type. Then either write a semocolon (";") to define a function signature by that name, or start a code block ("{", "}") with none or more statements to perform when the function gets called. Optionally precede the option with a record type, which will be available inside of the function's code block with the 'this' reference ("@@").
+
+Multiple functions with the same name but different argument lists can be declared.
+Access the result value of the function with the function name or "??".
 
 3 Object oriented programming
 =============================
@@ -51,9 +54,12 @@ Ah, good old polymorphic design. It had a good run. Slowly changing things, firs
 
 So in theory it's a kind of a step back: What's important is that the data exists in collections of the same build-up (struct, record), and poly-morphism still lets us extend the definitions with specializations. But the functions or methods that operate on the data exist in a different realm, only taking a reference to pieces of those classes (this, self). And sets of those define the behaviour of the entities (interface, vtable) with their own pedigree of inheritance and specialization.
 
-At the base there's still this thing called class. Defining a class is much similar to defining a struct/record, but follow the identifier with "(" and a base class to inherit from ")", then "=", "{" and none or more data members. Close with "}".
+At the base there's still this thing called class. Defining a class is much similar to defining a struct/record, but follow the identifier with "(" and a base class to inherit from, ")", then "=", "{" and none or more data members. Close with "}".
 
-An important difference is that values of this 'type' will actually hold a reference to the actual place in memory where the object 'lives'. (Objects live on the heap, never on the stack.) Also an object has one or more constructors and a destructor. Assignments to values of this type are counted, so that the destructor is called when the last reference is removed.
+An important difference is that values of this 'type' will actually hold a reference to the actual place in memory where the object 'lives'. (Objects live on the heap, never on the stack.) Assignments to values of this type are counted, so that the instance is released when the last reference is removed.
+
+To define a constructor, write a function of the same name. A class can have several constructors with different argument lists. //TODO: call inherited constructor
+To define a destructor, write "-", the class name, "(", ")", "{" for the code block to execute as destructor, close with "}".
 
 Technics
 ==========
@@ -199,6 +205,7 @@ TODO
 * 'check' method to call on each varindex (stateful objects)
 * switch,case syntax
 * proper docs/guide/specs/tutorials
+* conditional compilation
 
 IDEA'S
 ======

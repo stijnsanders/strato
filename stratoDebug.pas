@@ -98,8 +98,8 @@ begin
               x:=Format('%s cons %s  t=%d v=%d',
                 [x,s.FQN(i),p.EvaluatesTo,p.InitialValue]);
             ttLiteral:
-              x:=Format('%s lit  %s  t=%d v=%d',
-                [x,s.FQN(i),p.EvaluatesTo,p.InitialValue]);
+              x:=Format('%s lit  t=%d v=%d',
+                [x,p.EvaluatesTo,p.InitialValue]);
             ttSignature:
               x:=Format('%s sig  %s  "%d.(%d):%d"',
                 [x,s.FQN(i),p.Subject,p.FirstArgument,p.EvaluatesTo]);
@@ -108,7 +108,7 @@ begin
                 [x,s.FQN(i),p.Signature,p.FirstArgument,p.Body]);
             ttFnCall:
               x:=Format('%s call %s  fn=%d  %d(%d){%d}',
-                [x,s.FQN(i),p.Subject,p.Signature,p.FirstArgument,p.Body]);
+                [x,s.Dict[p.Name]{s.FQN(i)},p.Subject,p.Signature,p.FirstArgument,p.Body]);
             ttArgument:
               x:=Format('%s arg  %s  t=%d d=%d v=%d',
                 [x,s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Subject]);
@@ -122,13 +122,13 @@ begin
               x:=Format('%s {}   #%d ->%d,%d t=%d',
                 [x,p.ByteSize,p.FirstItem,p.FirstStatement,p.EvaluatesTo]);
             ttAssign:
-              x:=Format('%s :=   %d %s %d t=%d',
+              x:=Format('%s :=   %d %s %d  t=%d',
                 [x,p.AssignTo,TokenName[TStratoToken(p.Op)],p.ValueFrom,p.EvaluatesTo]);
             ttUnaryOp:
-              x:=Format('%s _x   %s  %d t=%d',
+              x:=Format('%s _x   %s %d  t=%d',
                 [x,TokenName[TStratoToken(p.Op)],p.Right,p.EvaluatesTo]);
             ttBinaryOp:
-              x:=Format('%s x_x  %d %s %d t=%d',
+              x:=Format('%s x_x  %d %s %d  t=%d',
                 [x,p.Left,TokenName[TStratoToken(p.Op)],p.Right,p.EvaluatesTo]);
             ttCast:
               x:=Format('%s cast %d into %d',

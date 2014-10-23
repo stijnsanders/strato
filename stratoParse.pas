@@ -1235,7 +1235,7 @@ var
       px:=Sphere[p];
       case px.ThingType of
         ttVar,ttFnCall,ttIteration,ttIterationPE,ttAssign,
-        ttDeferred,ttThrow,ttCatch:
+        ttDeferred,ttThrow,ttCatch,ttDestructor:
           b:=true;
         ttCodeBlock,ttSelection:b:=px.EvaluatesTo=0;
         //ttBinaryOp:b:=TStratoToken(px.Op) in [stOpAssign..stOpAssignAnd]; //assert never (see strAssign)
@@ -1571,8 +1571,8 @@ begin
                          begin
                           Source.Error('duplicate identifier');
                           q:=Sphere.Add(ttFunction,nn);
-                          SetSrc(q,ns);
                          end;
+                        SetSrc(q,ns);
                        end
                       else
                         case Sphere[q].ThingType of
@@ -1589,6 +1589,8 @@ begin
                              end;
                             SetSrc(r,q);
                             q:=r;
+                            //assert Sphere[p].Subject=0
+                            Sphere[p].Subject:=q;
                            end;
                           else
                            begin
@@ -1715,9 +1717,17 @@ begin
               //add, start code block
               r:=Sphere.Add(ttDestructor,nn);
               cb:=Sphere.Add(ttCodeBlock,'');
-              SetSrc(cb,r);
+              qx:=SetSrc(cb,r);
               SetSrc(r,q).Body:=cb;
               Sphere.AddTo(Sphere[q].FirstItem,r);
+              //'this' inside of code block
+              p:=Sphere.AddTo(qx.FirstItem,ttThis,'@@');
+              //assert p<>0
+              px:=SetSrc(p,cb);
+              px.Offset:=qx.ByteSize;
+              px.EvaluatesTo:=q;
+              inc(qx.ByteSize,SystemWordSize);
+              //
               p:=0;
              end
             else
@@ -1890,18 +1900,14 @@ begin
              begin
               //Combine here?
               px:=Sphere[p];
+              //start an argument list?
               if (px.ThingType=ttFunction)
                 or (px.ThingType=ttVarIndex) //and px.Subject.ThingType=ttFunction
-                then
-               begin
-                q:=Sphere.Add(ttFnCall,nn);
-                SetSrc(q,cb).Subject:=p;
-                Push(pArgList,q);
-               end
-              else
-              if (px.ThingType=ttVar) and (px.EvaluatesTo<>0)
-                and (Sphere[px.EvaluatesTo].ThingType=ttPointer)
-                and (Sphere[Sphere[px.EvaluatesTo].EvaluatesTo].ThingType=ttSignature)
+                or ((px.ThingType=ttVar) and (px.EvaluatesTo<>0)
+                  and (Sphere[px.EvaluatesTo].ThingType=ttPointer)
+                  and (Sphere[Sphere[px.EvaluatesTo].EvaluatesTo].ThingType=ttSignature)
+                )
+                or (px.ThingType=ttThis) //constructor/destructor call
                 then //TODO: dedicated function GivesSignature
                begin
                 q:=Sphere.Add(ttFnCall,nn);
@@ -1909,6 +1915,7 @@ begin
                 Push(pArgList,q);
                end
               else
+              //start a selection?
               if SameType(Sphere,ResType(Sphere,p),TypeDecl_bool) then
                begin
                 //see also Juxta
@@ -2156,12 +2163,41 @@ begin
            begin
             Juxta(p);
             //see also StratoFunctionAddOverload
-            p:=Sphere.Lookup(Sphere[cb].FirstItem,Sphere.Dict.StrIdx('@@'));
+            q:=cb;
+            p:=0;
+            while (q<>0) and (p=0) do
+             begin
+              p:=Sphere.Lookup(Sphere[q].FirstItem,Sphere.Dict.StrIdx('@@'));
+              if p=0 then
+               begin
+                q:=Sphere[q].Parent;
+                if (q<>0) and (Sphere[q].ThingType<>ttCodeBlock) then q:=0;
+               end;
+             end;
             if p=0 then
              begin
               Source.Error('"@@" undefined');
               p:=Sphere.Add(ttThis,'@@');//add anyway to avoid further errors
               SetSrc(p,cb);
+             end
+            else
+             begin
+              //destructor call?
+              if (stackIndex<>0) and (stack[stackIndex-1].p=pUnary) and
+                (Sphere[stack[stackIndex-1].t].Op=cardinal(stOpSub)) and
+                Source.IsNext([stPOpen,stPClose]) then
+               begin
+                q:=Sphere.Add(ttDestructor,'-@@()');
+                SetSrc(q,cb).Subject:=p;
+                p:=q;
+                Source.Skip(stPOpen);
+                Source.Skip(stPClose);
+                dec(stackIndex);
+                {$IFDEF DEBUG}
+                stack[stackIndex].p:=p___;
+                stack[stackIndex].t:=0;
+                {$ENDIF}
+               end;
              end;
            end;
           stResult://"??"

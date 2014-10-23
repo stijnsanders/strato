@@ -25,7 +25,7 @@ object._addref(){
 }
 
 object._release(){
-	__xdec(_refcount)==0 -@@(); ;
+	(__xdec(_refcount)==0) {-@@();} {}
 }
 
 object."[]"(x:string):string{
