@@ -7,25 +7,28 @@ I want to make a programming language without any reserved words.
 
 There are pretty significant differences between the list of reserved words of say C, Pascal and SQL. There's this special status of them with any Lisp-related language. There's [Qalb](http://nas.sr/%D9%82%D9%84%D8%A8/) and [UOF](https://en.wikipedia.org/wiki/Uniform_Office_Format). Ever used formulas in Microsoft Excel in another language? Reserved words tie a programming language to one and only one natural language, and already start limiting you as a programming since they are no longer available to you as identifiers.
 
-I agree that reading written code is important. I agree that code should read as if it is by itself explaining what it's supposed to do. That is very strongly so with COBOL and SQL; it goes for BASIC; a little less for Pascal and Fortran, bringing with it tidbits of mathematical notation; and sometimes totally not so for for example C and Perl. But code in these exert the virtue of being concise. I want both. When reading code it's important to get a good view of the structure and flow, exactly what punctuation is for. Well chosen identifiers will tell you what the code is about, but it's the perators that make it all happen.
+I agree that reading written code is important. I agree that code should read as if it is by itself explaining what it's supposed to do. That is very strongly so with COBOL and SQL; it goes for BASIC; a little less for Pascal and Fortran, bringing with it tidbits of mathematical notation; and sometimes totally not so for for example C and Perl. But code in these exert the virtue of being concise. I want both. When reading code it's important to get a good view of the structure and flow, exactly what punctuation is for. Well chosen identifiers will tell you what the code is about, but it's the operators that make it all happen.
 
 1 Basics
 ========
 
-The three main basics in programming are sequence, selection and iteration. Sequence has stopped being an issue since around the advent of virtual memory. We no longer work (much) with punchcards. Editors have advanced greatly since edlin. With 16-bits (20-bits addressing) and 32-bits you're certain to get a big enough block of contiguous (virtual) memory to keep a good chunk of code in. So in the code you can silently assume things get done in the same order as they're written there, unless execution control structures tell otherwise. Among execution control structures are function calls, exception handling and on a higher level threading, but let's look at selection and iteration first.
+The three main basics in programming are sequence, selection and iteration. Sequence has stopped being an issue since around the advent of virtual memory. We no longer work (much) with punchcards. Editors have advanced greatly since edlin. With 16-bits (20-bits addressing) and 32-bits you're certain to get a big enough block of contiguous (virtual) memory to keep a good chunk of code in. So in the code you can silently assume things get done in the same order as they're written there, unless execution control structures tell otherwise. Among execution control structures are function calls, exception handling and, on a higher level, threading. Let's look at selection and iteration first.
 
 Selection is so important I would propose to have it everywhere, which saves us the use of reserved words 'if', 'then' and 'else'. By leaving a 'stray' expression that evaluates to a boolean in front of two statements or code blocks, it controls the execution of the latter. Selection by juxtaposition if you will. By not having text there to clearly mark which is which, it is true this may hamper readability, but that's why I would require every selection to have an else-clause. Using indentation and comments you're still free to clearly mark else-clauses. 
 
-I personally like 'case' or 'switch', but I'd like to keep this first version straight-forward to get things going, and might introduce one in a later version.
+I personally like 'case' or 'switch', but I'd like to keep this first version straight-forward to get things going, and might introduce something like this in a later version.
 
-Iteration is something I don't propose to infer only from code, so I assign it a character: "&". Followed by an boolean-expression and a statement or code block, which would work like a while-loop. Or the other way round, with the statement up front, and get a repeat-until-loop. Most langauges offer a 'for' structure, but in practice this are two extra statements, one that is executed once before the loop starts (i=0), and one that is executed before each evaluation of the boolean expression (i++), so I propose an advanced structure:
+Iteration is something I don't propose to infer only from code, so I assign it a character: `&`. Followed by a boolean-expression and a statement or code block, which would work like a while-loop. Or the other way round, with the statement up front, and get a repeat-until-loop. Most langauges offer a 'for' structure, but in practice this are two extra statements, one that is executed once before the loop starts (i=0), and one that is executed before each evaluation of the boolean expression (i++), so I propose an advanced structure:
+
 	& ( Statement BooleanExpression Statement ) Statement
+	
 And a code block also counts as a statement, so I image I might see code like this one day:
+
 	&({BuildRequest;WriteRequest;}Line=EndOfMessage{Line:=ReadLine;}){ProcessResponseLine;}
 
-Exception handling in its basic form comes down to indicating which code to execute when something gets thrown, optionally depending on this something. Write ":::" to denote where to start catching exceptions from (try) and "???" followed by a code block that will handle them (catch). Or "???(e:x)" to handle only exceptions of type x. Write "!!!" to throw an exception, or to re-throw the exception from a exception-handling-block.
+Exception handling in its basic form comes down to indicating which code to execute when something gets thrown, optionally depending on this something. Write `:::` to denote where to start catching exceptions from (try) and `???` followed by a code block that will handle them (catch). Or `???(e:x)` to handle only exceptions of type x. Write `!!!` to throw an exception, or to re-throw the exception from a exception-handling-block.
 
-To defer code to the end of the current code block, write ">>>"
+To defer code to the end of the current code block, write `>>>`
 
 2 Types
 =======
@@ -34,18 +37,18 @@ Code files don't start with execution. Leaving interpreted languages behind us, 
 
 Start a code file with the namespace name.
 
-Declare a type by writing it's name (identifier), "=" and the name of an other type. Depending on the run-time library I suppose there will be basic types like "int8", "uint32" etc.
+Declare a type by writing it's name (identifier), `=` and the name of an other type. Depending on the run-time library I suppose there will be basic types like `int8`, `uint32` etc.
 
-Declare a record (struct) by writing it's identifier, "=", "{" and none or more field definitions, close with "}". By default the members of the structure are placed in memory in sequence (//TODO: alignment), but this can be overriden by "@" followed by a numerical literal for the relative position to the start of the record.
+Declare a record (struct) by writing it's identifier, `=`, `{` and none or more field definitions, close with `}`. By default the members of the structure are placed in memory in sequence (//TODO: alignment), but this can be overriden by `@` followed by a numerical literal for the relative position to the start of the record.
 
-Declare an enumeration by writing an identifier, "=", "(" and none or more enumeration labels, optionally set to a specific value with "=" and a numerical literal. Comma's to separate labels are optional. Close with ")".
+Declare an enumeration by writing an identifier, `=`, `(` and none or more enumeration labels, optionally set to a specific value with `=` and a numerical literal. Comma's to separate labels are optional. Close with `)`.
 
-Declare an array by refering to a type and suffix it with "[]".
+Declare an array by refering to a type and suffix it with `[]`.
 
-Declare a function by writing an identifier, "(", none or more arguments, ")", and optionally ":" and a return value type. Then either write a semocolon (";") to define a function signature by that name, or start a code block ("{", "}") with none or more statements to perform when the function gets called. Optionally precede the option with a record type, which will be available inside of the function's code block with the 'this' reference ("@@").
+Declare a function by writing an identifier, `(`, none or more arguments, `)`, and optionally `:` and a return value type. Then either write a semocolon (`;`) to define a function signature by that name, or start a code block (`{`, `}`) with none or more statements to perform when the function gets called. Optionally precede the option with a record type, which will be available inside of the function's code block with the 'this' reference (`@@`).
 
 Multiple functions with the same name but different argument lists can be declared.
-Access the result value of the function with the function name or "??".
+Access the result value of the function with the function name or `??`.
 
 3 Object oriented programming
 =============================
@@ -54,12 +57,12 @@ Ah, good old polymorphic design. It had a good run. Slowly changing things, firs
 
 So in theory it's a kind of a step back: What's important is that the data exists in collections of the same build-up (struct, record), and poly-morphism still lets us extend the definitions with specializations. But the functions or methods that operate on the data exist in a different realm, only taking a reference to pieces of those classes (this, self). And sets of those define the behaviour of the entities (interface, vtable) with their own pedigree of inheritance and specialization.
 
-At the base there's still this thing called class. Defining a class is much similar to defining a struct/record, but follow the identifier with "(" and a base class to inherit from, ")", then "=", "{" and none or more data members. Close with "}".
+At the base there's still this thing called class. Defining a class is much similar to defining a struct/record, but follow the identifier with `(` and a base class to inherit from, `)`, then `=`, `{` and none or more data members. Close with `}`.
 
 An important difference is that values of this 'type' will actually hold a reference to the actual place in memory where the object 'lives'. (Objects live on the heap, never on the stack.) Assignments to values of this type are counted, so that the instance is released when the last reference is removed.
 
 To define a constructor, write a function of the same name. A class can have several constructors with different argument lists. //TODO: call inherited constructor
-To define a destructor, write "-", the class name, "(", ")", "{" for the code block to execute as destructor, close with "}".
+To define a destructor, write `-`, the class name, `(`, `)`, `{` for the code block to execute as destructor, close with `}`.
 
 Technics
 ==========
@@ -227,7 +230,7 @@ So for this new language I select case-sensitivity, but very strongly urge to av
 Prefix increment/decrement
 --------------------------
 
-I never use them. I think they're never good for readability. "i++;" I can live with. "for(i=0;i<x;i++)" is clear in one glance what's going on. Or in the new form: "&({i=0}i<x{i++})". Therefore I don't have them here. Use postfix "++" and "--" only.
+I never use them. I think they're never good for readability. `i++;` I can live with. `for(i=0;i<x;i++)` is clear in one glance what's going on. Or in the new form: `&({i=0}i<x{i++})`. Therefore I don't have them here. Use postfix `++` and `--` only.
 
 Reflection
 ----------
