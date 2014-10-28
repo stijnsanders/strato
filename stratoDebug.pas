@@ -41,7 +41,16 @@ var
 begin
   f:=TFileStream.Create(fn,fmCreate);
   try
-    xx:='index   parent  next    source  line:col what info'#13#10;
+    p:=PStratoThing(s.Header);
+    xx:='index   parent  next    source  line:col what info'#13#10+
+      Format(
+        '%7d v=%.8x FirstNameSpace=%d FirstGlobalVar=%d GlobalByteSize=%d'#13#10,
+        [0
+        ,PStratoHeader(p).Version
+        ,PStratoHeader(p).FirstNameSpace
+        ,PStratoHeader(p).FirstGlobalVar
+        ,PStratoHeader(p).GlobalByteSize
+        ]);
     f.Write(xx[1],Length(xx));
 
     i:=1;
@@ -180,6 +189,9 @@ begin
             ttVarByRef:
               x:=Format('%s ^var %s  @%d t=%d',
                 [x,s.FQN(i),p.Offset,p.EvaluatesTo]);
+            ttProperty:
+              x:=Format('%s prop %s  t=%d get=%d set=%d',
+                [x,s.FQN(i),p.EvaluatesTo,p.ValueFrom,p.AssignTo]);
             else
               x:=Format('%s ?    "%s" (%.4x) %d,%d,%d,%d',
                 [x,s.FQN(i),p.ThingType,p.ByteSize

@@ -19,6 +19,7 @@
 0028 ttThis
 0029 ttAddressOf
 002A ttDereference
+002B ttProperty
 0040 tt__IsType
 0041 ttArray
 0050 ttTypeDecl

@@ -28,12 +28,13 @@ object._release(){
 	(__xdec(_refcount)==0) {-@@();} {}
 }
 
+/*
 object."[]"(x:string):string{
 	??:="["+x+"]";
 }
+*/
 
-
-test1=(object){
+test1(object)={
 	_value:number;
 }
 
@@ -41,7 +42,8 @@ test1(){
 	_value:=1;
 }
 
-test1.x:number{_value:=??;}{??:=_value;};
+test1.x:number{??:=_value;}{_value:=??;};
+test1.y:number{??:=_value;};
 
 <<< shell
 main(p:shell){

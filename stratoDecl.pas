@@ -208,6 +208,11 @@ const
     //FirstItem (ttVar, ttFunction)
     //InheritsFrom (ttRecord)
 
+  ttProperty     = $002B;
+    //EvaluatesTo (ttTypeDecl)
+    //ValueFrom (ttFunction)
+    //AssignTo (ttFunction)
+
 type
   TStratoThing=record
     ThingType:cardinal;

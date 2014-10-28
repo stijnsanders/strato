@@ -53,7 +53,7 @@ Access the result value of the function with the function name or `??`.
 3 Object oriented programming
 =============================
 
-Ah, good old polymorphic design. It had a good run. Slowly changing things, first with SmallTalk in the 60's (!). Then C++ and later Java and every other language. But then by the end of the century, the poly-inheritance discussion led to interfaces and duck-typing. In practice generics and unit-tests also changed a lot about the way we work.
+Ah, good old polymorphic design. It had a good run. Slowly changing things, first with SmallTalk in the 60's (!). Then C++ and later Java and every other language. But then by the end of the century, the poly-inheritance discussion led to interfaces and duck-typing. In practice generics and unit-tests also changed a lot about the way we work. (Don't get me started on [patterns](http://c2.com/ppr/).)
 
 So in theory it's a kind of a step back: What's important is that the data exists in collections of the same build-up (struct, record), and poly-morphism still lets us extend the definitions with specializations. But the functions or methods that operate on the data exist in a different realm, only taking a reference to pieces of those classes (this, self). And sets of those define the behaviour of the entities (interface, vtable) with their own pedigree of inheritance and specialization.
 
@@ -69,109 +69,110 @@ Technics
 
 Identifiers
 -----------
-Identifier
-Literal
-String
-	'x'
-	'x''x'
-Comment
-	// ...
-	/* ... */
+	Identifier
+	Literal
+	String
+		'x'
+		'x''x'
+	Comment
+		// ...
+		/* ... */
 
 
 Declaration
 -----------
-NameSpace (start of file)
-	Identifier
-Const
-	Identifier = Literal ;
-Type
-	Identifier = Identifier ;
-	Identifier = Identifier[] ;
-	Identifier = Signature
-Variable
-	Identifier : Identifier ;
-Interface
-	? Identifier [ : Identifier ] = {
-		Signature*
-	}
-Struct
-	Identifier [ : Identifier ] = {
-		Variable
-		Identifier : Identifier @ Offset ;
-		Signature
-	}
+	NameSpace (start of file)
+		Identifier
+	Const
+		Identifier = Literal ;
+	Type
+		Identifier = Identifier ;
+		Identifier = Identifier[] ;
+		Identifier = Signature
+	Variable
+		Identifier : Identifier ;
+	Interface
+		? Identifier [ : Identifier ] = {
+			Signature*
+		}
+	Struct
+		Identifier [ : Identifier ] = {
+			Variable
+			Identifier : Identifier @ Offset ;
+			Signature
+		}
 
-Signature
-	[Identifier .] Identifier ( [Identifier [, Identifier]*] ) [: Identifier];
-Function
-	Signature CodeBlock
-	Signature CodeBlockX
+	Signature
+		[Identifier .] Identifier ( [Identifier [, Identifier]*] ) [: Identifier];
+	Function
+		Signature CodeBlock
+		Signature CodeBlockX
 
-Execution
----------
-Expression
-	Identifier
-	( Expression )
-	Expression Operator Expression
-	Operator Expression
-	Expression Operator
-Statement
-	Expression ;
+	Execution
+	---------
+	Expression
+		Identifier
+		( Expression )
+		Expression Operator Expression
+		Operator Expression
+		Expression Operator
+	Statement
+		Expression ;
+		CodeBlock
 	CodeBlock
-CodeBlock
-	{ Statement* }
-CodeBlockX
-	{ Statement* Expression }
+		{ Statement* }
+	CodeBlockX
+		{ Statement* Expression }
 
-Selection
-	Expression Statement [Statement]
-	();;
-	(){}{}
+	Selection
+		Expression Statement [Statement]
+		();;
+		(){}{}
 
-Iteration
-	& [Expression:bool] Statement [Expression:bool]
-	& ( [Expression;] Expression:bool [; Expression]) Statement
-	&();
-	&{}()
-	&(;;){}
-	&({}{}){}
-	&(Identifier [ : Identifier ] Identifier){}
+	Iteration
+		& [Expression:bool] Statement [Expression:bool]
+		& ( [Expression;] Expression:bool [; Expression]) Statement
+		&();
+		&{}()
+		&(;;){}
+		&({}{}){}
+		&(Identifier [ : Identifier ] Identifier){}
 
-Operator:
-	namespace . Identifier
-	left . right
-	variable [ Expression ]
-	:=
-	+ - * / % << >> && ||
-	<> != =
-	? x	type-of x
-	=?	is
-	:	as
-	@	address of
+	Operator:
+		namespace . Identifier
+		left . right
+		variable [ Expression ]
+		:=
+		+ - * / % << >> && ||
+		<> != =
+		? x	type-of x
+		=?	is
+		:	as
+		@	address of
 
-Specials
-	??	result (like return, but not breaking!)
-	@@	this
-	@@@	inherited
-	!!!	raise/break
-	:::	try
-	>>>	defer Statement
-	???	catch
-	??? ( Indentifier )
+	Specials
+		??	result (like return, but not breaking!)
+		@@	this
+		@@@	inherited
+		!!!	raise/break
+		:::	try
+		>>>	defer Statement
+		???	catch
+		??? ( Indentifier )
 
-Environment
-	<<<	import/include
+	Environment
+		<<<	import/include
 
 Other
-=======
-interpreter
-debugger
-compiler
-(in that order)
-to js? LLIR? C? D?
-ref counting
-weak ref
+=====
+
+* interpreter
+* debugger
+* compiler
+* (in that order)
+* to js? LLIR? C? D?
+* ref counting
+* weak ref
 
 TODO
 ====

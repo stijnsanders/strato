@@ -19,9 +19,8 @@ type
     pBrackets,
     pParentheses,
     pForBodyFirst,pForFirst,pForCrit,pForThen,pForCritDone,pForCritOnly,
-    pIfThen,
       p_CodeBlockDone,
-    pForBody,pIfElse,
+    pForBody,pIfThen,pIfElse,
     pUnTypedVar,
     pArgList,
       p_ArgList_Item,
@@ -1355,18 +1354,43 @@ begin
                 case Source.Token of
                   stIdentifier:
                    begin
-                    p:=Sphere.AddTo(Sphere[ns].FirstItem,ttVar,nn);
-                    if p=0 then
+                    q:=LookUpType('type');
+                    if Source.IsNext([stAOpen]) then
                      begin
-                      Source.Error('duplicate identifier');
-                      p:=Sphere.Add(ttVar,nn);//placeholder to prevent errors
+                      p:=Sphere.AddTo(Sphere[ns].FirstItem,ttProperty,nn);
+                      px:=SetSrc(p,ns);
+                      px.EvaluatesTo:=q;
+                      cb:=Sphere.Add(ttCodeBlock,'');
+                      qx:=SetSrc(cb,p);
+                      px.ValueFrom:=cb;
+                      //'this' inside of code block
+                      px:=SetSrc(Sphere.AddTo(qx.FirstItem,ttThis,'@@'),cb);
+                      px.Offset:=qx.ByteSize;
+                      px.EvaluatesTo:=ns;
+                      inc(qx.ByteSize,SystemWordSize);
+                      //'value' inside of code block
+                      px:=SetSrc(Sphere.AddTo(px.Next,ttVar,nn),cb);
+                      px.EvaluatesTo:=q;
+                      px.Offset:=qx.ByteSize;
+                      inc(qx.ByteSize,ByteSize(Sphere,q));
+                      //
+                      p:=0;
+                     end
+                    else
+                     begin
+                      p:=Sphere.AddTo(Sphere[ns].FirstItem,ttVar,nn);
+                      if p=0 then
+                       begin
+                        Source.Error('duplicate identifier');
+                        p:=Sphere.Add(ttVar,nn);//placeholder to prevent errors
+                       end;
+                      px:=SetSrc(p,ns);
+                      px.EvaluatesTo:=q;
+                      if Source.IsNext([stOpEQ]) then
+                        px.InitialValue:=ParseLiteral(Source.Token);
+                      //TODO: check InitialValue.EvaluatesTo with EvaluatesTo
+                      Sphere.AddGlobalVar(p);//sets px.Offset
                      end;
-                    px:=SetSrc(p,ns);
-                    px.EvaluatesTo:=LookUpType('type');
-                    if Source.IsNext([stOpEQ]) then
-                      px.InitialValue:=ParseLiteral(Source.Token);
-                    //TODO: check InitialValue.EvaluatesTo with EvaluatesTo
-                    Sphere.AddGlobalVar(p);//sets px.Offset
                     Source.Skip(stSemiColon);
                    end;
                   //more?
@@ -1722,7 +1746,6 @@ begin
               Sphere.AddTo(Sphere[q].FirstItem,r);
               //'this' inside of code block
               p:=Sphere.AddTo(qx.FirstItem,ttThis,'@@');
-              //assert p<>0
               px:=SetSrc(p,cb);
               px.Offset:=qx.ByteSize;
               px.EvaluatesTo:=q;
@@ -2015,7 +2038,33 @@ begin
               {$ENDIF}
              end;
             if stackIndex=0 then
-              cb:=0//return to declarations
+             begin
+              //return to declarations
+              p:=cb;
+              cb:=0;
+
+              //property get code block done? check set code block
+              rx:=Sphere[Sphere[p].Parent];
+              if (rx<>nil) and (rx.ThingType=ttProperty)
+                and (rx.ValueFrom=p) and Source.IsNext([stAOpen]) then
+               begin
+                //TODO: check code block's EvaluatesTo with property's?
+                cb:=Sphere.Add(ttCodeBlock,'');
+                qx:=SetSrc(cb,Sphere[p].Parent);
+                rx.AssignTo:=cb;
+                //'this' inside of code block
+                px:=SetSrc(Sphere.AddTo(qx.FirstItem,ttThis,'@@'),cb);
+                px.Offset:=qx.ByteSize;
+                px.EvaluatesTo:=rx.Parent;
+                inc(qx.ByteSize,SystemWordSize);
+                //'value' inside of code block
+                px:=SetSrc(Sphere.AddTo(px.Next,ttVar,Sphere.Dict[rx.Name]),cb);
+                px.EvaluatesTo:=rx.EvaluatesTo;
+                px.Offset:=qx.ByteSize;
+                inc(qx.ByteSize,ByteSize(Sphere,rx.EvaluatesTo));
+               end;
+
+             end
             else
              begin
               //pop from stack
