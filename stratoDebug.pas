@@ -172,8 +172,8 @@ begin
               x:=Format('%s dref %d t=%d',
                 [x,p.ValueFrom,p.EvaluatesTo]);
             ttClass:
-              x:=Format('%s cls  %s  #%d ->%d <-%d',
-                [x,s.FQN(i),p.ByteSize,p.FirstItem,p.InheritsFrom]);
+              x:=Format('%s cls  %s  #%d ctor=%d ->%d <-%d',
+                [x,s.FQN(i),p.ByteSize,p.FirstConstructor,p.FirstItem,p.InheritsFrom]);
             ttConstructor:
               x:=Format('%s ctor %d: %d(%d){%d}',
                 [x,p.Parent,p.Signature,p.FirstArgument,p.Body]);

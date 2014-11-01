@@ -57,11 +57,11 @@ Ah, good old polymorphic design. It had a good run. Slowly changing things, firs
 
 So in theory it's a kind of a step back: What's important is that the data exists in collections of the same build-up (struct, record), and poly-morphism still lets us extend the definitions with specializations. But the functions or methods that operate on the data exist in a different realm, only taking a reference to pieces of those classes (this, self). And sets of those define the behaviour of the entities (interface, vtable) with their own pedigree of inheritance and specialization.
 
-At the base there's still this thing called class. Defining a class is much similar to defining a struct/record, but follow the identifier with `(` and a base class to inherit from, `)`, then `=`, `{` and none or more data members. Close with `}`.
+At the base there's still this thing called class. Defining a class is much similar to defining a struct/record, but follow the identifier with `:` and a base class to inherit from, then `=`, `{` and none or more data members. Close with `}`.
 
 An important difference is that values of this 'type' will actually hold a reference to the actual place in memory where the object 'lives'. (Objects live on the heap, never on the stack.) Assignments to values of this type are counted, so that the instance is released when the last reference is removed.
 
-To define a constructor, write a function of the same name. A class can have several constructors with different argument lists. //TODO: call inherited constructor
+To define a constructor, write a function of the same name as the class. A class can have several constructors with different argument lists. //TODO: call inherited constructor
 To define a destructor, write `-`, the class name, `(`, `)`, `{` for the code block to execute as destructor, close with `}`.
 
 Technics
@@ -190,7 +190,7 @@ TODO
 * thread local vars
 * types, classes! (proper polymorphism)
 * constructors, destructor
-* getters, setters
+* getters, setters (with parameters [])
 * protected, private (-, -- prefix?)
 * interfaces
 * field not found? "[]"(x:string) method? parse into call

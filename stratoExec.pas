@@ -722,6 +722,7 @@ begin
                end
               else
                 Sphere.Error(pe,'//TODO: more operator stuff');
+            //stOpTypeIs://TODO
             //TODO: more!
             else
               Sphere.Error(pe,'unsupported unary operator');

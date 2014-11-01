@@ -191,9 +191,10 @@ const
     //EvaluatesTo (ttTypeDecl)
 
   ttClass        = $00D0;
-    //ByteSize (of data, not value since it's a pointer)
+    //ByteSize (of data, not value since that's a pointer)
+    //FirstConstructor (ttConstructor)
     //FirstItem (ttVar, ttFunction)
-    //InheritsFrom (ttRecord)
+    //InheritsFrom (ttClass)
 
   ttConstructor  = $000A;
     //Signature (ttSignature): first overload signature
@@ -242,9 +243,9 @@ type
         x_Reserved3,
         Left,Right:TStratoIndex;
       );
-      ttAssign,ttArray:(
+      ttClass,ttAssign:(
         x_Reserved4:cardinal;
-        x_Reserved5,
+        FirstConstructor,
         ValueFrom,AssignTo:TStratoIndex;
       );
       ttSelection,ttIteration:(

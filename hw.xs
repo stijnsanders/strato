@@ -1,7 +1,7 @@
 hw
 //hello world example program
 
-object()={
+object:={
 	_basetype:pointer;//class
 	_refcount:number;
 	//implemented interfaces?
@@ -34,7 +34,7 @@ object."[]"(x:string):string{
 }
 */
 
-test1(object)={
+test1:object={
 	_value:number;
 }
 
@@ -42,15 +42,29 @@ test1(){
 	_value:=1;
 }
 
+test1(x:number){
+	_value:=x;
+}
+
 test1.x:number{??:=_value;}{_value:=??;};
 test1.y:number{??:=_value;};
 
+//test1.xx[y:number]:number{??:=_value*y;}{_value:=??/y;};
+//test1.""[x:number]:number{}{};
+
 <<< shell
 main(p:shell){
+/*
 	x:object;
 	y:type;
 	y:=test1;
 	(?x=y)p.write('test');;
+*/
+
+	x:object;
+	x:=test1(11);
+	p.write(x.x);
+
 }
 
 /*

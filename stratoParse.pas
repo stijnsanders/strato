@@ -1238,7 +1238,7 @@ var
           b:=true;
         ttCodeBlock,ttSelection:b:=px.EvaluatesTo=0;
         //ttBinaryOp:b:=TStratoToken(px.Op) in [stOpAssign..stOpAssignAnd]; //assert never (see strAssign)
-        ttUnaryOp:b:=TStratoToken(px.Op) in [stOpInc..stOpDec];
+        ttUnaryOp:b:=TStratoToken(px.Op) in [stOpInc,stOpDec];
         //more?
       end;
       if not b then
@@ -1349,15 +1349,21 @@ begin
             st:=Source.Token;
             case st of
 
-              stColon: //global variable
+              stColon:
                begin
                 case Source.Token of
                   stIdentifier:
                    begin
                     q:=LookUpType('type');
+                    //property
                     if Source.IsNext([stAOpen]) then
                      begin
                       p:=Sphere.AddTo(Sphere[ns].FirstItem,ttProperty,nn);
+                      if p=0 then
+                       begin
+                        Source.Error('duplicate identifier');
+                        p:=Sphere.Add(ttProperty,nn);
+                       end;
                       px:=SetSrc(p,ns);
                       px.EvaluatesTo:=q;
                       cb:=Sphere.Add(ttCodeBlock,'');
@@ -1375,6 +1381,27 @@ begin
                       inc(qx.ByteSize,ByteSize(Sphere,q));
                       //
                       p:=0;
+                     end
+                    else
+                    //class
+                    if Source.IsNext([stOpEq,stAOpen]) then
+                     begin
+                      if q=0 then
+                        Source.Error('undeclared base class')
+                      else
+                      if Sphere[q].ThingType<>ttClass then
+                        Source.Error('base class must be a class');
+                      p:=Sphere.AddTo(Sphere[ns].FirstItem,ttClass,nn);
+                      if p=0 then
+                       begin
+                        Source.Error('duplicate identifier');
+                        p:=Sphere.Add(ttClass,nn);
+                       end;
+                      px:=SetSrc(p,ns);
+                      px.InheritsFrom:=q;
+                      if q<>0 then px.ByteSize:=Sphere[q].ByteSize;
+                      Source.Skip(stAOpen);
+                      ParseRecordDecl(p);
                      end
                     else
                      begin
@@ -1537,100 +1564,71 @@ begin
                    end;
                  end;
 
-              stPOpen:
-                if Source.IsNextID([stPClose,stOpEQ,stAOpen]) then
-                 begin
-                  //accept only one object()={}
-                  if (TypeDecl_object=0) and Source.IsNext([stPClose]) then
-                   begin
-                    Source.Skip(stPClose);
-                    Source.Skip(stOpEQ);
-                    Source.Skip(stAOpen);
-                    p:=Sphere.AddTo(Sphere[ns].FirstItem,ttClass,nn);
-                    if p=0 then
-                     begin
+              stPOpen://parameter list
+               begin
+                p:=ParseSignature(ns,nn);
+                case Source.Token of
+                  stSemiColon:
+                    if not Sphere.AddTo(Sphere[ns].FirstItem,p) then
                       Source.Error('duplicate identifier');
-                      p:=Sphere.Add(ttClass,nn);
-                     end;
-                    SetSrc(p,ns);
-                    TypeDecl_object:=p;
-                   end
-                  else
+                  stAOpen://code block
                    begin
-                    q:=LookUp;//inherit this struct
+                    q:=Sphere.Lookup(Sphere[ns].FirstItem,n);
                     if q=0 then
-                      Source.Error('undeclared base class')
-                    else
-                    if Sphere[q].ThingType<>ttClass then
-                      Source.Error('base class must be a class');
-                    Source.Skip(stPClose);
-                    Source.Skip(stOpEQ);
-                    Source.Skip(stAOpen);
-                    p:=Sphere.AddTo(Sphere[ns].FirstItem,ttClass,nn);
-                    if p=0 then
                      begin
-                      Source.Error('duplicate identifier');
-                      p:=Sphere.Add(ttClass,nn);
-                     end;
-                    px:=SetSrc(p,ns);
-                    px.InheritsFrom:=q;
-                    if q<>0 then px.ByteSize:=Sphere[q].ByteSize;
-                   end;
-                  ParseRecordDecl(p);
-                 end
-                else //parameter list
-                 begin
-                  p:=ParseSignature(ns,nn);
-                  case Source.Token of
-                    stSemiColon:
-                      if not Sphere.AddTo(Sphere[ns].FirstItem,p) then
-                        Source.Error('duplicate identifier');
-                    stAOpen://code block
-                     begin
-                      q:=Sphere.Lookup(Sphere[ns].FirstItem,n);
+                      q:=Sphere.AddTo(Sphere[ns].FirstItem,ttFunction,nn);
                       if q=0 then
                        begin
-                        q:=Sphere.AddTo(Sphere[ns].FirstItem,ttFunction,nn);
-                        if q=0 then
+                        Source.Error('duplicate identifier');
+                        q:=Sphere.Add(ttFunction,nn);
+                       end;
+                      SetSrc(q,ns);
+                     end
+                    else
+                      case Sphere[q].ThingType of
+                        ttFunction:;//ok!
+                        ttClass://constructor
+                         begin
+                          //Sphere[p].EvaluatesTo:=q;
+                          Sphere[p].Subject:=q;
+                         end;
+                        else
                          begin
                           Source.Error('duplicate identifier');
                           q:=Sphere.Add(ttFunction,nn);
+                          SetSrc(q,ns);
                          end;
-                        SetSrc(q,ns);
-                       end
-                      else
-                        case Sphere[q].ThingType of
-                          ttFunction:;//ok!
-                          ttClass://constructor
-                           begin
-                            r:=Sphere.Lookup(Sphere[q].FirstItem,n);
-                            if (r=0) or (Sphere[r].ThingType<>ttConstructor) then
-                              r:=Sphere.AddTo(Sphere[q].FirstItem,ttConstructor,nn);
-                            if r=0 then
-                             begin
-                              Source.Error('unable to find constructor');
-                              r:=Sphere.Add(ttConstructor,nn);
-                             end;
-                            SetSrc(r,q);
-                            q:=r;
-                            //assert Sphere[p].Subject=0
-                            Sphere[p].Subject:=q;
-                           end;
-                          else
-                           begin
-                            Source.Error('duplicate identifier');
-                            q:=Sphere.Add(ttFunction,nn);
-                            SetSrc(q,ns);
-                           end;
-                        end;
-                      cb:=Sphere.Add(ttCodeBlock,'');
-                      SetSrc(cb,q);
-                      StratoFunctionAddOverload(Sphere,Source,q,p,cb,nn);
-                      p:=0;
-                     end;
-                    else Source.Error('unsupported signature syntax');
-                  end;
-                 end;
+                      end;
+                    cb:=Sphere.Add(ttCodeBlock,'');
+                    SetSrc(cb,q);
+                    StratoFunctionAddOverload(Sphere,Source,q,p,cb,nn);
+                    p:=0;
+                   end;
+                  else Source.Error('unsupported signature syntax');
+                end;
+               end;
+
+              stOpAssign://":="
+                if Source.IsNext([stAOpen]) then
+                 begin
+                  //accept only one object:={}
+                  p:=Sphere.AddTo(Sphere[ns].FirstItem,ttClass,nn);
+                  if p=0 then
+                   begin
+                    Source.Error('duplicate identifier');
+                    p:=Sphere.Add(ttClass,nn);
+                   end;
+                  SetSrc(p,ns);
+                  if TypeDecl_object=0 then
+                    TypeDecl_object:=p
+                  else
+                    Source.Error('only one master base class allowed');
+                  ParseRecordDecl(p);
+                 end
+                else
+                  Source.Error('unsupported declaration syntax');
+
+              //stBOpen://TODO: array property (with overloads of same name?)
 
               //stAOpen:?
 
@@ -1926,6 +1924,7 @@ begin
               //start an argument list?
               if (px.ThingType=ttFunction)
                 or (px.ThingType=ttVarIndex) //and px.Subject.ThingType=ttFunction
+                or (px.ThingType=ttClass) //constructor?
                 or ((px.ThingType=ttVar) and (px.EvaluatesTo<>0)
                   and (Sphere[px.EvaluatesTo].ThingType=ttPointer)
                   and (Sphere[Sphere[px.EvaluatesTo].EvaluatesTo].ThingType=ttSignature)
@@ -1947,6 +1946,7 @@ begin
                 Push(pIfThen,q);
                end
               else
+              //nothing found!
                begin
                 if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) and
                   (stack[stackIndex-1].t=p) then
@@ -2379,9 +2379,10 @@ begin
 
           stInherited,//"@@@"
 
-          stOpTypeIs:
+          stOpTypeIs://"?="
 
-            Source.Error('unsupported syntax');//TODO
+            //TODO
+            Source.Error('unsupported syntax');
 
           else Source.Error('unsupported syntax');//'unexpected token');
         end;

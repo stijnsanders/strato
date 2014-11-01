@@ -24,15 +24,37 @@ var
   tt:cardinal;
 begin
   //TODO: detect duplicates, ambigiousness
-  if Sphere[Fn].Signature=0 then
-    p:=Fn
-  else
-   begin
-    p:=Sphere.Add(ttFunction,Name);
-    q:=Fn;
-    while Sphere[q].Next<>0 do q:=Sphere[q].Next;
-    Sphere[q].Next:=p;
-   end;
+  case Sphere[Fn].ThingType of
+    ttFunction:
+      if Sphere[Fn].Signature=0 then
+        p:=Fn
+      else
+       begin
+        p:=Sphere.Add(ttFunction,Name);
+        q:=Fn;
+        while Sphere[q].Next<>0 do q:=Sphere[q].Next;
+        Sphere[q].Next:=p;
+       end;
+    ttClass:
+     begin
+      //assert Sphere[Signature].EvaluatesTo=Fn
+      p:=Sphere.Add(ttConstructor,Name);
+      Sphere[p].Parent:=Fn;
+      q:=Sphere[Fn].FirstConstructor;
+      if q=0 then
+        Sphere[Fn].FirstConstructor:=p
+      else
+       begin
+        while Sphere[q].Next<>0 do q:=Sphere[q].Next;
+        Sphere[q].Next:=p;
+       end;
+     end;
+    else
+     begin
+      Source.Error('unexpected overload subject');
+      p:=Sphere.Add(ttFunction,Name);//counter warning
+     end;
+  end;
   Result:=p;
   px:=Sphere[p];
   px.Signature:=Signature;
@@ -98,7 +120,7 @@ begin
           inc(bs,ByteSize(Sphere,qx.EvaluatesTo));
         if b then //store first arg value on function overload index
          begin
-          Sphere[Fn].FirstArgument:=q;
+          Sphere[Result].FirstArgument:=q;
           b:=false;
          end;
        end;
@@ -152,11 +174,14 @@ begin
   p.Body:=0;//default
   //check overloads
   fn:=p.Subject;
-  if (fn<>0) and (Sphere[fn].ThingType=ttVarIndex) then
-    fn:=Sphere[fn].Subject;
-  if (fn<>0) and (Sphere[fn].ThingType=ttVar) then
-    fn:=Sphere[fn].EvaluatesTo;
-  //if (fn<>0) and (Sphere[fn].ThingType=ttInterface) then
+  q:=Sphere[fn];
+  if (q<>nil) and (q.ThingType=ttVarIndex) then
+    fn:=q.Subject;
+  if (q<>nil) and (q.ThingType=ttVar) then
+    fn:=q.EvaluatesTo;
+  //if (q<>nil) and (q.ThingType=ttInterface) then
+  if (q<>nil) and (q.ThingType=ttClass) then
+    fn:=q.FirstConstructor;
   while fn<>0 do
    begin
 
