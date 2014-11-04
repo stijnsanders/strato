@@ -5,7 +5,7 @@ interface
 uses stratoDecl, stratoSphere, stratoSource;
 
 function StratoFunctionAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
-  Fn,Signature,Codeblock:TStratoIndex;const Name:UTF8String):TStratoIndex;
+  Fn,Signature,CodeBlock:TStratoIndex;const Name:UTF8String):TStratoIndex;
 function StratoFnCallAddArgument(Sphere:TStratoSphere;
   FnCall,Value:TStratoIndex):TStratoIndex;
 procedure StratoFnCallFindSignature(Sphere:TStratoSphere;FnCall:TStratoIndex);
@@ -15,7 +15,7 @@ implementation
 uses stratoLogic, stratoRunTime;
 
 function StratoFunctionAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
-  Fn,Signature,Codeblock:TStratoIndex;const Name:UTF8String):TStratoIndex;
+  Fn,Signature,CodeBlock:TStratoIndex;const Name:UTF8String):TStratoIndex;
 var
   bs:integer;
   p,q:TStratoIndex;
@@ -48,6 +48,7 @@ begin
         while Sphere[q].Next<>0 do q:=Sphere[q].Next;
         Sphere[q].Next:=p;
        end;
+      if CodeBlock<>0 then Sphere[CodeBlock].Parent:=q;
      end;
     else
      begin

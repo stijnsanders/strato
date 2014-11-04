@@ -63,6 +63,7 @@ type
     stOpShl,
     stOpShr,
 
+    stOpSizeOf,//"@?"
     stOpTypeIs,//"?="
 
     st_Unknown
@@ -254,6 +255,7 @@ begin
               '@':Add(3,stInherited);
               else Add(2,stThis);
             end;
+          '?':Add(2,stOpSizeOf);
           else Add(1,stAt);
         end;
       '^':

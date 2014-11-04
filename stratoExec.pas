@@ -722,6 +722,19 @@ begin
                end
               else
                 Sphere.Error(pe,'//TODO: more operator stuff');
+            stOpSizeOf:
+             begin
+              if vt=TypeDecl_type then
+               begin
+                Move(FMem[vp],i,SystemWordSize);
+                i:=ByteSize(Sphere,i);
+               end
+              else
+                i:=ByteSize(Sphere,vt);
+              vtp(TypeDecl_number,np);
+              inc(np,SystemWordSize);
+              Move(i,FMem[vp],SystemWordSize);
+             end;
             //stOpTypeIs://TODO
             //TODO: more!
             else
@@ -1170,6 +1183,13 @@ begin
           inc(vp,stack[i-1].bp);
         Move(FMem[vp],i,SystemWordSize);
         vtp(px.EvaluatesTo,i);
+       end;
+
+      ttClass:
+       begin
+        Move(p,FMem[np],SystemWordSize);
+        vtp(TypeDecl_type,np);
+        inc(np,SystemWordSize);
        end;
 
       //TODO: more

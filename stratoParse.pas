@@ -34,7 +34,9 @@ type
     pShift,
     pAddSub,
     pMulDiv,
+      p_Cast,
     pUnary,
+    pSizeOf,
     pAddressOf
   );
 
@@ -345,6 +347,8 @@ var
                 else
                   Source.Error('unknown unary operator');
               end;
+            pSizeOf:
+              w:=IntToStr(ByteSize(Sphere,vt));
             pMulDiv,pAddSub,pShift,pAnd,pOr,pEqual,pComparative:
               if vt=TypeDecl_number then
                 if TryStrToInt64(string(v),i) and TryStrToInt64(string(w),j) then
@@ -481,8 +485,12 @@ var
         stBOpen://array
         stPOpen://tuple? expression?
         }
+        stOpAdd://unary
+          Push(pUnary,'+');
         stOpSub://unary
           Push(pUnary,'-');
+        stOpSizeOf://unary
+          Push(pSizeOf,'');
         stPOpen://expression (tuple?)
           Push(pParentheses,'');
         stPClose:
@@ -875,6 +883,7 @@ var
     t:TStratoIndex;
   end;
   cb:TStratoIndex;
+  cbInhCalled:boolean;
 
   procedure Push(p:TPrecedence;t:TStratoIndex);
   begin
@@ -891,9 +900,10 @@ var
   procedure CodeLookup(n:TStratoName;var p:TStratoIndex);
   var
     i,l:integer;
-    q,r,s:TStratoIndex;
+    p0,q,r,s:TStratoIndex;
     px:PStratoThing;
   begin
+    p0:=p;
     //TODO: strImport, strAlias
     if p<>0 then
       r:=p //see below: search by type
@@ -963,7 +973,7 @@ var
        end;
      end;
     //not found? check locals
-    if p=0 then
+    if (p=0) and (p0=0) then
      begin
       l:=Length(Locals);
       i:=0;
@@ -1100,6 +1110,11 @@ var
            begin
             x0.EvaluatesTo:=ResType(Sphere,s1);
             x0.Right:=s1;
+           end;
+          pSizeOf:
+           begin
+            x0.EvaluatesTo:=TypeDecl_number;
+            x0.Right:=s1;//?
            end;
           pAddressOf:
            begin
@@ -1314,6 +1329,7 @@ begin
     //TODO: check stIdentifier not used in declaration?
 
     cb:=0;
+    cbInhCalled:=false;
     while Source.NextToken(st) do
       if cb=0 then //declarations
         case st of
@@ -1559,6 +1575,30 @@ begin
                         qx.EvaluatesTo:=p;
                        end;
                      end;
+                    stOpSizeOf:
+                     begin
+                      p:=Sphere.AddTo(Sphere[ns].FirstItem,ttConstant,nn);
+                      if p=0 then
+                       begin
+                        Source.Error('duplicate identifier');
+                        p:=Sphere.Add(ttConstant,nn);
+                       end;
+                      px:=SetSrc(p,ns);
+                      px.EvaluatesTo:=TypeDecl_Number;
+                      q:=LookUpType('sizeof type');
+                      if q=0 then
+                        Source.Error('unknown sizeof type')
+                      else
+                       begin
+                        i:=ByteSize(Sphere,q);
+                        //TODO: ttSizeOf?
+                        q:=Sphere.Add(ttLiteral,'');;
+                        qx:=SetSrc(q,0);
+                        qx.EvaluatesTo:=TypeDecl_number;
+                        qx.InitialValue:=Sphere.AddBinaryData(IntToStr(i));
+                        px.InitialValue:=q;
+                       end;
+                     end;
                     else
                       Source.Error('unsupported type or constant');
                    end;
@@ -1591,6 +1631,7 @@ begin
                          begin
                           //Sphere[p].EvaluatesTo:=q;
                           Sphere[p].Subject:=q;
+                          cbInhCalled:=false;
                          end;
                         else
                          begin
@@ -1739,6 +1780,7 @@ begin
               //add, start code block
               r:=Sphere.Add(ttDestructor,nn);
               cb:=Sphere.Add(ttCodeBlock,'');
+              cbInhCalled:=false;
               qx:=SetSrc(cb,r);
               SetSrc(r,q).Body:=cb;
               Sphere.AddTo(Sphere[q].FirstItem,r);
@@ -1804,7 +1846,7 @@ begin
                 if r<>0 then
                  begin
                   b:=false;
-                  q:=0;
+                  q:=r;
                   CodeLookup(n,q);
                   while Source.IsNext([stPeriod,stIdentifier]) do
                    begin
@@ -1903,7 +1945,7 @@ begin
              end
             else //cast
              begin
-              //Combine(p_Juxta,p);//TODO: use stack, add to precendence
+              Combine(p_Cast,p);//p_juxta?
               if ResType(Sphere,p)=0 then
                 Source.Error('no value to cast');
               q:=Sphere.Add(ttCast,'');
@@ -2043,27 +2085,92 @@ begin
               p:=cb;
               cb:=0;
 
-              //property get code block done? check set code block
+              //code block done: checks
               rx:=Sphere[Sphere[p].Parent];
-              if (rx<>nil) and (rx.ThingType=ttProperty)
-                and (rx.ValueFrom=p) and Source.IsNext([stAOpen]) then
+              if rx<>nil then
                begin
-                //TODO: check code block's EvaluatesTo with property's?
-                cb:=Sphere.Add(ttCodeBlock,'');
-                qx:=SetSrc(cb,Sphere[p].Parent);
-                rx.AssignTo:=cb;
-                //'this' inside of code block
-                px:=SetSrc(Sphere.AddTo(qx.FirstItem,ttThis,'@@'),cb);
-                px.Offset:=qx.ByteSize;
-                px.EvaluatesTo:=rx.Parent;
-                inc(qx.ByteSize,SystemWordSize);
-                //'value' inside of code block
-                px:=SetSrc(Sphere.AddTo(px.Next,ttVar,Sphere.Dict[rx.Name]),cb);
-                px.EvaluatesTo:=rx.EvaluatesTo;
-                px.Offset:=qx.ByteSize;
-                inc(qx.ByteSize,ByteSize(Sphere,rx.EvaluatesTo));
-               end;
+                //property get code block done? check set code block
+                if (rx.ThingType=ttProperty) and (rx.ValueFrom=p)
+                  and Source.IsNext([stAOpen]) then
+                 begin
+                  //TODO: check code block's EvaluatesTo with property's?
+                  cb:=Sphere.Add(ttCodeBlock,'');
+                  qx:=SetSrc(cb,Sphere[p].Parent);
+                  rx.AssignTo:=cb;
+                  //'this' inside of code block
+                  px:=SetSrc(Sphere.AddTo(qx.FirstItem,ttThis,'@@'),cb);
+                  px.Offset:=qx.ByteSize;
+                  px.EvaluatesTo:=rx.Parent;
+                  inc(qx.ByteSize,SystemWordSize);
+                  //'value' inside of code block
+                  px:=SetSrc(Sphere.AddTo(px.Next,ttVar,Sphere.Dict[rx.Name]),cb);
+                  px.EvaluatesTo:=rx.EvaluatesTo;
+                  px.Offset:=qx.ByteSize;
+                  inc(qx.ByteSize,ByteSize(Sphere,rx.EvaluatesTo));
+                 end;
 
+                //constructor block done? check inherited called
+                if (rx.ThingType=ttConstructor) and not(cbInhCalled)
+                  and (rx.Parent<>TypeDecl_object) and (rx.Parent<>0) then
+                 begin
+                  q:=Sphere[rx.Parent].InheritsFrom;
+                  if q<>0 then q:=Sphere[q].FirstConstructor;
+                  //TODO: constructor with equal/matching argument list
+                  while (q<>0) and (Sphere[q].FirstArgument<>0) do
+                    q:=Sphere[q].Next;
+                  if q=0 then
+                    Source.Error('unable to find base constructor')
+                  else
+                   begin
+                    r:=Sphere.Add(ttVarIndex,'');
+                    rx:=SetSrc(r,Sphere[p].FirstItem);//assert ttThis
+                    rx.Subject:=q;
+                    q:=Sphere.Add(ttFnCall,Sphere.Dict[Sphere[q].Name]);
+                    qx:=SetSrc(q,p);
+                    qx.Subject:=r;
+                    qx.Body:=Sphere[rx.Subject].Body;
+                    qx.Next:=Sphere[p].FirstStatement;
+                    Sphere[p].FirstStatement:=q;
+                   end;
+                 end;
+
+                //destructor block done? check inherited called
+                if (rx.ThingType=ttDestructor) and not(cbInhCalled)
+                  and (rx.Parent<>TypeDecl_object) then
+                 begin
+                  q:=rx.Parent;
+                  if q<>0 then q:=Sphere[q].InheritsFrom;
+                  r:=0;
+                  while (r=0) and (q<>0) do
+                   begin
+                    r:=Sphere[q].FirstItem;
+                    while (r<>0) and (Sphere[r].ThingType<>ttDestructor) do
+                      r:=Sphere[r].Next;
+                    if r=0 then q:=Sphere[q].InheritsFrom;
+                   end;
+                  if r=0 then
+                    Source.Error('unable to find base destructor')
+                  else
+                   begin
+                    q:=Sphere.Add(ttVarIndex,'');
+                    qx:=SetSrc(q,Sphere[p].FirstItem);//assert ttThis
+                    qx.Subject:=r;
+                    r:=Sphere.Add(ttFnCall,'');
+                    rx:=SetSrc(r,p);
+                    rx.Subject:=q;
+                    rx.Body:=Sphere[qx.Subject].Body;
+                    q:=Sphere[p].FirstStatement;
+                    if q=0 then
+                      Sphere[p].FirstStatement:=r
+                    else
+                     begin
+                      while (Sphere[q].Next<>0) do q:=Sphere[q].Next;
+                      Sphere[q].Next:=r;
+                     end;
+                   end;
+                 end;
+
+               end;
              end
             else
              begin
@@ -2207,6 +2314,15 @@ begin
               qx.Right:=p;
               p:=q;
              end;
+          stOpSizeOf:
+            if p=0 then
+             begin
+              q:=Sphere.Add(ttUnaryOp,'');
+              SetSrc(q,cb).Op:=cardinal(st);
+              Push(pSizeOf,q);
+             end
+            else
+              Source.Error('sizeof operator only allowed as prefix');
 
           stThis://"@@"
            begin
@@ -2377,7 +2493,7 @@ begin
 
           stImport,//"<<<"
 
-          stInherited,//"@@@"
+          stInherited,//"@@@" //TODO: cbInhCalled:=true;
 
           stOpTypeIs://"?="
 

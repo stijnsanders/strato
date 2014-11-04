@@ -18,7 +18,7 @@ const
     '<<<','>>>',':::','???','!!!','@@','@@@','??',
     ':=','+=','-=','*=','/=','%=','||=','&&=',
     '=','<>','<','<=','>','>=','&&','||','!','|!',
-    '+','-','*','/','%','++','--','<<','>>','?=',
+    '+','-','*','/','%','++','--','<<','>>','@?','?=',
     '');
 
 procedure StratoDumpTokens(const t:TStratoSourceTokenList);
@@ -125,7 +125,7 @@ begin
               x:=Format('%s this @%d t=%d',
                 [x,p.Offset,p.EvaluatesTo]);
             ttVarIndex:
-              x:=Format('%s .[]  %d.%d[%d] t=%d',
+              x:=Format('%s .[]  %d.%d[%d]  t=%d',
                 [x,p.Parent,p.Subject,p.FirstArgument,p.EvaluatesTo]);
             ttCodeBlock:
               x:=Format('%s {}   #%d ->%d,%d t=%d',

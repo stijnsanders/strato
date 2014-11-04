@@ -42,6 +42,10 @@ test1(){
 	_value:=1;
 }
 
+-test1(){
+	__writeln("test1 free");
+}
+
 test1(x:number){
 	_value:=x;
 }
@@ -52,6 +56,8 @@ test1.y:number{??:=_value;};
 //test1.xx[y:number]:number{??:=_value*y;}{_value:=??/y;};
 //test1.""[x:number]:number{}{};
 
+test1Size=@?test1;
+
 <<< shell
 main(p:shell){
 /*
@@ -61,9 +67,12 @@ main(p:shell){
 	(?x=y)p.write('test');;
 */
 
+	p.write(@?object:string);
+	p.write(@?test1:string+" "+test1Size:string);
+
 	x:object;
 	x:=test1(11);
-	p.write(x.x);
+	p.write((x:test1).x:string);
 
 }
 
