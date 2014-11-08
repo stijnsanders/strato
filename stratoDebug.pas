@@ -42,15 +42,14 @@ begin
   f:=TFileStream.Create(fn,fmCreate);
   try
     p:=PStratoThing(s.Header);
-    xx:='index   parent  next    source  line:col what info'#13#10+
-      Format(
-        '%7d v=%.8x FirstNameSpace=%d FirstGlobalVar=%d GlobalByteSize=%d'#13#10,
-        [0
-        ,PStratoHeader(p).Version
-        ,PStratoHeader(p).FirstNameSpace
-        ,PStratoHeader(p).FirstGlobalVar
-        ,PStratoHeader(p).GlobalByteSize
-        ]);
+    xx:=Format(
+      'Strato v=%.8x FirstNameSpace=%d FirstGlobalVar=%d GlobalByteSize=%d'#13#10,
+      [PStratoHeader(p).Version
+      ,PStratoHeader(p).FirstNameSpace
+      ,PStratoHeader(p).FirstGlobalVar
+      ,PStratoHeader(p).GlobalByteSize
+      ])+
+      'index   parent  next    source  line:col what info'#13#10;
     f.Write(xx[1],Length(xx));
 
     i:=1;

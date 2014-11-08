@@ -181,11 +181,14 @@ TODO
 * strings on heap, strings from/to array of chars
 * struct initial values
 * arguments: read-only (except when by ref)
+* infer untyped local when first used as output argument
 * function variable, also as result x(x)(x) etc.
 * JSON, array literals (requires 'standard' key-value storage solution)
 * syscall loadlibrary, COM/OLE/ActiveX...
 * output LLVMIR? GCC? C?
 * initialization/finalization per unit/module/namespace
+* [or] "---" denoting 'implementation': declarations below line not accessible from 'outside'
+* signature as forward?
 * threads (or whichever fancy async thing in vogue by then)
 * thread local vars
 * types, classes! (proper polymorphism)
@@ -217,6 +220,11 @@ IDEA'S
 * dump: store errors in sphere data file and show inbetween things
 * merge xsu's?
 * still to InheritedFrom on ttRecord?
+
+DO OR DON'T?
+============
+
+* namespace prefix: more namespace defs in one file? (anonymous namespace?)
 
 Considerations
 ==============

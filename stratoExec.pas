@@ -379,6 +379,13 @@ begin
             if q=0 then
               Sphere.Error(pe,'Could not find "@@"')
             else
+            //if Sphere[Sphere[px.Body].Parent].ThingType=ttConstructor then
+            if Sphere[Sphere[px.Subject].Subject].ThingType=ttConstructor then
+             begin
+              i:=0;
+              Move(FMem[mp],i,SystemWordSize);
+             end
+            else
              begin
               Push(p,TypeDecl_void,q,mp);
               p:=px.Subject;
@@ -608,9 +615,10 @@ begin
                 qx:=Sphere[qx.Subject];
                 if qx<>nil then
                   case qx.ThingType of
-                    ttVar,ttVarByRef:inc(vp,qx.Offset);
-                    ttFunction:;
-                    else Sphere.Error(pe,'unexpected ttVarIndex subject');
+                    ttVar,ttVarByRef,ttThis:inc(vp,qx.Offset);
+                    ttFunction,ttConstructor,ttDestructor:;
+                    else Sphere.Error(pe,'unexpected ttVarIndex subject '+
+                      IntToHex(qx.ThingType,4));
                   end;
                end
               else
@@ -1121,6 +1129,15 @@ begin
              begin
               Move(FMem[vp],i,SystemWordSize);
               vtp(px.EvaluatesTo,np);
+              inc(np,SystemWordSize);
+              Move(i,FMem[vp],SystemWordSize);
+             end
+            else
+            if (vt=TypeDecl_number) and (px.EvaluatesTo=TypeDecl_pointer) then
+             begin
+              Move(FMem[vp],i,SystemWordSize);
+              //if i<>0 then //TODO: protect against pointer arith
+              vtp(TypeDecl_pointer,np);
               inc(np,SystemWordSize);
               Move(i,FMem[vp],SystemWordSize);
              end

@@ -37,7 +37,8 @@ begin
        end;
     ttClass:
      begin
-      //assert Sphere[Signature].EvaluatesTo=Fn
+      //assert Sphere[Signature].EvaluatesTo=0
+      Sphere[Signature].EvaluatesTo:=Fn;
       p:=Sphere.Add(ttConstructor,Name);
       Sphere[p].Parent:=Fn;
       q:=Sphere[Fn].FirstConstructor;
@@ -48,7 +49,7 @@ begin
         while Sphere[q].Next<>0 do q:=Sphere[q].Next;
         Sphere[q].Next:=p;
        end;
-      if CodeBlock<>0 then Sphere[CodeBlock].Parent:=q;
+      if CodeBlock<>0 then Sphere[CodeBlock].Parent:=p;
      end;
     else
      begin

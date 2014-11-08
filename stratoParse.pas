@@ -2128,7 +2128,9 @@ begin
                     q:=Sphere.Add(ttFnCall,Sphere.Dict[Sphere[q].Name]);
                     qx:=SetSrc(q,p);
                     qx.Subject:=r;
+                    qx.Signature:=Sphere[rx.Subject].Signature;
                     qx.Body:=Sphere[rx.Subject].Body;
+                    //qx.FirstArgument:=
                     qx.Next:=Sphere[p].FirstStatement;
                     Sphere[p].FirstStatement:=q;
                    end;
@@ -2158,7 +2160,9 @@ begin
                     r:=Sphere.Add(ttFnCall,'');
                     rx:=SetSrc(r,p);
                     rx.Subject:=q;
+                    //rx.Signature:=
                     rx.Body:=Sphere[qx.Subject].Body;
+                    //rx.FirstArgument:=0;
                     q:=Sphere[p].FirstStatement;
                     if q=0 then
                       Sphere[p].FirstStatement:=r

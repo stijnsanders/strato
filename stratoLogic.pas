@@ -84,9 +84,19 @@ begin
     inc(ptr2);
     s2:=Sphere[s2].EvaluatesTo;
    end;
-  if (s1=0) or (s2=0) then Result:=false else
-    Result:=(s1=s2) and (ptr1=ptr2);
-  //TODO: ptr to TypeDecl_number
+  if (s1=0) or (s2=0) then
+    Result:=(s1=0) and (s2=0) and (ptr1=ptr2)
+  else
+  if s1=s2 then
+    Result:=ptr1=ptr2
+  else
+  if (Sphere[s1].ThingType=ttClass) and (Sphere[s2].ThingType=ttClass) then
+   begin
+    while (s2<>0) and (s1<>s2) do s2:=Sphere[s2].InheritsFrom;
+    Result:=s1=s2;
+   end
+  else
+    Result:=false;
 end;
 
 function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;

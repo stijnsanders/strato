@@ -98,7 +98,8 @@ var
     Result[ri].Index:=CodeIndex;
     Result[ri].Length:=Len;
     Result[ri].Token:=t;
-    Result[ri].SrcPos:=ln*StratoTokenizeLineIndex+(CodeIndex-lx)+1; //TODO: count tab as 4 (or 8)?
+    //TODO: count tab as 4 (or 8 or 2)?
+    Result[ri].SrcPos:=ln*StratoTokenizeLineIndex+(CodeIndex-lx)+1;
     inc(ri);
     inc(CodeIndex,Len);
   end;
