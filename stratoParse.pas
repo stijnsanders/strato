@@ -1796,7 +1796,37 @@ begin
             else
               Source.Error('unexpected token');
 
+          stAOpen:
+           begin
+            cb:=Sphere.Add(ttCodeBlock,'');
+            qx:=SetSrc(cb,ns);
+            if PStratoSourceFile(Sphere[src]).InitializationCode=0 then
+             begin
+              PStratoSourceFile(Sphere[src]).InitializationCode:=cb;
+              Sphere.AddTo(Sphere[ns].FirstInitialization,cb);
+              p:=Sphere.Add(ttAlias,'');
+              SetSrc(p,ns).Subject:=cb;
+              Sphere.AddTo(Sphere.Header.FirstInitialization,p);
+             end
+            else
+            if PStratoSourceFile(Sphere[src]).FinalizationCode=0 then
+             begin
+              PStratoSourceFile(Sphere[src]).FinalizationCode:=cb;
+              qx.Next:=Sphere[ns].FirstFinalization;
+              p:=Sphere.Add(ttAlias,'');
+              px:=SetSrc(p,ns);
+              px.Subject:=cb;
+              px.Next:=PStratoSourceFile(Sphere[src]).FinalizationCode;
+              PStratoSourceFile(Sphere[src]).FinalizationCode:=p;
+             end
+            else
+              Source.Error('Initialization and finalization code already declared.');
+            p:=0;
+           end;
+
           stSemiColon:;//stray semicolon? ignore
+
+          //stPOpen?
 
           st_Unknown:Source.Error('unknown token');
           else Source.Error('unexpected token');

@@ -8,7 +8,7 @@ object:={
 }
 
 object(){
-	_basetype:=0;
+	_basetype:=0:pointer	;
 	_refcount:=0;
 }
 
@@ -53,27 +53,33 @@ test1(x:number){
 test1.x:number{??:=_value;}{_value:=??;};
 test1.y:number{??:=_value;};
 
+/*
+test2:test1={}
+test2(){
+	@@@(123);
+}
+-test2(){
+	__writeln("pre dtor");
+	@@@;
+	__writeln("post dtor");
+}
+*/
+
 //test1.xx[y:number]:number{??:=_value*y;}{_value:=??/y;};
 //test1.""[x:number]:number{}{};
 
-test1Size=@?test1;
-
 <<< shell
-main(p:shell){
+{
 /*
 	x:object;
 	y:type;
 	y:=test1;
-	(?x=y)p.write('test');;
+	(?x=y)Shell.write('test');;
 */
-
-	p.write(@?object:string);
-	p.write(@?test1:string+" "+test1Size:string);
-
 	x:object;
 	x:=test1(11);
-	p.write((x:test1).x:string);
-
+	Shell.write((x:test1).x:string);
+	(x:test1).x:=100;
 }
 
 /*
@@ -103,7 +109,7 @@ test.Next():string{
 	Next:=value++:string;
 }
 
-main(p:shell){
+{
 	x:someintf;
 	x.Wait();
 	
@@ -113,7 +119,9 @@ main(p:shell){
 	xx:test.someop;
 	xx:=test.test1;
 	
-	p.write(y.xx(1));
+	Shell.write(y.xx(1));
 	
+}{
+	Shell.write("all done");
 }
 */

@@ -59,55 +59,20 @@ end;
 
 procedure TStratoMachine.Run(Sphere: TStratoSphere);
 var
-  n:TStratoName;
-  main,shell,p,f0,f1:TStratoIndex;
-  i:cardinal;
+  p:TStratoName;
 begin
-  //find 'main'
-  n:=Sphere.Dict.StrIdx('main');
-  main:=0;//Lookup(FirstGlobalNameSpace? assert main not in runtime ns
-  p:=Sphere.Header.FirstNameSpace;
-  while (main=0) and (p<>0) do
+  //TODO: halt on unhandled exception?
+  p:=Sphere.Header.FirstInitialization;
+  while p<>0 do
    begin
+    Perform(Sphere,p);
     p:=Sphere[p].Next;
-    main:=Sphere.Lookup(Sphere[p].FirstItem,n);
    end;
-  if (main=0) or (Sphere[main].ThingType<>ttFunction) then
-    Sphere.Error(0,'No function "main" defined in root namespaces')
-  else
+  p:=Sphere.Header.FirstFinalization;
+  while p<>0 do
    begin
-    //find type decl 'shell.shell'
-    n:=Sphere.Dict.StrIdx('shell');
-    p:=Sphere.Lookup(Sphere.Header.FirstNameSpace,n);
-    if p=0 then shell:=0 else
-      shell:=Sphere.Lookup(Sphere[p].FirstItem,n);
-    if (shell=0) or (Sphere[shell].ThingType<>ttRecord) then //TODO: ttClass
-      Sphere.Error(0,'No declaration for "shell.shell"')
-    else
-     begin
-      AllocateGlobals(Sphere);
-
-      //create 'shell.shell' instance
-      i:=FMemIndex;//? nothing yet...
-      inc(FMemIndex,Sphere[shell].ByteSize);
-      f0:=Sphere.Add(ttVar,'');
-      Sphere[f0].Parent:=Sphere.Header.FirstNameSpace;//see Addr
-      Sphere[f0].EvaluatesTo:=shell;
-      Sphere[f0].Offset:=i-SphereBasePtr;
-      Move(i,FMem[i],SystemWordSize);//??
-      //TODO: shell... for now assert (s2 as TStratoTypeDecl).ByteSize=0
-
-      //create main call
-      f1:=Sphere.Add(ttFnCall,'main');
-      Sphere[f1].Subject:=main;
-      StratoFnCallAddArgument(Sphere,f1,f0);
-      StratoFnCallFindSignature(Sphere,f1);
-      if Sphere[f1].Signature=0 then
-        Sphere.Error(0,'No overload found "main(Shell)"')
-      else
-        Perform(Sphere,f1);
-
-     end;
+    Perform(Sphere,p);
+    p:=Sphere[p].Next;
    end;
 end;
 
@@ -356,6 +321,8 @@ begin
     if px.Source<>0 then pe:=p;
     //assert q=0 or ((q.ThingType and str__Typed)<>0)
     case px.ThingType of
+
+      ttAlias:p:=px.Subject;
 
       ttFnCall:
         if (px.Signature=0) or (px.Subject=0) then

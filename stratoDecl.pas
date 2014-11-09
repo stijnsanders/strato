@@ -35,6 +35,8 @@ const
     //[bitmask: things allowed as EvaluatesTo]
 
   ttNameSpace    = $0011;
+    //FirstInitialization (ttCodeBlock)
+    //FirstFinalization (ttCodeBlock)
     //FirstItem (*)
 
   ttTypeDecl     = $0050;
@@ -240,12 +242,12 @@ type
       );
       ttBinaryOp:(
         Op:cardinal;
-        x_Reserved3,
+        FirstConstructor,//ttClass
         Left,Right:TStratoIndex;
       );
-      ttClass,ttAssign:(
-        x_Reserved4:cardinal;
-        FirstConstructor,
+      ttNameSpace,ttAssign:(
+        FirstInitialization,
+        FirstFinalization,
         ValueFrom,AssignTo:TStratoIndex;
       );
       ttSelection,ttIteration:(
@@ -257,7 +259,7 @@ type
   TStratoHeader=record
     ThingType:cardinal;//ttHeader
     Name:cardinal;
-    x_Reserved1,x_Reserved2:TStratoIndex;
+    FirstInitialization,FirstFinalization:TStratoIndex;
     ThingCount:cardinal;
     SrcIndexLineMultiplier:cardinal;
     FirstNameSpace,FirstGlobalVar:TStratoIndex;
@@ -270,7 +272,7 @@ type
   TStratoSourceFile=record
     ThingType:cardinal;
     Name:TStratoName;
-    x_Reserved1,x_Reserved2:TStratoIndex;
+    InitializationCode,FinalizationCode:TStratoIndex;
     FileSize:cardinal;
     NameSpace,FileName:TStratoIndex;
     //FileCRC32,FileDate:cardinal;

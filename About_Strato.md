@@ -50,6 +50,8 @@ Declare a function by writing an identifier, `(`, none or more arguments, `)`, a
 Multiple functions with the same name but different argument lists can be declared.
 Access the result value of the function with the function name or `??`.
 
+End a code file with one or two code blocks (`{}`). The first code block will get executed when the program starts,  the second block when the program is stopping. The order of these is determined by the sequence namespaces are imported.
+
 3 Object oriented programming
 =============================
 

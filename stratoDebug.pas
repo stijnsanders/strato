@@ -43,13 +43,15 @@ begin
   try
     p:=PStratoThing(s.Header);
     xx:=Format(
-      'Strato v=%.8x FirstNameSpace=%d FirstGlobalVar=%d GlobalByteSize=%d'#13#10,
+      'Strato v=%.8x ini=%d fin=%d ns=%d global=%d #%d'#13#10,
       [PStratoHeader(p).Version
+      ,PStratoHeader(p).FirstInitialization
+      ,PStratoHeader(p).FirstFinalization
       ,PStratoHeader(p).FirstNameSpace
       ,PStratoHeader(p).FirstGlobalVar
       ,PStratoHeader(p).GlobalByteSize
       ])+
-      'index   parent  next    source  line:col what info'#13#10;
+      'index   parent  next    source  line :col what info'#13#10;
     f.Write(xx[1],Length(xx));
 
     i:=1;
@@ -66,21 +68,24 @@ begin
         try
           //TODO: switches
           if p.Source=0 then
-            x:=Format('%7d %7d %7d                 ',
+            x:=Format('%7d %7d %7d                  ',
               [i,p.Parent,p.Next,p.Source])
           else
-            x:=Format('%7d %7d %7d %7d %4d:%3d',
-              [i,p.Parent,p.Next,p.Source,
-                p.SrcPos div StratoTokenizeLineIndex,
-                p.SrcPos mod StratoTokenizeLineIndex]);
-                //TODO: StratoTokenizeLineIndex from header
+            x:=Format('%7d %7d %7d %7d %5d:%3d',
+              [i,p.Parent,p.Next,p.Source
+              ,p.SrcPos div StratoTokenizeLineIndex
+              ,p.SrcPos mod StratoTokenizeLineIndex
+              ]);//TODO: StratoTokenizeLineIndex from header
           case p.ThingType of
             ttSourceFile:
-              x:=Format('%s src  fn=%d',
-                [x,PStratoSourceFile(p).FileName]);
+              x:=Format('%s src  fn=%d ini=%d fin=%d',
+                [x,PStratoSourceFile(p).FileName
+                ,PStratoSourceFile(p).InitializationCode
+                ,PStratoSourceFile(p).FinalizationCode]);
             ttNameSpace:
-              x:=Format('%s ns   %s  ->%d',
-                [x,s.FQN(i),p.FirstItem]);
+              x:=Format('%s ns   %s  ->%d  ini=%d fin=%d',
+                [x,s.FQN(i),p.FirstItem
+                ,p.FirstInitialization,p.FirstFinalization]);
             ttImport:
               x:=Format('%s <<<  %s  %d',
                 [x,s.FQN(i),p.Subject]);
@@ -116,7 +121,8 @@ begin
                 [x,s.FQN(i),p.Signature,p.FirstArgument,p.Body]);
             ttFnCall:
               x:=Format('%s call %s  fn=%d  %d(%d){%d}',
-                [x,s.Dict[p.Name]{s.FQN(i)},p.Subject,p.Signature,p.FirstArgument,p.Body]);
+                [x,s.Dict[p.Name]{s.FQN(i)}
+                ,p.Subject,p.Signature,p.FirstArgument,p.Body]);
             ttArgument:
               x:=Format('%s arg  %s  t=%d d=%d v=%d',
                 [x,s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Subject]);
@@ -172,7 +178,8 @@ begin
                 [x,p.ValueFrom,p.EvaluatesTo]);
             ttClass:
               x:=Format('%s cls  %s  #%d ctor=%d ->%d <-%d',
-                [x,s.FQN(i),p.ByteSize,p.FirstConstructor,p.FirstItem,p.InheritsFrom]);
+                [x,s.FQN(i),p.ByteSize
+                ,p.FirstConstructor,p.FirstItem,p.InheritsFrom]);
             ttConstructor:
               x:=Format('%s ctor %d: %d(%d){%d}',
                 [x,p.Parent,p.Signature,p.FirstArgument,p.Body]);
