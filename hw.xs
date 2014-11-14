@@ -1,6 +1,26 @@
 hw
 //hello world example program
 
+sig1(x:number):number;
+
+ttt1:number;
+
+sig1(x,y:number):number;
+
+
+ttt2:number;
+
+sig1(x:number):number{
+	__writeln("first sig, decl later");
+}
+
+ttt3:number;
+
+sig1(x,y:number):number{
+}
+
+ttt4:number;
+
 object:={
 	_basetype:pointer;//class
 	_refcount:number;
@@ -8,7 +28,7 @@ object:={
 }
 
 object(){
-	_basetype:=0:pointer	;
+	_basetype:=0:pointer;
 	_refcount:=0;
 }
 

@@ -41,12 +41,12 @@ const
 
   ttTypeDecl     = $0050;
     //ByteSize: memory used by var of type
-    //FirstItem (ttFunction)
+    //FirstItem (*)
     //InheritsFrom (ttTypeDecl)
 
   ttRecord       = $0051;
     //ByteSize
-    //FirstItem (ttVar, ttFunction)
+    //FirstItem (*)
     //InheritsFrom (ttRecord)
 
   ttEnumeration  = $0052;
@@ -86,20 +86,23 @@ const
 
 
   ttSignature    = $00E0;
-    //Subject: function subject (this)
+    //Subject (ttTypeDecl): call subject (this)
     //EvaluatesTo (ttTypeDecl): return value
-    //FirstArgument (*)
+    //FirstArgument (*): first argument
 
   ttFunction     = $0001;
-    //Signature (ttSignature): first overload signature
-    //Body (ttCodeBlock): first overload body
+    //FirstItem (ttOverload): first overload
+
+  ttOverload     = $0002;
+    //Signature (ttSignature): call signature
+    //Body (ttCodeBlock): overload body
     //FirstArgument (*): first argument value in overload body
 
   ttFnCall       = $0084;
-    //Subject (ttFunction, ttVarIndex)
+    //Subject (ttOverload, ttVarIndex)
     //FirstArgument (*)
     //Signature (ttSignature): matching signature
-    //Body (ttCodeBlock): body from overload with matching signature (see ttFunction)
+    //Body (ttCodeBlock): body from overload with matching signature (see ttOverload)
 
   ttArgument     = $00A0;
     //Subject (*): argument value (not ValueFrom!)
@@ -195,7 +198,7 @@ const
   ttClass        = $00D0;
     //ByteSize (of data, not value since that's a pointer)
     //FirstConstructor (ttConstructor)
-    //FirstItem (ttVar, ttFunction)
+    //FirstItem (ttVar, ttFunction, ttProperty)
     //InheritsFrom (ttClass)
 
   ttConstructor  = $000A;
@@ -208,13 +211,13 @@ const
 
   ttInterface    = $00D1;
     //ByteSize: SystemWordSize (since it's a pointer!)
-    //FirstItem (ttVar, ttFunction)
+    //FirstItem (ttVar, ttFunction, ttProperty)
     //InheritsFrom (ttRecord)
 
   ttProperty     = $002B;
     //EvaluatesTo (ttTypeDecl)
-    //ValueFrom (ttFunction)
-    //AssignTo (ttFunction)
+    //ValueFrom (ttOverload)
+    //AssignTo (ttOverload)
 
 type
   TStratoThing=record
@@ -237,7 +240,7 @@ type
         Offset:cardinal;
         EvaluatesTo,InitialValue,InheritsFrom:TStratoIndex;
       );
-      ttSignature,ttFunction,ttFnCall:(
+      ttSignature,ttOverload,ttFnCall:(
         Subject,Signature,FirstArgument,Body:TStratoIndex;
       );
       ttBinaryOp:(

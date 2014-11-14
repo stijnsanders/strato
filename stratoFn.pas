@@ -18,28 +18,52 @@ function StratoFunctionAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
   Fn,Signature,CodeBlock:TStratoIndex;const Name:UTF8String):TStratoIndex;
 var
   bs:integer;
-  p,q:TStratoIndex;
+  p,q,r:TStratoIndex;
   px,qx,sx,cx:PStratoThing;
   b:boolean;
   tt:cardinal;
 begin
-  //TODO: detect duplicates, ambigiousness
   case Sphere[Fn].ThingType of
     ttFunction:
-      if Sphere[Fn].Signature=0 then
-        p:=Fn
-      else
+     begin
+      //TODO: detect duplicates, ambigiousness
+      p:=0;
+      r:=0;
+      q:=Sphere[Fn].FirstItem;
+      while (q<>0) do
        begin
-        p:=Sphere.Add(ttFunction,Name);
-        q:=Fn;
-        while Sphere[q].Next<>0 do q:=Sphere[q].Next;
-        Sphere[q].Next:=p;
+        if SameType(Sphere,Sphere[q].Signature,Signature) then
+          if Sphere[q].Body=0 then //forward! fill in CB
+           begin
+            p:=q;
+            q:=0;
+            //TODO: delete/avoid superfluous Signature?
+           end
+          else
+           begin
+            q:=0;
+            Source.Error('Duplicate overload or equivalent signature');
+           end;
+        if q<>0 then
+         begin
+          r:=q;
+          q:=Sphere[q].Next;
+         end;
        end;
+      if p=0 then
+       begin
+        p:=Sphere.Add(ttOverload,'');
+        if r=0 then
+          Sphere[Fn].FirstItem:=p
+        else
+          Sphere[r].Next:=p;
+       end;
+     end;
     ttClass:
      begin
       //assert Sphere[Signature].EvaluatesTo=0
       Sphere[Signature].EvaluatesTo:=Fn;
-      p:=Sphere.Add(ttConstructor,Name);
+      p:=Sphere.Add(ttConstructor,'');
       Sphere[p].Parent:=Fn;
       q:=Sphere[Fn].FirstConstructor;
       if q=0 then
@@ -54,11 +78,12 @@ begin
     else
      begin
       Source.Error('unexpected overload subject');
-      p:=Sphere.Add(ttFunction,Name);//counter warning
+      p:=Sphere.Add(ttOverload,'');//counter warning
      end;
   end;
   Result:=p;
   px:=Sphere[p];
+  px.Parent:=Fn;
   px.Signature:=Signature;
   px.Body:=CodeBlock;
 
@@ -178,12 +203,27 @@ begin
   fn:=p.Subject;
   q:=Sphere[fn];
   if (q<>nil) and (q.ThingType=ttVarIndex) then
+   begin
     fn:=q.Subject;
+    q:=Sphere[fn];
+   end;
   if (q<>nil) and (q.ThingType=ttVar) then
+   begin
     fn:=q.EvaluatesTo;
-  //if (q<>nil) and (q.ThingType=ttInterface) then
+    q:=Sphere[fn];
+   end;
+  //if (q<>nil) and (q.ThingType=ttInterface) then?
   if (q<>nil) and (q.ThingType=ttClass) then
+   begin
     fn:=q.FirstConstructor;
+    q:=Sphere[fn];
+   end;
+  if (q<>nil) and (q.ThingType=ttFunction) then
+   begin
+    fn:=q.FirstItem;
+    q:=Sphere[fn];
+   end;
+  //assert q.ThingType in (ttOverload,ttConstructor)
   while fn<>0 do
    begin
 
@@ -206,8 +246,11 @@ else
           r:=x1.Subject;
           while (r<>0) and (Sphere[r].ThingType=ttAssign) do
             r:=Sphere[r].AssignTo;
+          while (r<>0) and (Sphere[r].ThingType=ttVarIndex) do
+            r:=Sphere[r].Subject;
           if (r<>0) and (Sphere[r].ThingType<>ttVar) then //=ttLiteral then Error?
-            p0:=0;//TODO: warning like 'unsuitable argument for byref'?
+            p0:=0;//keep searching
+            //TODO: warning like 'unsuitable argument for byref'?
          end;
        end
       else

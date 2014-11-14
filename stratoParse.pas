@@ -1609,8 +1609,42 @@ begin
                 p:=ParseSignature(ns,nn);
                 case Source.Token of
                   stSemiColon:
-                    if not Sphere.AddTo(Sphere[ns].FirstItem,p) then
-                      Source.Error('duplicate identifier');
+                   begin
+                    //just a signature? add to namespace
+                    r:=0;
+                    q:=Sphere[ns].FirstItem;
+                    while (q<>0) and (Sphere[q].Name<>n) do
+                     begin
+                      r:=q;
+                      q:=Sphere[q].Next;
+                     end;
+                    if q=0 then
+                      if r=0 then
+                        Sphere[ns].FirstItem:=p
+                      else
+                        Sphere[r].Next:=p
+                    else
+                      if Sphere[q].ThingType=ttSignature then
+                       begin
+                        //signature to forward overload? create ttFunction here
+                        if r=0 then
+                          Sphere[ns].FirstItem:=Sphere[q].Next
+                        else
+                          Sphere[r].Next:=Sphere[q].Next;
+                        Sphere[q].Next:=0;
+                        r:=Sphere.AddTo(Sphere[ns].FirstItem,ttFunction,nn);
+                        if r=0 then
+                         begin
+                          Source.Error('duplicate identifier');
+                          r:=Sphere.Add(ttFunction,nn);
+                         end;
+                        SetSrc(r,ns);
+                        StratoFunctionAddOverload(Sphere,Source,r,q,0,nn);
+                        StratoFunctionAddOverload(Sphere,Source,r,p,0,nn);
+                       end
+                      else
+                        Source.Error('duplicate identifier');
+                   end;
                   stAOpen://code block
                    begin
                     q:=Sphere.Lookup(Sphere[ns].FirstItem,n);
@@ -1627,6 +1661,17 @@ begin
                     else
                       case Sphere[q].ThingType of
                         ttFunction:;//ok!
+                        ttSignature://signature forwarded, function now?
+                          if SameType(Sphere,p,q) then
+                           begin
+                            raise Exception.Create('//TODO: replace sig with fn');
+                           end
+                          else
+                           begin
+                            Source.Error('//TODO: fn decl with forward sig mismatch');
+                            q:=Sphere.Add(ttFunction,nn);
+                            SetSrc(q,ns);
+                           end;
                         ttClass://constructor
                          begin
                           //Sphere[p].EvaluatesTo:=q;

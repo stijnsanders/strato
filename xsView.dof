@@ -91,16 +91,16 @@ ImageBase=4194304
 ExeDescription=
 [Directories]
 OutputDir=
-UnitOutputDir=dcu
+UnitOutputDir=
 PackageDLLOutputDir=
 PackageDCPOutputDir=
 SearchPath=
 Packages=vcl;rtl;vclie;xmlrtl;inet;inetdbbde;inetdbxpress;vclx;dbrtl;soaprtl;dsnap;VclSmp;dbexpress;vcldb;dbxcds;adortl;ibxpress;vclactnband;bdertl;vclshlctrls;dclOfficeXP;RoComponents
-Conditionals=DEBUG
+Conditionals=
 DebugSourceDirs=
 UsePackages=0
 [Parameters]
-RunParams=hw.xs -U hw.xsu -H hw.xsv
+RunParams=hw.xsu
 HostApplication=
 Launcher=
 UseLauncher=0
@@ -121,7 +121,7 @@ Locale=1033
 CodePage=1252
 [Version Info Keys]
 CompanyName=
-FileDescription=strato
+FileDescription=strato xsView
 FileVersion=0.1.0.420
 InternalName=
 LegalCopyright=

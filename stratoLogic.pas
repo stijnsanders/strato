@@ -38,8 +38,8 @@ begin
           if px.Signature<>0 then
             Result:=Sphere[px.Signature].EvaluatesTo;
         //TODO: ttAlias?
-        //TODO: ttFunction: px.Signature?
-        ttFunction:
+        //TODO: ttFunction?
+        ttOverload:
           Result:=px.Signature;//TODO:  stAssignment check
         //else Result:=0;//see default
       end;
@@ -67,11 +67,11 @@ end;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 var
   ptr1,ptr2:integer;
+  tt:cardinal;
+  x1,x2:PStratoThing;
 begin
   //TODO: auto-cast?
-  //TODO: stAlias?
-  //TODO: stSignature!!
-  //TODO: stInterface!!!
+  //TODO: ttAlias?
   ptr1:=0;
   while (s1<>0) and (Sphere[s1].ThingType=ttPointer) do
    begin
@@ -90,13 +90,45 @@ begin
   if s1=s2 then
     Result:=ptr1=ptr2
   else
-  if (Sphere[s1].ThingType=ttClass) and (Sphere[s2].ThingType=ttClass) then
    begin
-    while (s2<>0) and (s1<>s2) do s2:=Sphere[s2].InheritsFrom;
-    Result:=s1=s2;
-   end
-  else
-    Result:=false;
+    tt:=Sphere[s1].ThingType;
+    if tt=Sphere[s2].ThingType then
+      case tt of
+        ttClass:
+         begin
+          while (s2<>0) and (s1<>s2) do s2:=Sphere[s2].InheritsFrom;
+          Result:=(s1=s2);// and (ptr1=ptr2)?
+         end;
+        ttSignature:
+         begin
+          x1:=Sphere[s1];
+          x2:=Sphere[s2];
+          if SameType(Sphere,x1.EvaluatesTo,x2.EvaluatesTo) and
+            SameType(Sphere,x1.Subject,x2.Subject) then
+           begin
+            s1:=x1.FirstArgument;
+            s2:=x2.FirstArgument;
+            x1:=Sphere[s1];
+            x2:=Sphere[s2];
+            while (s1<>0) and (s2<>0) and //assert ttArgument
+              SameType(Sphere,x1.EvaluatesTo,x2.EvaluatesTo) do
+             begin
+              s1:=x1.Next;
+              s2:=x2.Next;
+              x1:=Sphere[s1];
+              x2:=Sphere[s2];
+             end;
+            Result:=((s1=0) and (s2=0));// and (ptr1=ptr2)?
+           end
+          else
+            Result:=false;
+         end;
+        //ttInterface
+        else Result:=false;
+      end
+    else
+      Result:=false;
+   end;
 end;
 
 function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;

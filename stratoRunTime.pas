@@ -49,20 +49,27 @@ var
     const Arguments:array of TStratoIndex;ReturnType:TStratoIndex);
   var
     i:integer;
-    n,p1,p2:TStratoIndex;
+    n,n1,p1,p2:TStratoIndex;
     q,r:PStratoThing;
   begin
     //n:=Sphere.Lookup(ns.FirstItem,FunctionName);
     //if n=0 then
      begin
-      n:=Sphere.Add(ttFunction,FunctionName);
-      q:=Sphere[n];
+      n1:=Sphere.Add(ttFunction,FunctionName);
+      q:=Sphere[n1];
       q.Parent:=ns;
+      n:=Sphere.Add(ttOverload,'');
+      q:=Sphere[n];
+      q.Parent:=n1;
+
+      p.Next:=n1;
+      p:=Sphere[n1];
+      p.FirstItem:=n;
      end;
 
     q.Signature:=Sphere.Add(ttSignature,SignatureName);
     r:=Sphere[q.Signature];
-    r.Parent:=ns;
+    r.Parent:=n;
     r.EvaluatesTo:=ReturnType;
 
     p2:=0;
@@ -129,8 +136,6 @@ var
        end;
      end;
 
-    p.Next:=n;
-    p:=q;
   end;
   
 var

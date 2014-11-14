@@ -61,6 +61,7 @@ procedure TStratoMachine.Run(Sphere: TStratoSphere);
 var
   p:TStratoName;
 begin
+  AllocateGlobals(Sphere);
   //TODO: halt on unhandled exception?
   p:=Sphere.Header.FirstInitialization;
   while p<>0 do
@@ -532,7 +533,8 @@ begin
             Sphere.Error(pe,'['+e.ClassName+']'+e.Message);
         end;
 
-      ttFunction:
+      //ttFunction?
+      ttOverload:
        begin
         //address of
         //TODO: get type!
@@ -583,7 +585,7 @@ begin
                 if qx<>nil then
                   case qx.ThingType of
                     ttVar,ttVarByRef,ttThis:inc(vp,qx.Offset);
-                    ttFunction,ttConstructor,ttDestructor:;
+                    ttOverload,ttConstructor,ttDestructor:;
                     else Sphere.Error(pe,'unexpected ttVarIndex subject '+
                       IntToHex(qx.ThingType,4));
                   end;
