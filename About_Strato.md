@@ -189,6 +189,7 @@ TODO
 * syscall loadlibrary, COM/OLE/ActiveX...
 * output LLVMIR? GCC? C?
 * initialization/finalization per unit/module/namespace
+* chained comparison operators (as in 2 < x < 8 )
 * [or] "---" denoting 'implementation': declarations below line not accessible from 'outside'
 * signature as forward?
 * threads (or whichever fancy async thing in vogue by then)
