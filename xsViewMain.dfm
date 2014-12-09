@@ -15,11 +15,19 @@ object Form1: TForm1
   Position = poDefault
   PixelsPerInch = 96
   TextHeight = 14
+  object Splitter1: TSplitter
+    Left = 0
+    Top = 213
+    Width = 541
+    Height = 3
+    Cursor = crVSplit
+    Align = alBottom
+  end
   object TreeView1: TTreeView
     Left = 0
     Top = 0
     Width = 541
-    Height = 274
+    Height = 213
     Align = alClient
     HideSelection = False
     Indent = 19
@@ -32,6 +40,16 @@ object Form1: TForm1
       01000000290000000000000000000000FFFFFFFFFFFFFFFF0000000000000000
       10286E6F2066696C65206F70656E656429}
   end
+  object ListBox1: TListBox
+    Left = 0
+    Top = 216
+    Width = 541
+    Height = 58
+    Align = alBottom
+    ItemHeight = 14
+    TabOrder = 1
+    OnDblClick = ListBox1DblClick
+  end
   object MainMenu1: TMainMenu
     Left = 8
     Top = 8
@@ -41,6 +59,20 @@ object Form1: TForm1
         Caption = '&Open...'
         ShortCut = 16463
         OnClick = Open1Click
+      end
+      object N1: TMenuItem
+        Caption = '-'
+      end
+      object Close1: TMenuItem
+        Caption = '&Close'
+        OnClick = Close1Click
+      end
+    end
+    object View1: TMenuItem
+      Caption = '&View'
+      object Clearclicktrack1: TMenuItem
+        Caption = '&Clear click track'
+        OnClick = Clearclicktrack1Click
       end
     end
   end

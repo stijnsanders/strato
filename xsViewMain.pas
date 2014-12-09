@@ -4,7 +4,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, ComCtrls, Menus, stratoSphere;
+  Dialogs, ComCtrls, Menus, stratoSphere, ExtCtrls, StdCtrls;
 
 type
   TXsTreeNode=class(TTreeNode)
@@ -20,6 +20,12 @@ type
     File1: TMenuItem;
     Open1: TMenuItem;
     OpenDialog1: TOpenDialog;
+    ListBox1: TListBox;
+    Splitter1: TSplitter;
+    N1: TMenuItem;
+    Close1: TMenuItem;
+    View1: TMenuItem;
+    Clearclicktrack1: TMenuItem;
     procedure Open1Click(Sender: TObject);
     procedure TreeView1CreateNodeClass(Sender: TCustomTreeView;
       var NodeClass: TTreeNodeClass);
@@ -27,6 +33,9 @@ type
       var AllowExpansion: Boolean);
     procedure TreeView1DblClick(Sender: TObject);
     procedure AppActivate(Sender: TObject);
+    procedure ListBox1DblClick(Sender: TObject);
+    procedure Close1Click(Sender: TObject);
+    procedure Clearclicktrack1Click(Sender: TObject);
   private
     FSphere:TStratoSphere;
     StratoTokenizeLineIndex:cardinal;
@@ -36,6 +45,7 @@ type
     function ListNode(n: TTreeNode; const prefix: string;
       i: cardinal): TXsTreeNode;
     function BuildNode(Node: TTreeNode; i: cardinal): TXsTreeNode;
+    procedure JumpTo(x:cardinal);
   protected
     procedure DoCreate; override;
     procedure DoShow; override;
@@ -83,6 +93,13 @@ begin
 
   StratoTokenizeLineIndex:=FSphere.Header.SrcIndexLineMultiplier;
 
+  ListBox1.Items.BeginUpdate;
+  try
+    ListBox1.Items.Clear;
+  finally
+    ListBox1.Items.EndUpdate;
+  end;
+
   TreeView1.Items.BeginUpdate;
   try
     TreeView1.Items.Clear;
@@ -106,54 +123,73 @@ end;
 procedure TForm1.TreeView1DblClick(Sender: TObject);
 var
   n:TTreeNode;
-  a:array of cardinal;
-  i,ai,al:cardinal;
-  b:boolean;
+  i:integer;
 begin
   n:=TreeView1.Selected;
   if (n<>nil) and (n is TXsTreeNode) then
    begin
-    i:=(n as TXsTreeNode).JumpIndex;
-    if i<>0 then
+    JumpTo((n as TXsTreeNode).JumpIndex);
+    if n<>TreeView1.Selected then
      begin
-      al:=0;
-      ai:=0;
-      while i<>0 do
+      while (n<>nil) and not((n is TXsTreeNode) and ((n as TXsTreeNode).Index<>0)) do
+        n:=n.Parent;
+      if n<>nil then
        begin
-        if ai=al then
-         begin
-          inc(al,$400);//grow;
-          SetLength(a,al);
-         end;
-         a[ai]:=i;
-         inc(ai);
-         i:=FSphere[i].Parent;
+        i:=ListBox1.Items.IndexOf(n.Text);
+        if i=-1 then i:=ListBox1.Items.Add(n.Text);
+        ListBox1.ItemIndex:=i;
        end;
-      n:=TreeView1.Items.GetFirstNode;
-      b:=true;
-      while (ai<>0) and (n<>nil) do
+     end;
+   end;
+end;
+
+procedure TForm1.JumpTo(x:cardinal);
+var
+  n:TTreeNode;
+  a:array of cardinal;
+  i,ai,al:cardinal;
+  b:boolean;
+begin
+  if x<>0 then
+   begin
+    i:=x;
+    al:=0;
+    ai:=0;
+    while i<>0 do
+     begin
+      if ai=al then
        begin
-        dec(ai);
-        while (n<>nil) and not((n is TXsTreeNode) and ((n as TXsTreeNode).Index=a[ai])) do
-         begin
-          if (n is TXsTreeNode) and (n.HasChildren) and (n.Count=0)
-            and ((n as TXsTreeNode).Index=0) then
-            TreeView1Expanding(nil,n,b);
-          n:=n.GetNext;
-         end;
-        if n<>nil then TreeView1Expanding(nil,n,b);
+        inc(al,$400);//grow;
+        SetLength(a,al);
        end;
-      if n=nil then
+       a[ai]:=i;
+       inc(ai);
+       i:=FSphere[i].Parent;
+     end;
+    n:=TreeView1.Items.GetFirstNode;
+    b:=true;
+    while (ai<>0) and (n<>nil) do
+     begin
+      dec(ai);
+      while (n<>nil) and not((n is TXsTreeNode) and ((n as TXsTreeNode).Index=a[ai])) do
        begin
-        //make here?
-        n:=TreeView1.Selected;
-        TreeView1.Selected:=BuildNode(n,(n as TXsTreeNode).JumpIndex);
-       end
-      else
-       begin
-        n.MakeVisible;
-        TreeView1.Selected:=n;
+        if (n is TXsTreeNode) and (n.HasChildren) and (n.Count=0)
+          and ((n as TXsTreeNode).Index=0) then
+          TreeView1Expanding(nil,n,b);
+        n:=n.GetNext;
        end;
+      if n<>nil then TreeView1Expanding(nil,n,b);
+     end;
+    if n=nil then
+     begin
+      //make here?
+      n:=TreeView1.Selected;
+      TreeView1.Selected:=BuildNode(n,(n as TXsTreeNode).JumpIndex);
+     end
+    else
+     begin
+      n.MakeVisible;
+      TreeView1.Selected:=n;
      end;
    end;
 end;
@@ -263,7 +299,7 @@ begin
         ListNode(n,':dft=',p.InitialValue);
         ListNode(n,':val=',p.Subject);
        end;
-      ttThis:
+      ttThis,ttInherited:
         n.JumpIndex:=p.EvaluatesTo;
       ttVarIndex:
        begin
@@ -287,13 +323,13 @@ begin
       ttUnaryOp:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        j:=p.Right;
+        JumpNode(n,':Right:',p.Right);
        end;
       ttBinaryOp:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        ListNode(n,':Left',p.Left);
-        ListNode(n,':Right',p.Right);
+        JumpNode(n,':Left:',p.Left);
+        JumpNode(n,':Right:',p.Right);
        end;
       ttCast:
        begin
@@ -390,6 +426,42 @@ begin
     end;
    end;
   //AllowExpansion:=true;
+end;
+
+procedure TForm1.ListBox1DblClick(Sender: TObject);
+var
+  i,j,l:integer;
+  s:string;
+begin
+  if ListBox1.ItemIndex<>-1 then
+   begin
+    s:=ListBox1.Items[ListBox1.ItemIndex];
+    l:=Length(s);
+    i:=1;
+    j:=0;
+    while (i<l) and (s[i]<>':') do
+     begin
+      j:=j*10+(byte(s[i]) and $F);
+      inc(i);
+     end;
+    JumpTo(j);
+    if TreeView1.Selected<>nil then TreeView1.SetFocus;
+   end;
+end;
+
+procedure TForm1.Close1Click(Sender: TObject);
+begin
+  Close;
+end;
+
+procedure TForm1.Clearclicktrack1Click(Sender: TObject);
+begin
+  ListBox1.Items.BeginUpdate;
+  try
+    ListBox1.Items.Clear;
+  finally
+    ListBox1.Items.EndUpdate;
+  end;
 end;
 
 end.

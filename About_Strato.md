@@ -176,59 +176,6 @@ Other
 * ref counting
 * weak ref
 
-TODO
-====
-
-* heap (malloc, check stack overflow)
-* strings on heap, strings from/to array of chars
-* struct initial values
-* arguments: read-only (except when by ref)
-* infer untyped local when first used as output argument
-* function variable, also as result x(x)(x) etc.
-* JSON, array literals (requires 'standard' key-value storage solution)
-* syscall loadlibrary, COM/OLE/ActiveX...
-* output LLVMIR? GCC? C?
-* initialization/finalization per unit/module/namespace
-* chained comparison operators (as in 2 < x < 8 )
-* [or] "---" denoting 'implementation': declarations below line not accessible from 'outside'
-* signature as forward?
-* threads (or whichever fancy async thing in vogue by then)
-* thread local vars
-* types, classes! (proper polymorphism)
-* constructors, destructor
-* getters, setters (with parameters [])
-* protected, private (-, -- prefix?)
-* interfaces
-* field not found? "[]"(x:string) method? parse into call
-* accept object reference as selection boolean
-* accept "0" as null reference
-* foreach like &(item=collection) Enumerable interface
-* calling conventions?
-* something to avoid pre-processors (function versions like in D?)
-* disallow adding to namespaces from 'outside'
-* call stacks on exception
-* detect 'declared but never used'
-* detect variable unassigned or no initial value prior to first use
-* generics/templates
-* something like 'parameters into' a code block (i.e. lambda)
-* enable self-referencing classes (forward?)
-* 'check' method to call on each varindex (stateful objects)
-* switch,case syntax
-* proper docs/guide/specs/tutorials
-* conditional compilation
-
-IDEA'S
-======
-
-* dump: store errors in sphere data file and show inbetween things
-* merge xsu's?
-* still to InheritedFrom on ttRecord?
-
-DO OR DON'T?
-============
-
-* namespace prefix: more namespace defs in one file? (anonymous namespace?)
-
 Considerations
 ==============
 

@@ -91,7 +91,7 @@ ImageBase=4194304
 ExeDescription=
 [Directories]
 OutputDir=
-UnitOutputDir=
+UnitOutputDir=dcu
 PackageDLLOutputDir=
 PackageDCPOutputDir=
 SearchPath=

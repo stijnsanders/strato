@@ -7,7 +7,6 @@ ttt1:number;
 
 sig1(x,y:number):number;
 
-
 ttt2:number;
 
 sig1(x:number):number{
@@ -22,13 +21,13 @@ sig1(x,y:number):number{
 ttt4:number;
 
 object:={
-	_basetype:pointer;//class
+	_basetype:type;//class
 	_refcount:number;
 	//implemented interfaces?
 }
 
 object(){
-	_basetype:=0:pointer;
+	_basetype:=?@@@;
 	_refcount:=0;
 }
 
@@ -67,6 +66,7 @@ test1(){
 }
 
 test1(x:number){
+	@@@();
 	_value:=x;
 }
 
