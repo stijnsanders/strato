@@ -26,6 +26,11 @@ type
     Close1: TMenuItem;
     View1: TMenuItem;
     Clearclicktrack1: TMenuItem;
+    panHeader: TPanel;
+    txtGoTo: TEdit;
+    btnGoTo: TButton;
+    Tools1: TMenuItem;
+    GoTo1: TMenuItem;
     procedure Open1Click(Sender: TObject);
     procedure TreeView1CreateNodeClass(Sender: TCustomTreeView;
       var NodeClass: TTreeNodeClass);
@@ -36,6 +41,9 @@ type
     procedure ListBox1DblClick(Sender: TObject);
     procedure Close1Click(Sender: TObject);
     procedure Clearclicktrack1Click(Sender: TObject);
+    procedure txtGoToKeyPress(Sender: TObject; var Key: Char);
+    procedure GoTo1Click(Sender: TObject);
+    procedure btnGoToClick(Sender: TObject);
   private
     FSphere:TStratoSphere;
     StratoTokenizeLineIndex:cardinal;
@@ -283,14 +291,14 @@ begin
       ttOverload:
        begin
         JumpNode(n,':sig=',p.Signature);
-        ListNode(n,':arg->',p.FirstArgument);
+        JumpNode(n,':arg->',p.FirstArgument);
         BuildNode(n,p.Body);
        end;
       ttFnCall:
        begin
         JumpNode(n,':fn=',p.Subject);
         JumpNode(n,':sig=',p.Signature);
-        ListNode(n,':arg->',p.FirstArgument);
+        JumpNode(n,':arg->',p.FirstArgument);
         JumpNode(n,':{}->',p.Body);
        end;
       ttArgument:
@@ -379,7 +387,7 @@ begin
        begin
         JumpNode(n,':sub=',p.Subject);
         JumpNode(n,':sig=',p.Signature);
-        ListNode(n,':arg->',p.FirstArgument);
+        JumpNode(n,':arg->',p.FirstArgument);
         BuildNode(n,p.Body);
        end;
       ttDestructor:
@@ -462,6 +470,24 @@ begin
   finally
     ListBox1.Items.EndUpdate;
   end;
+end;
+
+procedure TForm1.txtGoToKeyPress(Sender: TObject; var Key: Char);
+begin
+  if Key=#13 then btnGoTo.Click;
+end;
+
+procedure TForm1.GoTo1Click(Sender: TObject);
+begin
+  panHeader.Visible:=true;
+  txtGoTo.SelectAll;
+  txtGoTo.SetFocus;
+end;
+
+procedure TForm1.btnGoToClick(Sender: TObject);
+begin
+  JumpTo(StrToInt(txtGoTo.Text));
+  if TreeView1.Selected<>nil then TreeView1.SetFocus;
 end;
 
 end.

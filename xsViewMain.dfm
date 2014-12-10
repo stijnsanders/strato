@@ -25,9 +25,9 @@ object Form1: TForm1
   end
   object TreeView1: TTreeView
     Left = 0
-    Top = 0
+    Top = 41
     Width = 541
-    Height = 213
+    Height = 172
     Align = alClient
     HideSelection = False
     Indent = 19
@@ -50,9 +50,37 @@ object Form1: TForm1
     TabOrder = 1
     OnDblClick = ListBox1DblClick
   end
+  object panHeader: TPanel
+    Left = 0
+    Top = 0
+    Width = 541
+    Height = 41
+    Align = alTop
+    BevelOuter = bvNone
+    TabOrder = 2
+    Visible = False
+    object txtGoTo: TEdit
+      Left = 8
+      Top = 8
+      Width = 57
+      Height = 25
+      AutoSize = False
+      TabOrder = 0
+      OnKeyPress = txtGoToKeyPress
+    end
+    object btnGoTo: TButton
+      Left = 72
+      Top = 8
+      Width = 75
+      Height = 25
+      Caption = 'Go To'
+      TabOrder = 1
+      OnClick = btnGoToClick
+    end
+  end
   object MainMenu1: TMainMenu
     Left = 8
-    Top = 8
+    Top = 32
     object File1: TMenuItem
       Caption = '&File'
       object Open1: TMenuItem
@@ -75,12 +103,20 @@ object Form1: TForm1
         OnClick = Clearclicktrack1Click
       end
     end
+    object Tools1: TMenuItem
+      Caption = '&Tools'
+      object GoTo1: TMenuItem
+        Caption = '&Go To...'
+        ShortCut = 16455
+        OnClick = GoTo1Click
+      end
+    end
   end
   object OpenDialog1: TOpenDialog
     DefaultExt = 'xsu'
     Filter = 'xsv file (*.xsu)|*.xsu|All files (*.*)|*.*'
     InitialDir = '.'
     Left = 40
-    Top = 8
+    Top = 32
   end
 end
