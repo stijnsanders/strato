@@ -36,8 +36,7 @@ type
     pMulDiv,
       p_Cast,
     pUnary,
-    pSizeOf,
-    pAddressOf
+    pTypeOf,pSizeOf,pAddressOf
   );
 
 function StratoParseSource(Sphere:TStratoSphere;Source:TStratoSource):TStratoIndex;
@@ -1116,6 +1115,11 @@ var
             x0.EvaluatesTo:=TypeDecl_number;
             x0.Right:=s1;//?
            end;
+          pTypeOf:
+           begin
+            x0.EvaluatesTo:=TypeDecl_type;
+            x0.Right:=s1;
+           end;
           pAddressOf:
            begin
             //TODO: check ttVar?
@@ -1822,13 +1826,18 @@ begin
                 r:=Sphere[r].Next;
               if r<>0 then
                 Source.Error('duplicate destructor');
-              //add, start code block
-              r:=Sphere.Add(ttDestructor,nn);
+              //add
+              r:=Sphere.AddTo(Sphere[q].FirstItem,ttDestructor,nn);
+              rx:=SetSrc(r,q);
+              //signature
+              p:=Sphere.Add(ttSignature,nn);
+              SetSrc(p,r).Subject:=q;
+              rx.Signature:=p;
+              //start code block
               cb:=Sphere.Add(ttCodeBlock,'');
               cbInhCalled:=false;
               qx:=SetSrc(cb,r);
-              SetSrc(r,q).Body:=cb;
-              Sphere.AddTo(Sphere[q].FirstItem,r);
+              rx.Body:=cb;
               //'this' inside of code block
               p:=Sphere.AddTo(qx.FirstItem,ttThis,'@@');
               px:=SetSrc(p,cb);
@@ -1843,6 +1852,7 @@ begin
 
           stAOpen:
            begin
+            ns:=Locals[0];
             cb:=Sphere.Add(ttCodeBlock,'');
             qx:=SetSrc(cb,ns);
             if PStratoSourceFile(Sphere[src]).InitializationCode=0 then
@@ -2042,6 +2052,7 @@ begin
               if (px.ThingType=ttFunction)
                 or (px.ThingType=ttVarIndex) //and px.Subject.ThingType=ttFunction
                 or (px.ThingType=ttClass) //constructor?
+                or (px.ThingType=ttInherited) 
                 or ((px.ThingType=ttVar) and (px.EvaluatesTo<>0)
                   and (Sphere[px.EvaluatesTo].ThingType=ttPointer)
                   and (Sphere[Sphere[px.EvaluatesTo].EvaluatesTo].ThingType=ttSignature)
@@ -2139,6 +2150,7 @@ begin
              begin
               r:=ResType(Sphere,p);
               Sphere[cb].EvaluatesTo:=r;
+              //TODO: if parent is overload with return value, assign
               CheckPassed(p);
               CbAdd(p);
              end;
@@ -2188,11 +2200,7 @@ begin
                 if (rx.ThingType=ttConstructor) and not(cbInhCalled)
                   and (rx.Parent<>TypeDecl_object) and (rx.Parent<>0) then
                  begin
-                  q:=Sphere[rx.Parent].InheritsFrom;
-                  if q<>0 then q:=Sphere[q].FirstConstructor;
-                  //TODO: constructor with equal/matching argument list
-                  while (q<>0) and (Sphere[q].FirstArgument<>0) do
-                    q:=Sphere[q].Next;
+                  q:=StratoFnCallFindInherited(Sphere,rx,0);
                   if q=0 then
                     Source.Error('unable to find base constructor')
                   else
@@ -2208,6 +2216,10 @@ begin
                     //qx.FirstArgument:=
                     qx.Next:=Sphere[p].FirstStatement;
                     Sphere[p].FirstStatement:=q;
+                    //arguments
+                    StratoFnArgByValues(Sphere,q,
+                      Sphere[qx.Signature].FirstArgument,
+                      Sphere[Sphere[p].Parent].FirstArgument);
                    end;
                  end;
 
@@ -2547,6 +2559,13 @@ begin
             Push(pAddressOf,q);
            end;
 
+          stQuestionMark://"?"
+           begin
+            q:=Sphere.Add(ttUnaryOp,'');
+            SetSrc(q,cb).Op:=cardinal(st);
+            Push(pTypeOf,q);
+           end;
+
           stCaret://"^"
             if p=0 then
               Source.Error('unsupported syntax')
@@ -2567,12 +2586,46 @@ begin
                   Source.Error('dereference expected on pointer');
              end;
 
+          stInherited://"@@@"
+           begin
+            q:=Sphere[cb].Parent;
+            if q<>0 then
+              case Sphere[q].ThingType of
+                ttConstructor,ttDestructor:
+                  q:=Sphere[q].Parent;
+                ttOverload:
+                  q:=Sphere[Sphere[q].Parent].Parent;
+                //TODO: ttProperty!
+                else q:=0;
+              end;
+            if (q<>0) and (Sphere[q].ThingType=ttClass) then
+              if q=TypeDecl_object then
+               begin
+                p:=Sphere.Add(ttInherited,'@@@');
+                SetSrc(p,cb);
+               end
+              else
+               begin
+                if q<>0 then
+                 begin
+                  qx:=Sphere[q];
+                  if qx.ThingType=ttClass then q:=qx.InheritsFrom else q:=0;
+                 end;
+                if q=0 then
+                  Source.Error('"@@@" undefined')
+                else
+                 begin
+                  p:=Sphere.Add(ttInherited,'@@@');
+                  SetSrc(p,cb).EvaluatesTo:=q;
+                 end;
+               end
+            else
+              Source.Error('"@@@" undefined');
+            if p<>0 then cbInhCalled:=true;
+           end;
+
           //TODO:
-          stQuestionMark,//"?"
-
           stImport,//"<<<"
-
-          stInherited,//"@@@" //TODO: cbInhCalled:=true;
 
           stOpTypeIs://"?="
 

@@ -5,6 +5,9 @@ interface
 uses SysUtils, Classes, stratoTokenizer;
 
 type
+  TStratoSourceErrorHandler=procedure(Sender:TObject;Line,LPos:cardinal;
+    const ErrorMsg:string) of object;
+
   TStratoSource=class(TObject)
   private
     FTIndex,FTLast,FTLength,FErrors:integer;
@@ -12,6 +15,7 @@ type
     FTokens:TStratoSourceTokenList;
     FSource:UTF8String;
     FFilePath:string;
+    FOnError:TStratoSourceErrorHandler;
   public
     procedure LoadFromFile(const FilePath:string);
     function IsEmpty:boolean;
@@ -29,6 +33,7 @@ type
     property FilePath:string read FFilePath;
     property ErrorCount:integer read FErrors;
     property Tokens:TStratoSourceTokenList read FTokens;
+    property OnError:TStratoSourceErrorHandler read FOnError write FOnError;
   end;
 
 implementation
@@ -284,25 +289,27 @@ begin
 end;
 
 procedure TStratoSource.Error(const msg:string);
-//var
-//  s:UTF8String;
+var
+  x,y:cardinal;
 begin
   inc(FErrors);
   if FTLast<FTLength then
    begin
+    x:=FTokens[FTLast].SrcPos div StratoTokenizeLineIndex;
+    y:=FTokens[FTLast].SrcPos mod StratoTokenizeLineIndex;
     //TODO: config switch append code snippet
 //    if FTokens[FTLast].Length>40 then s:=' "'+Copy(FSource,FTokens[FTLast].Index,40)+'...'
 //      else s:=' "'+Copy(FSource,FTokens[FTLast].Index,FTokens[FTLast].Length)+'"';
-    Writeln(ErrOutput,Format('%s(%d:%d): %s%s',[FFilePath
-      ,FTokens[FTLast].SrcPos div StratoTokenizeLineIndex
-      ,FTokens[FTLast].SrcPos mod StratoTokenizeLineIndex// ,.Index?
-      ,msg
-,''//      ,s
-      ]));
+    Writeln(ErrOutput,Format('%s(%d:%d): %s',[FFilePath,x,y,msg]));//Index?
    end
   else
+   begin
+    x:=0;
+    y:=0;
     Writeln(ErrOutput,Format('%s(EOF): %s',[FFilePath,msg]));
+   end;
   //raise?
+  if @FOnError<>nil then FOnError(Self,x,y,msg);
 end;
 
 function TStratoSource.SrcPos: integer;

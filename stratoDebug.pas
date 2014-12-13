@@ -16,7 +16,7 @@ const
   TokenName:array[TStratoToken] of string=(
     'id','string','numeric','',
     ';',',','.',':','@','^','?','&','(',')','{','}','[',']',
-    '<<<','>>>',':::','???','!!!','@@','@@@','??',
+    '---','<<<','>>>',':::','???','!!!','@@','@@@','??',
     ':=','+=','-=','*=','/=','%=','||=','&&=',
     '=','<>','<','<=','>','>=','&&','||','!','|!',
     '+','-','*','/','%','++','--','<<','>>','@?','?=',
@@ -36,10 +36,12 @@ function StratoDumpThing(s:TStratoSphere; i:cardinal; p:PStratoThing):string;
 begin
   case p.ThingType of
     ttSourceFile:
-      Result:=Format('src  fn=%d ini=%d fin=%d',
+      Result:=Format('src  fn=%d ns=%d ini=%d fin=%d',
         [PStratoSourceFile(p).FileName
+        ,PStratoSourceFile(p).NameSpace
         ,PStratoSourceFile(p).InitializationCode
-        ,PStratoSourceFile(p).FinalizationCode]);
+        ,PStratoSourceFile(p).FinalizationCode
+        ]);
     ttNameSpace:
       Result:=Format('ns   %s  ->%d  ini=%d fin=%d',
         [s.FQN(i),p.FirstItem
@@ -93,8 +95,9 @@ begin
       Result:=Format('arg  %s  t=%d d=%d v=%d',
         [s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Subject]);
     ttThis:
-      Result:=Format('this @%d t=%d',
-        [p.Offset,p.EvaluatesTo]);
+      Result:=Format('this @%d t=%d',[p.Offset,p.EvaluatesTo]);
+    ttInherited:
+      Result:=Format('inh  t=%d',[p.EvaluatesTo]);
     ttVarIndex:
       Result:=Format('.[]  %d.%d[%d]  t=%d',
         [p.Parent,p.Subject,p.FirstArgument,p.EvaluatesTo]);
@@ -112,7 +115,7 @@ begin
         [p.Left,TokenName[TStratoToken(p.Op)],p.Right,p.EvaluatesTo]);
     ttCast:
       Result:=Format('cast %d into %d',
-        [p.Subject,p.Signature]);
+        [p.Subject,p.EvaluatesTo]);
     ttSelection:
       Result:=Format('if   (%d){%d}{%d} t=%d',
         [p.DoIf,p.DoThen,p.DoElse,p.EvaluatesTo]);
@@ -150,8 +153,8 @@ begin
       Result:=Format('ctor %d: %d(%d){%d}',
         [p.Parent,p.Signature,p.FirstArgument,p.Body]);
     ttDestructor:
-      Result:=Format('dtor %d: (){%d}',
-        [p.Parent,p.Body]);
+      Result:=Format('dtor %d: %d(){%d}',
+        [p.Parent,p.Signature,p.Body]);
     ttInterface:
       Result:=Format('intf %s  ->%d <-%d',
         [s.FQN(i),p.FirstItem,p.InheritsFrom]);

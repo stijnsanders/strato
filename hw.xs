@@ -1,24 +1,7 @@
 hw
 //hello world example program
 
-sig1(x:number):number;
-
-ttt1:number;
-
-sig1(x,y:number):number;
-
-ttt2:number;
-
-sig1(x:number):number{
-	__writeln("first sig, decl later");
-}
-
-ttt3:number;
-
-sig1(x,y:number):number{
-}
-
-ttt4:number;
+<<<"x.xs"
 
 object:={
 	_basetype:type;//class
@@ -70,20 +53,26 @@ test1(x:number){
 	_value:=x;
 }
 
+test1.vtest(x:number):number{
+	vtest:=x+2;
+}
+
 test1.x:number{??:=_value;}{_value:=??;};
 test1.y:number{??:=_value;};
 
-/*
 test2:test1={}
 test2(){
 	@@@(123);
 }
 -test2(){
 	__writeln("pre dtor");
-	@@@;
+	@@@();
 	__writeln("post dtor");
 }
-*/
+
+test2.vtest(x:number):number{
+	vtest:=@@@(x+2)+2;
+}
 
 //test1.xx[y:number]:number{??:=_value*y;}{_value:=??/y;};
 //test1.""[x:number]:number{}{};
@@ -100,6 +89,11 @@ test2(){
 	x:=test1(11);
 	Shell.write((x:test1).x:string);
 	(x:test1).x:=100;
+	
+	yy:test1;
+	yy:=test2(111);
+	Shell.write(yy.vtest(222):string);
+	
 }
 
 /*
@@ -140,7 +134,6 @@ test.Next():string{
 	xx:=test.test1;
 	
 	Shell.write(y.xx(1));
-	
 }{
 	Shell.write("all done");
 }

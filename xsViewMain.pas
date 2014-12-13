@@ -135,20 +135,23 @@ var
 begin
   n:=TreeView1.Selected;
   if (n<>nil) and (n is TXsTreeNode) then
-   begin
-    JumpTo((n as TXsTreeNode).JumpIndex);
-    if n<>TreeView1.Selected then
+    if FSphere=nil then
+      Open1.Click
+    else
      begin
-      while (n<>nil) and not((n is TXsTreeNode) and ((n as TXsTreeNode).Index<>0)) do
-        n:=n.Parent;
-      if n<>nil then
+      JumpTo((n as TXsTreeNode).JumpIndex);
+      if n<>TreeView1.Selected then
        begin
-        i:=ListBox1.Items.IndexOf(n.Text);
-        if i=-1 then i:=ListBox1.Items.Add(n.Text);
-        ListBox1.ItemIndex:=i;
+        while (n<>nil) and not((n is TXsTreeNode) and ((n as TXsTreeNode).Index<>0)) do
+          n:=n.Parent;
+        if n<>nil then
+         begin
+          i:=ListBox1.Items.IndexOf(n.Text);
+          if i=-1 then i:=ListBox1.Items.Add(n.Text);
+          ListBox1.ItemIndex:=i;
+         end;
        end;
      end;
-   end;
 end;
 
 procedure TForm1.JumpTo(x:cardinal);
@@ -170,6 +173,7 @@ begin
         inc(al,$400);//grow;
         SetLength(a,al);
        end;
+       if FSphere[i].ThingType=ttBinaryData then dec(i);
        a[ai]:=i;
        inc(ai);
        i:=FSphere[i].Parent;
@@ -186,13 +190,15 @@ begin
           TreeView1Expanding(nil,n,b);
         n:=n.GetNext;
        end;
-      if n<>nil then TreeView1Expanding(nil,n,b);
+      if (n<>nil) and (n is TXsTreeNode) then
+        TreeView1Expanding(nil,n,b);
      end;
     if n=nil then
      begin
       //make here?
       n:=TreeView1.Selected;
-      TreeView1.Selected:=BuildNode(n,(n as TXsTreeNode).JumpIndex);
+      if n<>nil then
+        TreeView1.Selected:=BuildNode(n,(n as TXsTreeNode).JumpIndex);
      end
     else
      begin
@@ -238,7 +244,8 @@ end;
 function TForm1.ListNode(n:TTreeNode;const prefix:string;i:cardinal):TXsTreeNode;
 begin
   if i=0 then
-    Result:=nil
+    //Result:=nil
+    Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode
   else
    begin
     Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode;
@@ -260,7 +267,7 @@ begin
    begin
     p:=FSphere[i];
     s:=IntToStr(i)+': '+StratoDumpThing(FSphere,i,p);
-    if p.Source<>0 then s:=Format('%s  [%s#%d:%d]',[s
+    if p.Source<>0 then s:=Format('%s  [%s(%d:%d)]',[s
       ,FSphere.GetBinaryData(PStratoSourceFile(FSphere[p.Source]).FileName)
       ,p.SrcPos div StratoTokenizeLineIndex
       ,p.SrcPos mod StratoTokenizeLineIndex
@@ -298,7 +305,7 @@ begin
        begin
         JumpNode(n,':fn=',p.Subject);
         JumpNode(n,':sig=',p.Signature);
-        JumpNode(n,':arg->',p.FirstArgument);
+        ListNode(n,':arg->',p.FirstArgument);
         JumpNode(n,':{}->',p.Body);
        end;
       ttArgument:
@@ -341,8 +348,9 @@ begin
        end;
       ttCast:
        begin
-        n.JumpIndex:=p.Signature;
-        j:=p.Subject;
+        n.JumpIndex:=p.EvaluatesTo;
+        //j:=p.Subject;
+        JumpNode(n,':sub=',p.Subject);
        end;
       ttClass:
        begin
@@ -391,7 +399,7 @@ begin
         BuildNode(n,p.Body);
        end;
       ttDestructor:
-       j:=p.Body;
+        j:=p.Body;
       ttInterface:
        begin
         JumpNode(n,':InheritsFrom->',p.InheritsFrom);
@@ -486,6 +494,7 @@ end;
 
 procedure TForm1.btnGoToClick(Sender: TObject);
 begin
+  TreeView1.Selected:=nil;
   JumpTo(StrToInt(txtGoTo.Text));
   if TreeView1.Selected<>nil then TreeView1.SetFocus;
 end;

@@ -2,6 +2,8 @@ unit stratoSphere;
 
 interface
 
+{$D-}
+
 uses SysUtils, Classes, stratoDict, stratoSource, stratoDecl;
 
 type
@@ -30,6 +32,8 @@ type
     procedure LoadFromFile(const FilePath:string);
     procedure SaveToFile(const FilePath:string);
     procedure Error(x:TStratoIndex;const Msg:string);
+    procedure InlineError(Sender:TObject;Line,LPos:cardinal;
+      const ErrorMsg:string);
     property Dict:TStringDictionary read FDict;
     property Node[ID:TStratoIndex]:PStratoThing read GetNode; default;
     property BasePath:string read FBasePath;
@@ -363,6 +367,13 @@ begin
   finally
     f.Free;
   end;
+end;
+
+procedure TStratoSphere.InlineError(Sender: TObject; Line, LPos: cardinal;
+  const ErrorMsg: string);
+begin
+  AddBinaryData(Format('### %s(%d:%d): %s',
+    [(Sender as TStratoSource).FilePath,Line,LPos,ErrorMsg]));
 end;
 
 end.

@@ -13,14 +13,18 @@ TODO
 * initialization/finalization per unit/module/namespace
 * chained comparison operators (as in 2 < x < 8 )
 * [or] "---" denoting 'implementation': declarations below line not accessible from 'outside'
-* signature as forward?
 * threads (or whichever fancy async thing in vogue by then)
 * thread local vars
 * types, classes! (proper polymorphism)
 * constructors, destructor
+* virtual methods (as it currently stands, inheriters but pointer to base class don't jump to overriden overload)
+* data hiding (no access to values of class from 'outside' of class? doc!)
 * getters, setters (with parameters [])
+* inherited (@@@) on property getters/setters
 * protected, private (-, -- prefix?)
+* abstract methods (just with missing implementation?)
 * interfaces
+* 'default' property "" for "[]" on instance
 * field not found? "[]"(x:string) method? parse into call
 * accept object reference as selection boolean
 * accept "0" as null reference
@@ -28,7 +32,7 @@ TODO
 * calling conventions?
 * something to avoid pre-processors (function versions like in D?)
 * disallow adding to namespaces from 'outside'
-* call stacks on exception
+* call-stack on exception
 * detect 'declared but never used'
 * detect variable unassigned or no initial value prior to first use
 * generics/templates
@@ -38,6 +42,9 @@ TODO
 * switch,case syntax
 * proper docs/guide/specs/tutorials
 * conditional compilation
+* xsView: status-bar with 'path' of node (build from parents with an index)
+* xsView: right-pane with source-file line:pos highlighted
+* xsView: look-up, global and local(=relative)
 
 IDEA'S
 ======

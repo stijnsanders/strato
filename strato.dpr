@@ -43,7 +43,7 @@ var
   end;
 
 var
-  DoRun,DoTokenize,DoRunTime:boolean;
+  DoRun,DoTokenize,DoRunTime,DoInlineErrors:boolean;
   DoDump,DoDumpHR:string;
 
 begin
@@ -59,6 +59,7 @@ begin
     Writeln('  -U <filename>  binary dump sphere');
     Writeln('  -H <filename>  human-readable dump sphere');
     Writeln('  -I <filename>  import sphere');
+    Writeln('  -E             inline errors into sphere as binary entries');
 
     //TODO: export LLVMIR
     //TODO: params from file
@@ -72,6 +73,7 @@ begin
       DoRun:=true;
       DoTokenize:=false;
       DoRunTime:=true;
+      DoInlineErrors:=false;
       DoDump:='';
       DoDumpHR:='';
 
@@ -108,6 +110,7 @@ begin
                   n.LoadFromFile(xNext);//TODO: merge?
                   DoRunTime:=false;
                  end;
+                'E':DoInlineErrors:=true;
                 else
                   Writeln('unknown switch "'+x+'"');
               end;
@@ -126,6 +129,7 @@ begin
 
             //do file
             s:=TStratoSource.Create;
+            if DoInlineErrors then s.OnError:=n.InlineError;
             s.LoadFromFile(x);
             if DoTokenize then
               StratoDumpTokens(s.Tokens)

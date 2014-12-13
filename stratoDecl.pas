@@ -176,15 +176,18 @@ const
     //Offset
     //EvaluatesTo (ttTypeDecl)
 
+  ttInherited    = $0029;
+    //EvaluatesTo (ttTypeDecl)
+
   ttPointer      = $00C0;
     //ByteSize: SystemWordSize
     //EvaluatesTo (ttTypeDecl)
 
-  ttAddressOf    = $0029;
+  ttAddressOf    = $002A;
     //EvaluatesTo (ttTypeDecl)
     //ValueFrom (ttVar)
 
-  ttDereference  = $002A;
+  ttDereference  = $002B;
     //EvaluatesTo (ttTypeDecl): from pointer
     //ValueFrom (ttVar): of type pointer
 
@@ -202,11 +205,12 @@ const
     //InheritsFrom (ttClass)
 
   ttConstructor  = $000A;
-    //Signature (ttSignature): first overload signature
+    //Signature (ttSignature)
     //Body (ttCodeBlock): first overload body
     //FirstArgument (*): first argument value in overload body
 
   ttDestructor   = $000B;
+    //Signature (ttSignature)
     //Body (ttCodeBlock)
 
   ttInterface    = $00D1;
@@ -214,7 +218,7 @@ const
     //FirstItem (ttVar, ttFunction, ttProperty)
     //InheritsFrom (ttRecord)
 
-  ttProperty     = $002B;
+  ttProperty     = $002C;
     //EvaluatesTo (ttTypeDecl)
     //ValueFrom (ttOverload)
     //AssignTo (ttOverload)

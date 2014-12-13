@@ -23,6 +23,7 @@ type
     stAOpen,stAClose,//"{}"
     stBOpen,stBClose,//"[]"
 
+    stHRule,//"---"
     stImport,//"<<<"
     stDefer,//">>>"
     stTry,//":::"
@@ -234,7 +235,16 @@ begin
         end;
       '-':
         case CodeNext(1) of
-          '-':Add(2,stOpDec);
+          '-':
+            case CodeNext(1) of
+              '-':
+               begin
+                i:=CodeIndex+3;
+                while (i<=CodeLength) and (Code[i]='-') do inc(i);
+                Add(i-CodeIndex,stHRule);
+               end;
+              else Add(2,stOpDec);
+            end;
           '=':Add(2,stOpAssignSub);
           else Add(1,stOpSub);
         end;

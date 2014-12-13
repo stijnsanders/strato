@@ -106,9 +106,11 @@ var
       r.Offset:=Sphere[q.Body].ByteSize;
       inc(Sphere[q.Body].ByteSize,ByteSize(Sphere,ReturnType));
       Sphere[q.Body].FirstItem:=p1;
-     end;
+     end
+    else
+      p1:=0;
 
-    p2:=0;
+    p2:=p1;
     for i:=0 to Length(Arguments)-1 do
      begin
       p1:=Sphere.Add(ttVar,'');
@@ -118,7 +120,8 @@ var
         if Sphere[q.Body].FirstItem=0 then
           Sphere[q.Body].FirstItem:=p1;
        end
-      else Sphere[p2].Next:=p1;
+      else
+        Sphere[p2].Next:=p1;
       p2:=p1;
       r:=Sphere[p1];
       r.Parent:=q.Body;
