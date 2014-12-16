@@ -132,17 +132,18 @@ var
       stIdentifier:
        begin
         ns:=LookupNameSpace(b);
-
         //TODO: load from standard library !!!
-        fn:=Sphere.BasePath+string(Sphere.FQN(ns))+'.xs';
-        if FileExists(fn) then
+        if b then
          begin
-          b:=false;
-          ss:=TStratoSource.Create;
-          ss.LoadFromFile(fn);
-          ns:=StratoParseSource(Sphere,ss);
+          fn:=Sphere.BasePath+string(Sphere.FQN(ns))+'.xs';
+          if FileExists(fn) then
+           begin
+            b:=false;
+            ss:=TStratoSource.Create;
+            ss.LoadFromFile(fn);
+            ns:=StratoParseSource(Sphere,ss);
+           end;
          end;
-
         if b then
           Source.Error('unknown namespace '''+string(Sphere.FQN(ns))+'''');
        end;
@@ -150,8 +151,9 @@ var
        begin
         ss:=TStratoSource.Create;
         //TODO: resolve relative path, list of paths, system paths
+        //TODO: allow duplicates? detect by full path?
         ss.LoadFromFile(string(Source.GetStr));
-        //TODO: add FNameSpaces???
+        ns:=StratoParseSource(Sphere,ss);
        end;
       else Source.Error('unsupported import subject syntax');
     end;
@@ -1267,26 +1269,19 @@ var
 
   procedure CbAdd(n:TStratoIndex);
   var
-    p,q:TStratoIndex;
+    p:TStratoIndex;
   begin
-    if Sphere[n].Parent=cb then q:=n else
+    if Sphere[n].Parent=cb then p:=n else
      begin
       //member of another chain, create an alias
-      q:=Sphere.Add(ttAlias,'');
-      SetSrc(q,cb).Subject:=n;
+      p:=Sphere.Add(ttAlias,'');
+      SetSrc(p,cb).Subject:=n;
      end;
     {$IFDEF DEBUG}
     if Sphere[n].Next<>0 then
       raise Exception.Create('broken chain detected');
     {$ENDIF}
-    p:=Sphere[cb].FirstStatement;
-    if p=0 then
-      Sphere[cb].FirstStatement:=q
-    else
-     begin
-      while Sphere[p].Next<>0 do p:=Sphere[p].Next;
-      Sphere[p].Next:=q;
-     end;
+    Sphere.Append(Sphere[cb].FirstStatement,p);
   end;
 
 var
@@ -1854,25 +1849,24 @@ begin
            begin
             ns:=Locals[0];
             cb:=Sphere.Add(ttCodeBlock,'');
-            qx:=SetSrc(cb,ns);
+            SetSrc(cb,ns);
             if PStratoSourceFile(Sphere[src]).InitializationCode=0 then
              begin
               PStratoSourceFile(Sphere[src]).InitializationCode:=cb;
-              Sphere.AddTo(Sphere[ns].FirstInitialization,cb);
+              Sphere.Append(Sphere[ns].FirstInitialization,cb);
               p:=Sphere.Add(ttAlias,'');
               SetSrc(p,ns).Subject:=cb;
-              Sphere.AddTo(Sphere.Header.FirstInitialization,p);
+              Sphere.Append(Sphere.Header.FirstInitialization,p);
              end
             else
             if PStratoSourceFile(Sphere[src]).FinalizationCode=0 then
              begin
               PStratoSourceFile(Sphere[src]).FinalizationCode:=cb;
-              qx.Next:=Sphere[ns].FirstFinalization;
+              Sphere.Prepend(Sphere[ns].FirstFinalization,cb);
               p:=Sphere.Add(ttAlias,'');
               px:=SetSrc(p,ns);
               px.Subject:=cb;
-              px.Next:=PStratoSourceFile(Sphere[src]).FinalizationCode;
-              PStratoSourceFile(Sphere[src]).FinalizationCode:=p;
+              Sphere.Prepend(Sphere.Header.FirstFinalization,p);
              end
             else
               Source.Error('Initialization and finalization code already declared.');
@@ -2250,14 +2244,7 @@ begin
                     //rx.Signature:=
                     rx.Body:=Sphere[qx.Subject].Body;
                     //rx.FirstArgument:=0;
-                    q:=Sphere[p].FirstStatement;
-                    if q=0 then
-                      Sphere[p].FirstStatement:=r
-                    else
-                     begin
-                      while (Sphere[q].Next<>0) do q:=Sphere[q].Next;
-                      Sphere[q].Next:=r;
-                     end;
+                    Sphere.Append(Sphere[p].FirstStatement,r);
                    end;
                  end;
 

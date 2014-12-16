@@ -210,28 +210,20 @@ end;
 procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
   MergeOnto:TStratoIndex);
 var
-  p,q,r:TStratoIndex;
+  p,q:TStratoIndex;
   n:TStratoName;
 begin
   if FirstItem<>0 then
    begin
-    q:=Sphere[MergeOnto].FirstItem;
-    if q=0 then
-      Sphere[MergeOnto].FirstItem:=FirstItem
-    else
-     begin
-      if q<>0 then
-        while Sphere[q].Next<>0 do q:=Sphere[q].Next;
-      Sphere[q].Next:=FirstItem;
-     end;
     p:=FirstItem;
+    Sphere.Append(Sphere[MergeOnto].FirstItem,p);
     while p<>0 do
      begin
       Sphere[p].Parent:=MergeOnto;
       n:=Sphere[p].Name;
-      r:=Sphere[MergeOnto].FirstItem;
-      while (r<>FirstItem) and (Sphere[r].Name<>n) do r:=Sphere[r].Next;
-      if r<>FirstItem then Sphere.Error(p,'duplicate identifier');
+      q:=Sphere[MergeOnto].FirstItem;
+      while (q<>FirstItem) and (Sphere[q].Name<>n) do q:=Sphere[q].Next;
+      if q<>FirstItem then Sphere.Error(p,'duplicate identifier');
       p:=Sphere[p].Next;
      end;
    end;

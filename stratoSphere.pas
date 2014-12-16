@@ -22,6 +22,8 @@ type
     function AddTo(var First:TStratoIndex;ThingType:cardinal;
       const Name:UTF8String):TStratoIndex; overload;
     function AddTo(var First:TStratoIndex;Item:TStratoIndex):boolean; overload;
+    procedure Prepend(var First:TStratoIndex;Item:TStratoIndex);
+    procedure Append(var First:TStratoIndex;Item:TStratoIndex);
     function Lookup(First:TStratoIndex;Name:TStratoName):TStratoIndex;
     function FQN(x:TStratoIndex):UTF8String;
     function AddBinaryData(const x:UTF8String):TStratoIndex;
@@ -200,6 +202,26 @@ begin
    end;
 end;
 
+procedure TStratoSphere.Prepend(var First: TStratoIndex; Item: TStratoIndex);
+begin
+  FData[Item].Next:=First;
+  First:=Item;
+end;
+
+procedure TStratoSphere.Append(var First: TStratoIndex; Item: TStratoIndex);
+var
+  p:TStratoIndex;
+begin
+  p:=First;
+  if p=0 then
+    First:=Item
+  else
+   begin
+    while FData[p].Next<>0 do p:=FData[p].Next;
+    FData[p].Next:=Item;
+   end;
+end;
+
 function TStratoSphere.GetNode(ID: TStratoIndex): PStratoThing;
 begin
   if (ID<>0) and (ID<FDataIndex) then Result:=@FData[ID] else Result:=nil;
@@ -277,23 +299,16 @@ end;
 
 procedure TStratoSphere.AddGlobalVar(x: TStratoIndex);
 var
-  p,q:TStratoIndex;
+  p:TStratoIndex;
 begin
   //assert FData[x].ThingType=strVar
   FData[x].Offset:=TStratoHeader(FData[0]).GlobalByteSize;
   if FData[x].EvaluatesTo<>0 then
     inc(TStratoHeader(FData[0]).GlobalByteSize,FData[FData[x].EvaluatesTo].ByteSize);
 
-  q:=AddInternal(ttGlobal,0);
-  FData[q].Subject:=x;
-  p:=TStratoHeader(FData[0]).FirstGlobalVar;
-  if p=0 then
-    TStratoHeader(FData[0]).FirstGlobalVar:=q
-  else
-   begin
-    while FData[p].Next<>0 do p:=FData[p].Next;
-    FData[p].Next:=q;
-   end;
+  p:=AddInternal(ttGlobal,0);
+  FData[p].Subject:=x;
+  Append(TStratoHeader(FData[0]).FirstGlobalVar,p);
 end;
 
 procedure TStratoSphere.LoadFromFile(const FilePath: string);

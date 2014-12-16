@@ -69,14 +69,7 @@ begin
       Sphere[Signature].EvaluatesTo:=Fn;
       p:=Sphere.Add(ttConstructor,'');
       Sphere[p].Parent:=Fn;
-      q:=Sphere[Fn].FirstConstructor;
-      if q=0 then
-        Sphere[Fn].FirstConstructor:=p
-      else
-       begin
-        while Sphere[q].Next<>0 do q:=Sphere[q].Next;
-        Sphere[q].Next:=p;
-       end;
+      Sphere.Append(Sphere[Fn].FirstConstructor,p);
       if CodeBlock<>0 then Sphere[CodeBlock].Parent:=p;
      end;
     else
@@ -175,14 +168,7 @@ begin
   px.Parent:=FnCall;
   px.Subject:=Value;
   px.EvaluatesTo:=ResType(Sphere,Value);
-  q:=Sphere[FnCall].FirstArgument;
-  if q=0 then
-    Sphere[FnCall].FirstArgument:=p
-  else
-   begin
-    while (Sphere[q].Next<>0) do q:=Sphere[q].Next;
-    Sphere[q].Next:=p;
-   end;
+  Sphere.Append(Sphere[FnCall].FirstArgument,p);
   Result:=p;
 end;
 
