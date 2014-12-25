@@ -234,7 +234,6 @@ begin
     Result:=FData[Result].Next;
 end;
 
-//TODO: IdOf(PStratoThing)?
 {
 function TStratoSphere.IdOf(p:PStratoThing):TStratoIndex;   
 begin

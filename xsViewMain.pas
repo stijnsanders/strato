@@ -493,10 +493,27 @@ begin
 end;
 
 procedure TForm1.btnGoToClick(Sender: TObject);
+var
+  p:TStratoIndex;
+  b:boolean;
 begin
   TreeView1.Selected:=nil;
-  JumpTo(StrToInt(txtGoTo.Text));
-  if TreeView1.Selected<>nil then TreeView1.SetFocus;
+  p:=StrToInt(txtGoTo.Text);
+  b:=true;
+  while (p<>0) and b do
+   begin
+    JumpTo(p);
+    if TreeView1.Selected=nil then
+     begin
+      if FSphere[p].ThingType=ttBinaryData then dec(p);
+      p:=FSphere[p].Parent;
+     end
+    else
+     begin
+      TreeView1.SetFocus;
+      b:=false;
+     end;
+   end;
 end;
 
 end.

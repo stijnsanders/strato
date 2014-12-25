@@ -158,7 +158,7 @@ end;
 function StratoFnCallAddArgument(Sphere:TStratoSphere;
   FnCall,Value:TStratoIndex):TStratoIndex;
 var
-  p,q:TStratoIndex;
+  p:TStratoIndex;
   px,vx:PStratoThing;
 begin
   p:=Sphere.Add(ttArgument,'');
