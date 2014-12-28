@@ -10,16 +10,14 @@ object:={
 }
 
 object(){
-	_basetype:=?@@@;
+	@(@@):=__malloc(@?@@);
+	_basetype:=?@@;
 	_refcount:=0;
 }
 
 -object(){
 	//assert _refcount=0
-}
-
-object._destroy(){
-	//TODO dealloc
+	//__dealloc(@(@@));
 }
 
 object._addref(){
@@ -93,7 +91,6 @@ test2.vtest(x:number):number{
 	yy:test1;
 	yy:=test2(111);
 	Shell.write(yy.vtest(222):string);
-	
 }
 
 /*

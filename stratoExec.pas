@@ -527,7 +527,7 @@ begin
 
       ttSysCall:
         try
-          PerformSysCall(Sphere,p,np);
+          PerformSysCall(Sphere,p,vp);
         except
           on e:Exception do //TODO: in-lang throw
             Sphere.Error(pe,'['+e.ClassName+']'+e.Message);
@@ -585,7 +585,7 @@ begin
                 if qx<>nil then
                   case qx.ThingType of
                     ttVar,ttVarByRef,ttThis:inc(vp,qx.Offset);
-                    ttOverload,ttConstructor,ttDestructor:;
+                    ttFunction,ttConstructor,ttDestructor:;
                     else Sphere.Error(pe,'unexpected ttVarIndex subject '+
                       IntToHex(qx.ThingType,4));
                   end;
@@ -712,7 +712,13 @@ begin
               inc(np,SystemWordSize);
               Move(i,FMem[vp],SystemWordSize);
              end;
-            //stOpTypeIs://TODO
+            stQuestionMark://stTypeOf
+             begin
+              i:=vt;
+              vtp(TypeDecl_type,np);
+              inc(np,SystemWordSize);
+              Move(i,FMem[vp],SystemWordSize);
+             end;
             //TODO: more!
             else
               Sphere.Error(pe,'unsupported unary operator');
@@ -854,6 +860,7 @@ begin
                   inc(np,SystemWordSize);
                   Move(k,FMem[vp],SystemWordSize);
                  end;
+              //TODO: stTypeIs:
               //TODO: more!
               else
                 Sphere.Error(pe,'unsupported binary operator');
@@ -987,16 +994,16 @@ begin
              end
             else
              begin
-              Push(p,px.DoIf,0,mp);
+              Push(p,px.DoIf,0,np);
               p:=px.DoIf;
               vt:=0;//silence DoFirst/DoThen leftover
              end;
           //perform Body,DoThen
           if (i<>0) and not((px.Body=0) and (px.DoThen=0)) then
            begin
-            Push(p,p,0,mp);
+            Push(p,p,0,np);
             p:=px.Body;
-            if px.DoThen<>0 then Push(px.DoThen,0,0,mp);
+            if px.DoThen<>0 then Push(px.DoThen,0,0,np);
            end;
          end;
       ttIterationPE:
