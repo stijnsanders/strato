@@ -112,7 +112,7 @@ begin
                  end;
                 'E':DoInlineErrors:=true;
                 else
-                  Writeln('unknown switch "'+x+'"');
+                  Writeln('unknown switch "'+x[j]+'"');
               end;
               inc(j);
              end;

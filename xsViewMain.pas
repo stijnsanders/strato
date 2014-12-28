@@ -349,7 +349,6 @@ begin
       ttCast:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        //j:=p.Subject;
         JumpNode(n,':sub=',p.Subject);
        end;
       ttClass:
@@ -389,7 +388,7 @@ begin
       ttAddressOf,ttDereference:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        j:=p.ValueFrom;
+        BuildNode(n,p.ValueFrom);
        end;
       ttConstructor:
        begin
@@ -399,7 +398,7 @@ begin
         BuildNode(n,p.Body);
        end;
       ttDestructor:
-        j:=p.Body;
+        BuildNode(n,p.Body);
       ttInterface:
        begin
         JumpNode(n,':InheritsFrom->',p.InheritsFrom);

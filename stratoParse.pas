@@ -1257,8 +1257,9 @@ var
         ttVar,ttFnCall,ttIteration,ttIterationPE,ttAssign,
         ttDeferred,ttThrow,ttCatch,ttDestructor:
           b:=true;
-        ttCodeBlock,ttSelection:b:=px.EvaluatesTo=0;
-        //ttBinaryOp:b:=TStratoToken(px.Op) in [stOpAssign..stOpAssignAnd]; //assert never (see strAssign)
+        ttCodeBlock,ttSelection:
+          b:=true;//b:=px.EvaluatesTo=0;//TODO: descend into?
+        ttBinaryOp:b:=TStratoToken(px.Op) in [stOpAssign..stOpAssignAnd];
         ttUnaryOp:b:=TStratoToken(px.Op) in [stOpInc,stOpDec];
         //more?
       end;
@@ -1906,6 +1907,7 @@ begin
              end;
             r:=p;
             CodeLookup(n,p);
+            if (p<>0) and (Sphere[p].ThingType=ttNameSpace) then p:=0;
             if p=0 then
               if b then
                begin
@@ -2025,8 +2027,11 @@ begin
             else //cast
              begin
               Combine(p_Cast,p);//p_juxta?
-              if ResType(Sphere,p)=0 then
-                Source.Error('no value to cast');
+              if p=0 then
+                Source.Error('no value to cast')
+              else if ResType(Sphere,p)=0 then
+                Source.Error('can''t cast value "'+Sphere.FQN(p)+'" '+
+                  IntToHex(Sphere[p].ThingType,4));
               q:=Sphere.Add(ttCast,'');
               qx:=SetSrc(q,cb);
               qx.Subject:=p;
@@ -2586,12 +2591,14 @@ begin
                 else q:=0;
               end;
             if (q<>0) and (Sphere[q].ThingType=ttClass) then
+              {
               if q=TypeDecl_object then
                begin
                 p:=Sphere.Add(ttInherited,'@@@');
                 SetSrc(p,cb);
                end
               else
+              }
                begin
                 if q<>0 then
                  begin
