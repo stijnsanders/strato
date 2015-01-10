@@ -720,7 +720,7 @@ var
       Result:=rx<>nil;
       if Result then
        begin
-        //rx.Offset:=??? see strFnCall
+        //rx.Offset:=??? see ttFnCall
         rx.EvaluatesTo:=p;
         //rx.InitialValue:=
        end
@@ -760,7 +760,7 @@ var
                 rx:=Sphere[NoType];
                 //assert rx.EvaluatesTo=0
                 rx.EvaluatesTo:=p;
-                //rx.Offset? see strFnCall
+                //rx.Offset? see ttFnCall
                 NoType:=rx.Next;
                end;
               if Source.IsNext([stOpEQ]) then //default value
@@ -863,7 +863,7 @@ var
                 p:=Sphere.AddTo(Sphere[x].FirstItem,ttFunction,nn);
                 SetSrc(p,x);
                end;
-              StratoFunctionAddOverload(Sphere,Source,p,
+              StratoFnAddOverload(Sphere,Source,p,
                 ParseSignature(x,nn),0,nn);
              end;
             else Source.Error('unsupported interface field syntax');
@@ -905,7 +905,7 @@ var
     px:PStratoThing;
   begin
     p0:=p;
-    //TODO: strImport, strAlias
+    //TODO: ttImport, ttAlias
     if p<>0 then
       r:=p //see below: search by type
     else
@@ -988,215 +988,219 @@ var
      end;
   end;
 
-  procedure Combine(pp:TPrecedence;var s1:TStratoIndex);
+  procedure Combine(zz:TPrecedence;var q:TStratoIndex);
   var
-    p0,p00:TPrecedence;
-    s0,s2:TStratoIndex;
-    x0,x1:PStratoThing;
+    z,z00:TPrecedence;
+    p,r:TStratoIndex;
+    px,qx:PStratoThing;
     done:boolean;
   begin
-    if (s1<>0) or (pp<=pParentheses) then
+    if (q<>0) or (zz<=pParentheses) then
      begin
       done:=false;
-      while not(done) and (stackIndex<>0) and (stack[stackIndex-1].p>=pp) do
+      while not(done) and (stackIndex<>0) and (stack[stackIndex-1].p>=zz) do
        begin
         dec(stackIndex);
-        p0:=stack[stackIndex].p;
-        s0:=stack[stackIndex].t;
-        x0:=Sphere[s0];
-        //x1:=Sphere[s1];
+        z:=stack[stackIndex].p;
+        p:=stack[stackIndex].t;
+        px:=Sphere[p];
+        //qx:=Sphere[q];
         {$IFDEF DEBUG}
         stack[stackIndex].p:=p___;
         stack[stackIndex].t:=0;
         {$ENDIF}
-        p00:=p0;
-        case p0 of
+        z00:=z;
+        case z of
           pCodeBlock:
             //see also stAClose in main loop!
             done:=true;//always only one (need to parse "}" correctly)
           pIfThen:
            begin
-            x0.DoThen:=s1;
-            StratoSelectionCheckType(Sphere,s0);
-            p0:=pIfElse;//now parse 'else' bit
+            px.DoThen:=q;
+            StratoSelectionCheckType(Sphere,p);
+            z:=pIfElse;//now parse 'else' bit
            end;
           pIfElse:
            begin
-            x0.DoElse:=s1;
-            StratoSelectionCheckType(Sphere,s0);
+            px.DoElse:=q;
+            StratoSelectionCheckType(Sphere,p);
            end;
           pArgList:
            begin
-            if s1<>0 then SetSrc(StratoFnCallAddArgument(Sphere,s0,s1),cb);
-            StratoFnCallFindSignature(Sphere,s0);
-            if x0.Signature=0 then
+            if q<>0 then SetSrc(StratoFnCallAddArgument(Sphere,p,q),cb);
+            StratoFnCallFindSignature(Sphere,p);
+            if px.Signature=0 then
               Source.Error('no function overload found with these arguments');
             done:=true;//always only one (need to parse ")" correctly)
            end;
           pBrackets:
            begin
-            if s0=0 then
-              s2:=Sphere.Add(ttVarIndex,'')
+            if p=0 then
+              r:=Sphere.Add(ttVarIndex,'')
             else
-              s2:=Sphere.Add(ttVarIndex,Sphere.Dict.Str[x0.Name]);
-            x1:=SetSrc(s2,s0);
-            x1.EvaluatesTo:=ResType(Sphere,s0);
-            x1.FirstArgument:=s1;
-            s0:=s2;
+              r:=Sphere.Add(ttVarIndex,Sphere.Dict.Str[px.Name]);
+            qx:=SetSrc(r,p);
+            qx.EvaluatesTo:=ResType(Sphere,p);
+            qx.FirstArgument:=q;
+            p:=r;
             done:=true;//always only one (need to parse "]" correctly)
            end;
           pParentheses:
            begin
-            s0:=s1;
+            p:=q;
             done:=true;//always only one (need to parse ")" correctly)
            end;
           pForBodyFirst:
            begin
-            if (s1<>0) and (Sphere[s1].ThingType=ttCodeBlock)
-              and (Sphere[s1].EvaluatesTo<>0) then
+            if (q<>0) and (Sphere[q].ThingType=ttCodeBlock)
+              and (Sphere[q].EvaluatesTo<>0) then
               Source.Error('unexpected iteration body with return value');
-            x0.Body:=s1;
-            p0:=pForFirst;//now parse criterium
+            px.Body:=q;
+            z:=pForFirst;//now parse criterium
            end;
           pForFirst://see also stAClose
-            if pp=pParentheses then //already closing? take this as crit
+            if zz=pParentheses then //already closing? take this as crit
              begin
-              x0.DoIf:=s1;
-              if x0.Body=0 then p0:=pForBody;
+              px.DoIf:=q;
+              if px.Body=0 then z:=pForBody;
              end
             else
              begin
-              x0.DoFirst:=s1;
-              p0:=pForCrit;
+              px.DoFirst:=q;
+              z:=pForCrit;
              end;
           pForCrit,pForCritOnly:
            begin
-            if s1<>0 then
+            if q<>0 then
              begin
-              if not SameType(Sphere,ResType(Sphere,s1),TypeDecl_bool) then
+              if not SameType(Sphere,ResType(Sphere,q),TypeDecl_bool) then
                 Source.Error('iteration criterium does not evaluate to boolean');
-              x0.DoIf:=s1;
+              px.DoIf:=q;
              end;
-            if pp=pParentheses then
+            if zz=pParentheses then
              begin
-              if x0.Body=0 then p0:=pForBody;
+              if px.Body=0 then z:=pForBody;
              end
             else
-              if p0<>pForCritOnly then p0:=pForThen;
+              if z<>pForCritOnly then z:=pForThen;
            end;
           pForThen:
            begin
-            if s1<>0 then x0.DoThen:=s1;//else assert already set by stPClose
-            if pp=pParentheses then
+            if q<>0 then px.DoThen:=q;//else assert already set by stPClose
+            if zz=pParentheses then
              begin
-              if x0.Body=0 then p0:=pForBody;
+              if px.Body=0 then z:=pForBody;
              end
             else
-              p0:=pForCritDone;
+              z:=pForCritDone;
            end;
           pForCritDone:
            begin
-            if s1<>0 then
+            if q<>0 then
               Source.Error('unexpected iteration criterium syntax');
-            if x0.Body=0 then p0:=pForBody;
+            if px.Body=0 then z:=pForBody;
            end;
           pForBody:
            begin
-            if (s1<>0) and (Sphere[s1].ThingType=ttCodeBlock)
-              and (Sphere[s1].EvaluatesTo<>0) then
+            if (q<>0) and (Sphere[q].ThingType=ttCodeBlock)
+              and (Sphere[q].EvaluatesTo<>0) then
               Source.Error('unexpected iteration body with return value');
-            x0.Body:=s1;
+            px.Body:=q;
            end;
           pUnary:
            begin
-            x0.EvaluatesTo:=ResType(Sphere,s1);
-            x0.Right:=s1;
+            px.EvaluatesTo:=ResType(Sphere,q);
+            px.Right:=q;
            end;
           pSizeOf:
            begin
-            x0.EvaluatesTo:=TypeDecl_number;
-            x0.Right:=s1;//?
+            px.EvaluatesTo:=TypeDecl_number;
+            px.Right:=q;//?
            end;
           pTypeOf:
            begin
-            x0.EvaluatesTo:=TypeDecl_type;
-            x0.Right:=s1;
+            px.EvaluatesTo:=TypeDecl_type;
+            px.Right:=q;
            end;
           pAddressOf:
            begin
             //TODO: check ttVar?
-            x0.ValueFrom:=s1;
-            s1:=ResType(Sphere,s1);
-            while (s1<>0) and (Sphere[s1].ThingType=ttArray) do
-              s1:=Sphere[s1].ItemType;
-            x0.EvaluatesTo:=Sphere.Add(ttPointer,
-              {'^'+}Sphere.Dict.Str[Sphere[s1].Name]);
-            x1:=SetSrc(x0.EvaluatesTo,cb);
-            x1.ByteSize:=SystemWordSize;
-            x1.EvaluatesTo:=s1;
+            px.ValueFrom:=q;
+            q:=ResType(Sphere,q);
+            while (q<>0) and (Sphere[q].ThingType=ttArray) do
+              q:=Sphere[q].ItemType;
+            px.EvaluatesTo:=Sphere.Add(ttPointer,
+              {'^'+}Sphere.Dict.Str[Sphere[q].Name]);
+            qx:=SetSrc(Sphere[p].EvaluatesTo,cb);
+            qx.ByteSize:=SystemWordSize;
+            qx.EvaluatesTo:=q;
            end;
           pMulDiv,pAddSub,pShift,pAnd,pOr:
            begin
-            x0.Right:=s1;
-            StratoOperatorCheckType(Sphere,s0);
+            px.Right:=q;
+            StratoOperatorCheckType(Sphere,p);
            end;
           pEqual,pComparative:
            begin
-            x0.Right:=s1;
-            x0.EvaluatesTo:=TypeDecl_bool;
+            px.Right:=q;
+            px.EvaluatesTo:=TypeDecl_bool;
            end;
           pAssignment:
            begin
-            while (x0.ValueFrom<>0) and (Sphere[x0.ValueFrom].ThingType=ttAssign) do
-              x0:=Sphere[x0.ValueFrom];
-            x0.ValueFrom:=s1;
+            while (px.ValueFrom<>0) and (Sphere[px.ValueFrom].ThingType=ttAssign) do
+              px:=Sphere[px.ValueFrom];
+            px.ValueFrom:=q;
             if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then
              begin
-              x0.EvaluatesTo:=ResType(Sphere,s1);
-              Sphere[stack[stackIndex-1].t].EvaluatesTo:=x0.EvaluatesTo;
-              if x0.EvaluatesTo<>0 then
-                inc(Sphere[cb].ByteSize,ByteSize(Sphere,x0.EvaluatesTo));
+              px.EvaluatesTo:=ResType(Sphere,q);
+              Sphere[stack[stackIndex-1].t].EvaluatesTo:=px.EvaluatesTo;
+              if px.EvaluatesTo<>0 then
+                inc(Sphere[cb].ByteSize,ByteSize(Sphere,px.EvaluatesTo));
              end
             else
-              x0.EvaluatesTo:=ResType(Sphere,x0.AssignTo);
+              px.EvaluatesTo:=ResType(Sphere,px.AssignTo);
             //TODO: check types here? (or at run-time?)
+            if not SameType(Sphere,
+              ResType(Sphere,px.ValueFrom),
+              ResType(Sphere,px.AssignTo)) then
+              Source.Error('assignment type mismatch');
             //TODO: auto-cast?
             //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
-            if x0.EvaluatesTo<>0 then
+            if px.EvaluatesTo<>0 then
              begin
-              s1:=x0.AssignTo;
-              x1:=Sphere[s1];
-              if (s1<>0) and (x1.ThingType=ttVar) and (x1.EvaluatesTo=0)
-                and (ResType(Sphere,s0)<>0)
+              q:=px.AssignTo;
+              qx:=Sphere[q];
+              if (q<>0) and (qx.ThingType=ttVar) and (qx.EvaluatesTo=0)
+                and (ResType(Sphere,p)<>0)
                 then
                begin
-                s2:=ResType(Sphere,x0.ValueFrom);
-                x1.EvaluatesTo:=s2;
-                x1.Offset:=Sphere[cb].ByteSize;
-                inc(Sphere[cb].ByteSize,ByteSize(Sphere,s2));
+                r:=ResType(Sphere,px.ValueFrom);
+                qx.EvaluatesTo:=r;
+                qx.Offset:=Sphere[cb].ByteSize;
+                inc(Sphere[cb].ByteSize,ByteSize(Sphere,r));
                end;
              end;
            end;
           pUnTypedVar:
            begin
             //see also pAssignment above and stColon below
-            //assert x0.ThingType=strVar
-            if x0.EvaluatesTo=0 then
-              Source.Error('no type for local var '''+string(Sphere.FQN(s0))+'''');
-            s0:=s1;
+            //assert x0.ThingType=ttVar
+            if px.EvaluatesTo=0 then
+              Source.Error('no type for local var '''+string(Sphere.FQN(p))+'''');
+            p:=q;
            end;
           pDefer,pThrow,pCatch:
-            x0.Subject:=s1;
+            px.Subject:=q;
           //else ?
         end;
-        if p0=p00 then
-          s1:=s0
+        if z=z00 then
+          q:=p
         else
          begin
-          stack[stackIndex].p:=p0;
-          stack[stackIndex].t:=s0;
+          stack[stackIndex].p:=z;
+          stack[stackIndex].t:=p;
           inc(stackIndex);
-          s1:=0;
+          q:=0;
           done:=true;
          end;
        end;
@@ -1384,7 +1388,7 @@ begin
                       px.EvaluatesTo:=q;
                       cb:=Sphere.Add(ttCodeBlock,'');
                       qx:=SetSrc(cb,p);
-                      px.ValueFrom:=cb;
+                      px  .ValueFrom:=cb;
                       //'this' inside of code block
                       px:=SetSrc(Sphere.AddTo(qx.FirstItem,ttThis,'@@'),cb);
                       px.Offset:=qx.ByteSize;
@@ -1639,8 +1643,8 @@ begin
                           r:=Sphere.Add(ttFunction,nn);
                          end;
                         SetSrc(r,ns);
-                        StratoFunctionAddOverload(Sphere,Source,r,q,0,nn);
-                        StratoFunctionAddOverload(Sphere,Source,r,p,0,nn);
+                        StratoFnAddOverload(Sphere,Source,r,q,0,nn);
+                        StratoFnAddOverload(Sphere,Source,r,p,0,nn);
                        end
                       else
                         Source.Error('duplicate identifier');
@@ -1687,7 +1691,7 @@ begin
                       end;
                     cb:=Sphere.Add(ttCodeBlock,'');
                     SetSrc(cb,q);
-                    StratoFunctionAddOverload(Sphere,Source,q,p,cb,nn);
+                    StratoFnAddOverload(Sphere,Source,q,p,cb,nn);
                     p:=0;
                    end;
                   else Source.Error('unsupported signature syntax');
@@ -2410,7 +2414,7 @@ begin
           stThis://"@@"
            begin
             Juxta(p);
-            //see also StratoFunctionAddOverload
+            //see also StratoFnAddOverload
             q:=cb;
             p:=0;
             while (q<>0) and (p=0) do
@@ -2548,6 +2552,7 @@ begin
            begin
             Juxta(p);
             q:=Sphere.Add(ttAddressOf,'');
+            SetSrc(q,cb);
             Push(pAddressOf,q);
            end;
 
@@ -2567,15 +2572,15 @@ begin
               if ((px.ThingType and tt__Typed)<>0)
                 and (Sphere[px.EvaluatesTo].ThingType=ttPointer)
                 then
-                 begin
-                  q:=Sphere.Add(ttDereference,'');
-                  qx:=SetSrc(q,cb);
-                  qx.EvaluatesTo:=Sphere[px.EvaluatesTo].EvaluatesTo;
-                  qx.ValueFrom:=p;
-                  p:=q;
-                 end
-                else
-                  Source.Error('dereference expected on pointer');
+               begin
+                q:=Sphere.Add(ttDereference,'');
+                qx:=SetSrc(q,cb);
+                qx.EvaluatesTo:=Sphere[px.EvaluatesTo].EvaluatesTo;
+                qx.ValueFrom:=p;
+                p:=q;
+               end
+              else
+                Source.Error('dereference expected on pointer');
              end;
 
           stInherited://"@@@"
@@ -2591,28 +2596,20 @@ begin
                 else q:=0;
               end;
             if (q<>0) and (Sphere[q].ThingType=ttClass) then
-              {
-              if q=TypeDecl_object then
+             begin
+              if q<>0 then
+               begin
+                qx:=Sphere[q];
+                if qx.ThingType=ttClass then q:=qx.InheritsFrom else q:=0;
+               end;
+              if q=0 then
+                Source.Error('"@@@" undefined')
+              else
                begin
                 p:=Sphere.Add(ttInherited,'@@@');
-                SetSrc(p,cb);
-               end
-              else
-              }
-               begin
-                if q<>0 then
-                 begin
-                  qx:=Sphere[q];
-                  if qx.ThingType=ttClass then q:=qx.InheritsFrom else q:=0;
-                 end;
-                if q=0 then
-                  Source.Error('"@@@" undefined')
-                else
-                 begin
-                  p:=Sphere.Add(ttInherited,'@@@');
-                  SetSrc(p,cb).EvaluatesTo:=q;
-                 end;
-               end
+                SetSrc(p,cb).EvaluatesTo:=q;
+               end;
+             end
             else
               Source.Error('"@@@" undefined');
             if p<>0 then cbInhCalled:=true;

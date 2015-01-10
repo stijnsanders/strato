@@ -264,7 +264,7 @@ type
   PStratoThing=^TStratoThing;
 
   TStratoHeader=record
-    ThingType:cardinal;//ttHeader
+    FileMarker:cardinal;//ttHeader
     Name:cardinal;
     FirstInitialization,FirstFinalization:TStratoIndex;
     ThingCount:cardinal;

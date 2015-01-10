@@ -13,14 +13,13 @@ const
   stratoSysCall_realloc=$101;
   stratoSysCall_mfree=$102;
   stratoSysCall_writeln=$200;
-  //TODO: malloc, free
 
 procedure DefaultTypes(Sphere:TStratoSphere;ns:TStratoIndex);
 
 var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
   TypeDecl_number,TypeDecl_variant,TypeDecl_pointer,
-  TypeDecl_object:TStratoIndex;
+  TypeDecl_hash,TypeDecl_object:TStratoIndex;
 
 implementation
 
@@ -116,13 +115,13 @@ var
       p1:=Sphere.Add(ttVar,'');
       if p2=0 then
        begin
-        q.FirstArgument:=p1;
         if Sphere[q.Body].FirstItem=0 then
           Sphere[q.Body].FirstItem:=p1;
        end
       else
         Sphere[p2].Next:=p1;
       p2:=p1;
+      if i=0 then q.FirstArgument:=p1;
       r:=Sphere[p1];
       r.Parent:=q.Body;
       r.Offset:=Sphere[q.Body].ByteSize;
@@ -161,10 +160,9 @@ begin
   A('uint16',2);
   A('uint32',4);
   A('uint64',8);
-  A('float',4);
+  A('float',4);//TODO: floating-point support
   A('double',8);
-  A('hash',SystemWordSize);
-  //TODO: auto-casting
+  TypeDecl_hash:=A('hash',SystemWordSize);//TODO:
 
   n:=Sphere.Add(ttPointer,'pointer');
   q:=Sphere[n];

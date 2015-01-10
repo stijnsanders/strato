@@ -36,6 +36,7 @@ object Form1: TForm1
     OnCreateNodeClass = TreeView1CreateNodeClass
     OnDblClick = TreeView1DblClick
     OnExpanding = TreeView1Expanding
+    OnKeyPress = TreeView1KeyPress
     Items.Data = {
       01000000290000000000000000000000FFFFFFFFFFFFFFFF0000000000000000
       10286E6F2066696C65206F70656E656429}

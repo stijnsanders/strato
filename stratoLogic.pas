@@ -96,8 +96,8 @@ begin
       case tt of
         ttClass:
          begin
-          while (s2<>0) and (s1<>s2) do s2:=Sphere[s2].InheritsFrom;
-          Result:=(s1=s2);// and (ptr1=ptr2)?
+          while (s1<>0) and (s1<>s2) do s1:=Sphere[s1].InheritsFrom;
+          Result:=(s1=s2) and (ptr1=ptr2);
          end;
         ttSignature:
          begin
@@ -118,7 +118,7 @@ begin
               x1:=Sphere[s1];
               x2:=Sphere[s2];
              end;
-            Result:=((s1=0) and (s2=0));// and (ptr1=ptr2)?
+            Result:=((s1=0) and (s2=0)) and (ptr1=ptr2);
            end
           else
             Result:=false;

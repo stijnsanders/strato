@@ -198,85 +198,163 @@ end;
 
 function TStratoSource.GetStr: UTF8String;
 var
-  i,j:integer;
-  a:UTF8String;
+  i,j,k,l,r:integer;
+  a:byte;
+  b:boolean;
 begin
   //assert FTIndex<FTLength
   //assert FTokens[FTIndex].Token=stStringLiteral
-  Result:='';
-  a:=' ';
+  r:=0;
+  SetLength(Result,FTokens[FTIndex].Length);
   case FSource[FTokens[FTIndex].Index] of
-    ''''://pascal style
+    ''''://Pascal-style
      begin
       i:=FTokens[FTIndex].Index+1;
       j:=i+FTokens[FTIndex].Length-2;
       while i<>j do
        begin
-        Result:=Result+UTF8String(FSource[i]);
-        if FSource[i]='''' then inc(i);
+        inc(r);
+        Result[r]:=FSource[i];
+        if FSource[i]='''' then inc(i);//TODO: if not in multi-byte UTF8!
         inc(i);
         //TODO: clip leading whitespace on EOLs?
        end;
      end;
-    '"'://C style
+    '"'://C-style (or Python-style triple double quotes)
      begin
-      i:=FTokens[FTIndex].Index+1;
-      j:=i+FTokens[FTIndex].Length-2;
+      i:=FTokens[FTIndex].Index;
+      j:=i+FTokens[FTIndex].Length-1;
+      if (FTokens[FTIndex].Length>=6) and (FSource[i]='"')
+        and (FSource[i+1]='"') and (FSource[i+2]='"')
+        //and (FSource[j-1]='"') and (FSource[j-2]='"') and (FSource[j-3]='"')
+        then
+       begin
+        //Python-style: triple double quotes
+        inc(i,3);
+        dec(j,2);
+        //find common indentation
+        //TODO: just first line for now, check all lines?
+        l:=i;
+        while (l<>j) and (FSource[l]<>#13) and (FSource[l]<>#10) do inc(l);
+        k:=0;
+        while (l<>j) and (FSource[l]<=' ') do
+         begin
+          inc(l);
+          inc(k);
+         end;
+        b:=false;
+       end
+      else
+       begin
+        //C-style
+        inc(i);
+        b:=true;
+        k:=0;//counter warning
+       end;
       while i<>j do
        begin
-        if FSource[i]='\' then
-         begin
-          inc(i);
-          case FSource[i] of
-            'a':a[1]:=#7;
-            'b':a[1]:=#8;
-            'f':a[1]:=#12;
-            'n':a[1]:=#10;
-            'r':a[1]:=#13;
-            't':a[1]:=#9;
-            'v':a[1]:=#11;
-            '0'..'9':
+         case FSource[i] of
+           '\'://backslash: escape
+           begin
+            inc(i);
+            if (FSource[i]=#13) or (FSource[i]=#10) then
              begin
-              //TODO: check three digits!
-              if i+2<j then a[1]:=AnsiChar(
-                ((byte(FSource[i  ]) and $7) shl 6) or
-                ((byte(FSource[i+1]) and $7) shl 3) or
-                ( byte(FSource[i+2]) and $7       ));
-              inc(i,2);
-             end;
-            'x':
+              //skip
+              if (FSource[i]=#13) and (i+1<>j) and (FSource[i+1]=#10) then inc(i);
+              if not b then
+               begin
+                l:=k;
+                while (l<>0) and (i<j-1) and (FSource[i+1]<=' ') do
+                 begin
+                  inc(i);
+                  dec(l);
+                 end;
+               end;
+             end
+            else
              begin
-              {
-              //TODO: unicode!!!
-              if (i+3<j)
-                and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                then a[1]:=AnsiChar(
-                   (((byte(FSource[i  ]) and $1F)+9*((byte(FSource[i  ]) shr 6)and 1)) shl 12)
-                or (((byte(FSource[i+1]) and $1F)+9*((byte(FSource[i+1]) shr 6)and 1)) shl 8)
-                or (((byte(FSource[i+2]) and $1F)+9*((byte(FSource[i+2]) shr 6)and 1)) shl 4)
-                or  ((byte(FSource[i+3]) and $1F)+9*((byte(FSource[i+3]) shr 6)and 1))
-                );
-              else
-              }
-                if (i+1<j)
-                  and(FSource[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                  and(FSource[i+1] in ['0'..'9','A'..'F','a'..'f'])
-                  then a[1]:=AnsiChar(
-                     (((byte(FSource[i  ]) and $1F)+9*((byte(FSource[i  ]) shr 6)and 1)) shl 4)
-                  or  ((byte(FSource[i+1]) and $1F)+9*((byte(FSource[i+1]) shr 6)and 1))
-                  );
+              case FSource[i] of
+                'a':a:=7;
+                'b':a:=8;
+                'f':a:=12;
+                'n':a:=10;
+                'r':a:=13;
+                't':a:=9;
+                'v':a:=11;
+                '0'..'9':
+                 begin
+                  //TODO: check three digits!
+                  if i+2<j then a:=
+                    ((byte(FSource[i  ]) and $7) shl 6) or
+                    ((byte(FSource[i+1]) and $7) shl 3) or
+                    ( byte(FSource[i+2]) and $7       )
+                  else
+                    a:=byte(FSource[i]);//?
+                  inc(i,2);
+                 end;
+                //'u'://TODO: unicode!
+                'x':
+                 begin
+                  {
+                  //TODO: unicode!!!
+                  if (i+3<j)
+                    and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                    and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                    and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                    and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                    then a:=
+                       (((byte(FSource[i  ]) and $1F)+9*((byte(FSource[i  ]) shr 6)and 1)) shl 12)
+                    or (((byte(FSource[i+1]) and $1F)+9*((byte(FSource[i+1]) shr 6)and 1)) shl 8)
+                    or (((byte(FSource[i+2]) and $1F)+9*((byte(FSource[i+2]) shr 6)and 1)) shl 4)
+                    or  ((byte(FSource[i+3]) and $1F)+9*((byte(FSource[i+3]) shr 6)and 1))
+                  else
+                  }
+                  if (i+1<j)
+                    and(FSource[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                    and(FSource[i+1] in ['0'..'9','A'..'F','a'..'f'])
+                    then a:=
+                       (((byte(FSource[i  ]) and $1F)+9*((byte(FSource[i  ]) shr 6)and 1)) shl 4)
+                    or  ((byte(FSource[i+1]) and $1F)+9*((byte(FSource[i+1]) shr 6)and 1))
+                  else
+                    a:=byte('x');
+                 end;
+                else a:=byte(FSource[i]);
+              end;
+              inc(r);
+              Result[r]:=AnsiChar(a);
              end;
-            //#13://TODO
-            //#10://TODO
-            else a[1]:=FSource[i];
-          end;
-         end
-        else
-          a[1]:=FSource[i];
-        Result:=Result+a;
+           end;
+          #13,#10:
+           begin
+            if (FSource[i]=#13) and (i+1<>j) and (FSource[i+1]=#10) then
+             begin
+              inc(r);
+              Result[r]:=#13;
+              inc(i);
+             end;
+            if b then
+             begin
+              Error('unterminated string literal');
+              i:=j-1;
+             end
+            else
+             begin
+              inc(r);
+              Result[r]:=FSource[i];
+              l:=k;
+              while (l<>0) and (i<j-1) and (FSource[i+1]<=' ') do
+               begin
+                inc(i);
+                dec(l);
+               end;
+             end;
+           end;
+          else
+           begin
+            inc(r);
+            Result[r]:=FSource[i];//TODO: what if multi-byte UTF8?
+           end;
+        end;
         inc(i);
         //TODO: clip leading whitespace on EOLs?
        end;
@@ -284,6 +362,7 @@ begin
     else
       Error('unsupported string literal type');
   end;
+  SetLength(Result,r);
   FTContent:=false;
   inc(FTIndex);
 end;

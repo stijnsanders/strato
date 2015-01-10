@@ -33,6 +33,7 @@ TODO
 * something to avoid pre-processors (function versions like in D?)
 * disallow adding to namespaces from 'outside'
 * call-stack on exception
+* detect/fake access violations (e.g. with null pointer)
 * detect 'declared but never used'
 * detect variable unassigned or no initial value prior to first use
 * generics/templates

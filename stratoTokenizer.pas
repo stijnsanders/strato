@@ -107,7 +107,10 @@ var
 
   function CodeNext(Fwd:integer):AnsiChar;
   begin
-    if CodeIndex+Fwd<=CodeLength then Result:=Code[CodeIndex+Fwd] else Result:=#0;
+    if CodeIndex+Fwd<=CodeLength then
+      Result:=Code[CodeIndex+Fwd]
+    else
+      Result:=#0;
   end;
 
   procedure incCodeIndexX; //inc(CodeIndex) detecting EOL's
@@ -140,6 +143,18 @@ var
     i:=CodeIndex;
     while (i<=CodeLength) and (Code[i] in ['0'..'9','A'..'Z','_','a'..'z']) do inc(i);
     Add(i-CodeIndex,stIdentifier);
+  end;
+
+  procedure AddX(Len:integer;t:TStratoToken); //add, but detect EOL's
+  var
+    i,l:integer;
+  begin
+    i:=CodeIndex;
+    l:=CodeIndex+Len;
+    if l>CodeLength then l:=CodeLength;
+    while CodeIndex<>l do incCodeIndexX;
+    CodeIndex:=i;
+    Add(Len,t);
   end;
 
 var
@@ -203,23 +218,33 @@ begin
         i:=CodeIndex+1;
         while (i<=CodeLength) and (Code[i]<>'''') do
          begin
-          //TODO: detect EOL?
           while (i<=CodeLength) and (Code[i]<>'''') do inc(i);
           if (i<CodeLength) and (Code[i+1]='''') then inc(i,2);
          end;
-        Add(i-CodeIndex+1,stStringLiteral);
+        AddX(i-CodeIndex+1,stStringLiteral);
        end;
       '"'://string
-       begin
-        i:=CodeIndex+1;
-        while (i<=CodeLength) and (Code[i]<>'"') do
+        if (CodeNext(1)='"') and (CodeNext(2)='"') then
          begin
-          //TODO: detect EOL?
-          if Code[i]='\' then inc(i);
-          inc(i);
+          i:=CodeIndex+3;
+          while (i+2<=CodeLength) and not((Code[i]='"') and
+            (Code[i+1]='"') and (Code[i+2]='"')) do
+           begin
+            if Code[i]='\' then inc(i);//?
+            inc(i);
+           end;
+          AddX(i-CodeIndex+3,stStringLiteral);
+         end
+        else
+         begin
+          i:=CodeIndex+1;
+          while (i<=CodeLength) and (Code[i]<>'"') do
+           begin
+            if Code[i]='\' then inc(i);
+            inc(i);
+           end;
+          AddX(i-CodeIndex+1,stStringLiteral);
          end;
-        Add(i-CodeIndex+1,stStringLiteral);
-       end;
       '0'..'9'://digits
        begin
         i:=CodeIndex+1;

@@ -44,6 +44,7 @@ type
     procedure txtGoToKeyPress(Sender: TObject; var Key: Char);
     procedure GoTo1Click(Sender: TObject);
     procedure btnGoToClick(Sender: TObject);
+    procedure TreeView1KeyPress(Sender: TObject; var Key: Char);
   private
     FSphere:TStratoSphere;
     StratoTokenizeLineIndex:cardinal;
@@ -168,6 +169,7 @@ begin
     ai:=0;
     while i<>0 do
      begin
+      if i>=FSphere.NodeCount then i:=0;
       if ai=al then
        begin
         inc(al,$400);//grow;
@@ -267,11 +269,12 @@ begin
    begin
     p:=FSphere[i];
     s:=IntToStr(i)+': '+StratoDumpThing(FSphere,i,p);
-    if p.Source<>0 then s:=Format('%s  [%s(%d:%d)]',[s
-      ,FSphere.GetBinaryData(PStratoSourceFile(FSphere[p.Source]).FileName)
-      ,p.SrcPos div StratoTokenizeLineIndex
-      ,p.SrcPos mod StratoTokenizeLineIndex
-      ]);
+    if (p.ThingType<>ttBinaryData) and (p.Source<>0) then
+      s:=Format('%s  [%s(%d:%d)]',[s
+        ,FSphere.GetBinaryData(PStratoSourceFile(FSphere[p.Source]).FileName)
+        ,p.SrcPos div StratoTokenizeLineIndex
+        ,p.SrcPos mod StratoTokenizeLineIndex
+        ]);
     n:=TreeView1.Items.AddChild(Node,s) as TXsTreeNode;
     n.Index:=i;
     j:=0;//set ExpandIndex?
@@ -311,8 +314,8 @@ begin
       ttArgument:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        ListNode(n,':dft=',p.InitialValue);
-        ListNode(n,':val=',p.Subject);
+        JumpNode(n,':dft=',p.InitialValue);
+        JumpNode(n,':val=',p.Subject);
        end;
       ttThis,ttInherited:
         n.JumpIndex:=p.EvaluatesTo;
@@ -332,8 +335,8 @@ begin
       ttAssign:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':AssignTo->',p.AssignTo);
         JumpNode(n,':ValueFrom->',p.ValueFrom);
+        JumpNode(n,':AssignTo->',p.AssignTo);
        end;
       ttUnaryOp:
        begin
@@ -407,8 +410,8 @@ begin
       ttProperty:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        ListNode(n,':AssignTo=',p.AssignTo);
-        ListNode(n,':ValueFrom=',p.ValueFrom);
+        JumpNode(n,':ValueFrom=',p.ValueFrom);
+        JumpNode(n,':AssignTo=',p.AssignTo);
        end;
     end;
     if j<>0 then
@@ -513,6 +516,11 @@ begin
       b:=false;
      end;
    end;
+end;
+
+procedure TForm1.TreeView1KeyPress(Sender: TObject; var Key: Char);
+begin
+  if Key=#13 then TreeView1DblClick(Sender);
 end;
 
 end.

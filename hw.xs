@@ -1,8 +1,6 @@
 hw
 //hello world example program
 
-<<<"x.xs"
-
 object:={
 	_basetype:type;//class
 	_refcount:number;
@@ -10,7 +8,7 @@ object:={
 }
 
 object(){
-	@(@@):=__malloc(@?@@);
+	@ @@:pointer:=__malloc(@?@@);
 	_basetype:=?@@;
 	_refcount:=0;
 }
@@ -83,6 +81,7 @@ test2.vtest(x:number):number{
 	y:=test1;
 	(?x=y)Shell.write('test');;
 */
+
 	x:object;
 	x:=test1(11);
 	Shell.write((x:test1).x:string);

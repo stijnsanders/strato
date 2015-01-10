@@ -4,7 +4,7 @@ interface
 
 uses stratoDecl, stratoSphere, stratoSource;
 
-function StratoFunctionAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
+function StratoFnAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
   Fn,Signature,CodeBlock:TStratoIndex;const Name:UTF8String):TStratoIndex;
 function StratoFnCallAddArgument(Sphere:TStratoSphere;
   FnCall,Value:TStratoIndex):TStratoIndex;
@@ -18,7 +18,7 @@ implementation
 
 uses stratoLogic, stratoRunTime;
 
-function StratoFunctionAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
+function StratoFnAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
   Fn,Signature,CodeBlock:TStratoIndex;const Name:UTF8String):TStratoIndex;
 var
   bs:integer;
@@ -91,6 +91,7 @@ begin
     cx:=Sphere[CodeBlock];
     cx.Parent:=p;
     bs:=cx.ByteSize;
+
     //this "@@"
     if sx.Subject<>0 then
      begin
@@ -108,20 +109,36 @@ begin
      end;
     //return value
     if sx.EvaluatesTo<>0 then
-     begin
-      q:=Sphere.AddTo(cx.FirstItem,ttVar,Name);
-      if q=0 then
-        Source.Error('duplicate identifier '''+string(Name)+'''')
+      if px.ThingType=ttConstructor then
+       begin
+        //with a constructor, store the final class type here
+        q:=Sphere.AddTo(cx.FirstItem,ttVar,'?@@');
+        if q=0 then
+          Source.Error('duplicate identifier ''?@@''')
+        else
+         begin
+          qx:=Sphere[q];
+          qx.Parent:=CodeBlock;
+          qx.Offset:=bs;
+          qx.EvaluatesTo:=TypeDecl_type;
+          inc(bs,SystemWordSize);
+         end;
+       end
       else
        begin
-        qx:=Sphere[q];
-        qx.Parent:=CodeBlock;
-        qx.Offset:=bs;
-        qx.EvaluatesTo:=sx.EvaluatesTo;
-        if qx.EvaluatesTo<>0 then
-          inc(bs,ByteSize(Sphere,qx.EvaluatesTo));
+        q:=Sphere.AddTo(cx.FirstItem,ttVar,Name);
+        if q=0 then
+          Source.Error('duplicate identifier '''+string(Name)+'''')
+        else
+         begin
+          qx:=Sphere[q];
+          qx.Parent:=CodeBlock;
+          qx.Offset:=bs;
+          qx.EvaluatesTo:=sx.EvaluatesTo;
+          if qx.EvaluatesTo<>0 then
+            inc(bs,ByteSize(Sphere,qx.EvaluatesTo));
+         end;
        end;
-     end;
     //arguments
     p:=sx.FirstArgument;
     b:=true;
@@ -212,15 +229,15 @@ end;
 
 procedure StratoFnCallFindSignature(Sphere:TStratoSphere;FnCall:TStratoIndex);
 var
-  p,fx:PStratoThing;
+  cx,fx:PStratoThing;
   fn,q:TStratoIndex;
 begin
   //assert all Arguments added
-  p:=Sphere[FnCall];
-  p.Signature:=0;//default
-  p.Body:=0;//default
+  cx:=Sphere[FnCall];
+  cx.Signature:=0;//default
+  cx.Body:=0;//default
   //check overloads
-  fn:=p.Subject;
+  fn:=cx.Subject;
   if (fn<>0) and (Sphere[fn].ThingType=ttVarIndex) then
     fn:=Sphere[fn].Subject;
   if (fn<>0) and (Sphere[fn].ThingType=ttVar) then
@@ -237,7 +254,7 @@ begin
         q:=fn;
         fn:=fx.FirstConstructor;
         while not((fn<>0) and StratoFnArgListsMatch(Sphere,
-          Sphere[fn].FirstArgument,p.FirstArgument)) do
+          Sphere[fn].FirstArgument,cx.FirstArgument)) do
           if fn=0 then
            begin
             q:=Sphere[q].InheritsFrom;
@@ -248,19 +265,17 @@ begin
        end;
       ttInherited:
        begin
-        //q:=fn;
         fn:=Sphere[fn].Parent;//ttCodeBlock
         if fn<>0 then
-          fn:=StratoFnCallFindInherited(Sphere,Sphere[Sphere[fn].Parent],p.Name);
-          //Sphere[FnCall].Subject:=fn?
-          //xxx  ttVarIndex ???
+          fn:=StratoFnCallFindInherited(Sphere,
+            Sphere[Sphere[fn].Parent],cx.Name);
        end;
       ttFunction:
        begin
         fn:=Sphere[fn].FirstItem;//ttOverload
         while (fn<>0) and not(StratoFnArgListsMatch(Sphere,
           Sphere[Sphere[fn].Signature].FirstArgument,
-          p.FirstArgument)) do
+          cx.FirstArgument)) do
           fn:=Sphere[fn].Next;
        end;
       else
@@ -269,8 +284,9 @@ begin
     if fn<>0 then
      begin
       //found! set signature,body from matching overload
-      p.Signature:=Sphere[fn].Signature;
-      p.Body:=Sphere[fn].Body;
+      cx.Subject:=fn;
+      cx.Signature:=Sphere[fn].Signature;
+      cx.Body:=Sphere[fn].Body;
      end;
    end;
 end;
