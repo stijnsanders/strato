@@ -33,8 +33,8 @@ var
   var
     q:PStratoThing;
   begin
-    Result:=Sphere.Add(ttTypeDecl,Name);
-    q:=Sphere[Result];
+    Result:=Sphere.Add(ttTypeDecl,q);
+    q.Name:=Sphere.Dict.StrIdx(Name);
     q.Parent:=ns;
     q.ByteSize:=s;
     if p=nil then Sphere[ns].FirstItem:=Result else p.Next:=Result;
@@ -49,16 +49,15 @@ var
   var
     i:integer;
     n,n1,p1,p2:TStratoIndex;
-    q,r:PStratoThing;
+    q,r,s,cx:PStratoThing;
   begin
     //n:=Sphere.Lookup(ns.FirstItem,FunctionName);
     //if n=0 then
      begin
-      n1:=Sphere.Add(ttFunction,FunctionName);
-      q:=Sphere[n1];
+      n1:=Sphere.Add(ttFunction,q);
+      q.Name:=Sphere.Dict.StrIdx(FunctionName);
       q.Parent:=ns;
-      n:=Sphere.Add(ttOverload,'');
-      q:=Sphere[n];
+      n:=Sphere.Add(ttOverload,q);
       q.Parent:=n1;
 
       p.Next:=n1;
@@ -66,45 +65,42 @@ var
       p.FirstItem:=n;
      end;
 
-    q.Signature:=Sphere.Add(ttSignature,SignatureName);
-    r:=Sphere[q.Signature];
+    q.Target:=Sphere.Add(ttSignature,r);
+    r.Name:=Sphere.Dict.StrIdx(SignatureName);
     r.Parent:=n;
     r.EvaluatesTo:=ReturnType;
 
     p2:=0;
     for i:=0 to Length(Arguments)-1 do
      begin
-      p1:=Sphere.Add(ttArgument,'');
+      p1:=Sphere.Add(ttArgument,s);
       if p2=0 then r.FirstArgument:=p1 else Sphere[p2].Next:=p1;
       p2:=p1;
-      r:=Sphere[p1];
-      r.Parent:=q.Signature;
+      s.Parent:=q.Target;
       if (Arguments[i] and C_ByRef)=0 then
-        r.EvaluatesTo:=Arguments[i]
+        s.EvaluatesTo:=Arguments[i]
       else
        begin
-        r.ThingType:=ttArgByRef;
-        r.EvaluatesTo:=(Arguments[i] xor C_ByRef);
+        s.ThingType:=ttArgByRef;
+        s.EvaluatesTo:=(Arguments[i] xor C_ByRef);
        end;
      end;
 
-    q.Body:=Sphere.Add(ttCodeBlock,'');
-    r:=Sphere[q.Body];
-    r.Parent:=n;
-    r.FirstStatement:= Sphere.Add(ttSysCall,'');
-    r:=Sphere[r.FirstStatement];
-    r.Parent:=n;
-    r.Op:=Op;
+    q.Body:=Sphere.Add(ttCodeBlock,cx);
+    cx.Parent:=n;
+    cx.FirstStatement:=Sphere.Add(ttSysCall,s);
+    s.Parent:=n;
+    s.Op:=Op;
 
     if ReturnType<>0 then
      begin
-      p1:=Sphere.Add(ttVar,FunctionName);
-      r:=Sphere[p1];
+      p1:=Sphere.Add(ttVar,r);
+      r.Name:=Sphere.Dict.StrIdx(FunctionName);
       r.Parent:=q.Body;
       r.EvaluatesTo:=ReturnType;
-      r.Offset:=Sphere[q.Body].ByteSize;
-      inc(Sphere[q.Body].ByteSize,ByteSize(Sphere,ReturnType));
-      Sphere[q.Body].FirstItem:=p1;
+      r.Offset:=cx.ByteSize;
+      inc(cx.ByteSize,ByteSize(Sphere,ReturnType));
+      cx.FirstItem:=p1;
      end
     else
       p1:=0;
@@ -112,38 +108,35 @@ var
     p2:=p1;
     for i:=0 to Length(Arguments)-1 do
      begin
-      p1:=Sphere.Add(ttVar,'');
+      p1:=Sphere.Add(ttVar,r);
       if p2=0 then
        begin
-        if Sphere[q.Body].FirstItem=0 then
-          Sphere[q.Body].FirstItem:=p1;
+        if cx.FirstItem=0 then
+          cx.FirstItem:=p1;
        end
       else
         Sphere[p2].Next:=p1;
       p2:=p1;
       if i=0 then q.FirstArgument:=p1;
-      r:=Sphere[p1];
       r.Parent:=q.Body;
-      r.Offset:=Sphere[q.Body].ByteSize;
+      r.Offset:=cx.ByteSize;
       if (Arguments[i] and C_ByRef)=0 then
        begin
         r.EvaluatesTo:=Arguments[i];
-        inc(Sphere[q.Body].ByteSize,Sphere[Arguments[i]].ByteSize);
+        inc(cx.ByteSize,Sphere[Arguments[i]].ByteSize);
        end
       else
        begin
         r.ThingType:=ttVarByRef;
         r.EvaluatesTo:=Arguments[i] xor C_ByRef;
-        inc(Sphere[q.Body].ByteSize,SystemWordSize);
+        inc(cx.ByteSize,SystemWordSize);
        end;
      end;
 
   end;
   
-var
-  n:TStratoIndex;
-  q:PStratoThing;
 begin
+  //TODO: move the higher numbers (sparse sphere data)
   p:=nil;
   TypeDecl_void:=A('void',0);
   TypeDecl_type:=A('type',SystemWordSize);
@@ -163,14 +156,7 @@ begin
   A('float',4);//TODO: floating-point support
   A('double',8);
   TypeDecl_hash:=A('hash',SystemWordSize);//TODO:
-
-  n:=Sphere.Add(ttPointer,'pointer');
-  q:=Sphere[n];
-  q.Parent:=ns;
-  q.ByteSize:=SystemWordSize;
-  p.Next:=n;
-  p:=q;
-  TypeDecl_pointer:=n;
+  TypeDecl_pointer:=A('pointer',SystemWordSize);
 
   C('__xinc','__xinc(^number)',
     stratoSysCall_xinc,[TypeDecl_number or C_ByRef],TypeDecl_number);

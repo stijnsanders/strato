@@ -43,7 +43,6 @@
 0100 ttSourceFile
 0101 ttIteration
 0102 ttIterationPE
-0110 ttClassData
 0123 ttSelection
 0131 ttCodeBlock
 0200 ttBinaryData

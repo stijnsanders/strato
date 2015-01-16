@@ -11,6 +11,7 @@ type
   TStratoSource=class(TObject)
   private
     FTIndex,FTLast,FTLength,FErrors:integer;
+    FLineIndex:cardinal;
     FTContent:boolean;
     FTokens:TStratoSourceTokenList;
     FSource:UTF8String;
@@ -31,12 +32,16 @@ type
     procedure Error(const msg: string);
     function SrcPos:integer;
     property FilePath:string read FFilePath;
+    property LineIndex:cardinal read FLineIndex;
     property ErrorCount:integer read FErrors;
     property Tokens:TStratoSourceTokenList read FTokens;
     property OnError:TStratoSourceErrorHandler read FOnError write FOnError;
   end;
 
 implementation
+
+const
+  DefaultLineIndex=1000;
 
 { TStratoSource }
 
@@ -80,8 +85,10 @@ begin
   finally
     f.Free;
   end;
+  //TODO: EOL's here and determine best SrcPosLineIndex?
+  FLineIndex:=DefaultLineIndex;
   //parse data
-  FTokens:=StratoTokenize(FSource);
+  FTokens:=StratoTokenize(FSource,FLineIndex);
   FTLength:=Length(FTokens);
   FTIndex:=0;
   FTLast:=0;
@@ -198,7 +205,7 @@ end;
 
 function TStratoSource.GetStr: UTF8String;
 var
-  i,j,k,l,r:integer;
+  i,j,k,l,r:cardinal;
   a:byte;
   b:boolean;
 begin
@@ -374,8 +381,8 @@ begin
   inc(FErrors);
   if FTLast<FTLength then
    begin
-    x:=FTokens[FTLast].SrcPos div StratoTokenizeLineIndex;
-    y:=FTokens[FTLast].SrcPos mod StratoTokenizeLineIndex;
+    x:=FTokens[FTLast].SrcPos div FLineIndex;
+    y:=FTokens[FTLast].SrcPos mod FLineIndex;
     //TODO: config switch append code snippet
 //    if FTokens[FTLast].Length>40 then s:=' "'+Copy(FSource,FTokens[FTLast].Index,40)+'...'
 //      else s:=' "'+Copy(FSource,FTokens[FTLast].Index,FTokens[FTLast].Length)+'"';
@@ -393,7 +400,10 @@ end;
 
 function TStratoSource.SrcPos: integer;
 begin
-  Result:=FTokens[FTLast].SrcPos;
+  if FTLast<FTLength then
+    Result:=FTokens[FTLast].SrcPos
+  else
+    Result:=0;
 end;
 
 end.

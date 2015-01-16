@@ -72,24 +72,23 @@ type
 
   TStratoSourceToken=record
     Token:TStratoToken;
-    Index,Length,SrcPos:integer;
+    Index,Length,SrcPos:cardinal;
   end;
 
   TStratoSourceTokenList=array of TStratoSourceToken;
 
-const
-  StratoTokenizeLineIndex=1000;
-
-function StratoTokenize(const Code: UTF8String): TStratoSourceTokenList;
+function StratoTokenize(const Code: UTF8String;
+  LineIndex: cardinal): TStratoSourceTokenList;
 
 implementation
 
-function StratoTokenize(const Code: UTF8String): TStratoSourceTokenList;
+function StratoTokenize(const Code: UTF8String;
+  LineIndex: cardinal): TStratoSourceTokenList;
 var
-  CodeIndex,CodeLength:integer;
-  rl,ri,ln,lx:integer;
+  CodeIndex,CodeLength:cardinal;
+  rl,ri,ln,lx:cardinal;
 
-  procedure Add(Len:integer;t:TStratoToken);
+  procedure Add(Len:cardinal;t:TStratoToken);
   begin
     if ri=rl then
      begin
@@ -100,12 +99,12 @@ var
     Result[ri].Length:=Len;
     Result[ri].Token:=t;
     //TODO: count tab as 4 (or 8 or 2)?
-    Result[ri].SrcPos:=ln*StratoTokenizeLineIndex+(CodeIndex-lx)+1;
+    Result[ri].SrcPos:=ln*LineIndex+(CodeIndex-lx)+1;
     inc(ri);
     inc(CodeIndex,Len);
   end;
 
-  function CodeNext(Fwd:integer):AnsiChar;
+  function CodeNext(Fwd:cardinal):AnsiChar;
   begin
     if CodeIndex+Fwd<=CodeLength then
       Result:=Code[CodeIndex+Fwd]
@@ -138,16 +137,16 @@ var
 
   procedure GetIdentifier;
   var
-    i:integer;
+    i:cardinal;
   begin
     i:=CodeIndex;
     while (i<=CodeLength) and (Code[i] in ['0'..'9','A'..'Z','_','a'..'z']) do inc(i);
     Add(i-CodeIndex,stIdentifier);
   end;
 
-  procedure AddX(Len:integer;t:TStratoToken); //add, but detect EOL's
+  procedure AddX(Len:cardinal;t:TStratoToken); //add, but detect EOL's
   var
-    i,l:integer;
+    i,l:cardinal;
   begin
     i:=CodeIndex;
     l:=CodeIndex+Len;
@@ -158,7 +157,7 @@ var
   end;
 
 var
-  i:integer;
+  i:cardinal;
 begin
   CodeIndex:=1;
   CodeLength:=Length(Code);

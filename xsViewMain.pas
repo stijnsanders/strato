@@ -10,11 +10,13 @@ type
   TXsTreeNode=class(TTreeNode)
   private
     Index,ExpandIndex,JumpIndex:cardinal;
+    ExpandSingle:boolean;
+    JumpedTo:TTreeNode;
   public
     procedure AfterConstruction; override;
   end;
 
-  TForm1 = class(TForm)
+  TfrmXsViewMain = class(TForm)
     MainMenu1: TMainMenu;
     TreeView1: TTreeView;
     File1: TMenuItem;
@@ -47,7 +49,6 @@ type
     procedure TreeView1KeyPress(Sender: TObject; var Key: Char);
   private
     FSphere:TStratoSphere;
-    StratoTokenizeLineIndex:cardinal;
     procedure LoadFile(const FilePath:string);
     function JumpNode(n: TTreeNode; const prefix: string;
       i: cardinal): TXsTreeNode;
@@ -62,7 +63,7 @@ type
   end;
 
 var
-  Form1: TForm1;
+  frmXsViewMain: TfrmXsViewMain;
 
 implementation
 
@@ -71,27 +72,30 @@ uses
 
 {$R *.dfm}
 
-{ TForm1 }
+{ TfrmXsViewMain }
 
-procedure TForm1.DoCreate;
+procedure TfrmXsViewMain.DoCreate;
 begin
   inherited;
   FSphere:=nil;
   Application.OnActivate:=AppActivate;
 end;
 
-procedure TForm1.DoDestroy;
+procedure TfrmXsViewMain.DoDestroy;
 begin
   inherited;
   FreeAndNil(FSphere);
 end;
 
-procedure TForm1.Open1Click(Sender: TObject);
+procedure TfrmXsViewMain.Open1Click(Sender: TObject);
 begin
   if OpenDialog1.Execute then LoadFile(OpenDialog1.FileName);
 end;
 
-procedure TForm1.LoadFile(const FilePath: string);
+procedure TfrmXsViewMain.LoadFile(const FilePath: string);
+var
+  n:TTreeNode;
+  p,q:TStratoIndex;
 begin
   if FSphere<>nil then FSphere.Free;
   FSphere:=TStratoSphere.Create;
@@ -99,8 +103,8 @@ begin
 
   Caption:='xsView - '+FilePath;
   Application.Title:=Caption;
-
-  StratoTokenizeLineIndex:=FSphere.Header.SrcIndexLineMultiplier;
+  panHeader.Visible:=false;
+  txtGoTo.Text:='';
 
   ListBox1.Items.BeginUpdate;
   try
@@ -113,23 +117,66 @@ begin
   try
     TreeView1.Items.Clear;
 
-    ListNode(nil,':Namespaces->',FSphere.Header.FirstNameSpace);
-    ListNode(nil,':GlobalVars->',FSphere.Header.FirstGlobalVar);
-    ListNode(nil,':Initialization->',FSphere.Header.FirstInitialization);
-    ListNode(nil,':Finalization->',FSphere.Header.FirstFinalization);
+    //ListNode(nil,':Namespaces->',FSphere.Header.FirstNameSpace);
+    //ListNode(nil,':GlobalVars->',FSphere.Header.FirstGlobalVar);
+    //ListNode(nil,':Initialization->',FSphere.Header.FirstInitialization);
+    //ListNode(nil,':Finalization->',FSphere.Header.FirstFinalization);
+
+    n:=TreeView1.Items.AddChild(nil,Format(':Namespaces [v%d.%d.%d.%d]',[
+       FSphere.Header.Version shr 24,
+       (FSphere.Header.Version shr 16) and $FF,
+       (FSphere.Header.Version shr 8) and $FF,
+       FSphere.Header.Version and $FF])) as TXsTreeNode;
+    p:=FSphere.Header.FirstNameSpace;
+    while p<>0 do
+     begin
+      BuildNode(n,p);
+      p:=FSphere[p].Next;
+     end;
+
+    n:=TreeView1.Items.AddChild(nil,':GlobalVars #'+
+      IntToStr(FSphere.Header.GlobalByteSize)) as TXsTreeNode;
+    p:=FSphere.Header.FirstGlobalVar;
+    while p<>0 do
+     begin
+      q:=p;
+      if (q<>0) and (FSphere[q].ThingType=ttGlobal) then q:=FSphere[q].Target;
+      BuildNode(n,q);
+      p:=FSphere[p].Next;
+     end;
+
+    n:=TreeView1.Items.AddChild(nil,':Initialization') as TXsTreeNode;
+    p:=FSphere.Header.FirstInitialization;
+    while p<>0 do
+     begin
+      q:=p;
+      while (q<>0) and (FSphere[q].ThingType=ttAlias) do q:=FSphere[q].Target;
+      BuildNode(n,q);
+      p:=FSphere[p].Next;
+     end;
+
+    n:=TreeView1.Items.AddChild(nil,':Finalization') as TXsTreeNode;
+    p:=FSphere.Header.FirstFinalization;
+    while p<>0 do
+     begin
+      q:=p;
+      while (q<>0) and (FSphere[q].ThingType=ttAlias) do q:=FSphere[q].Target;
+      BuildNode(n,q);
+      p:=FSphere[p].Next;
+     end;
 
   finally
     TreeView1.Items.EndUpdate;
   end;
 end;
 
-procedure TForm1.TreeView1CreateNodeClass(Sender: TCustomTreeView;
+procedure TfrmXsViewMain.TreeView1CreateNodeClass(Sender: TCustomTreeView;
   var NodeClass: TTreeNodeClass);
 begin
   NodeClass:=TXsTreeNode;
 end;
 
-procedure TForm1.TreeView1DblClick(Sender: TObject);
+procedure TfrmXsViewMain.TreeView1DblClick(Sender: TObject);
 var
   n:TTreeNode;
   i:integer;
@@ -140,7 +187,13 @@ begin
       Open1.Click
     else
      begin
-      JumpTo((n as TXsTreeNode).JumpIndex);
+      if (n as TXsTreeNode).JumpedTo=nil then
+       begin
+        JumpTo((n as TXsTreeNode).JumpIndex);
+        (n as TXsTreeNode).JumpedTo:=TreeView1.Selected;
+       end
+      else
+        TreeView1.Selected:=(n as TXsTreeNode).JumpedTo;
       if n<>TreeView1.Selected then
        begin
         while (n<>nil) and not((n is TXsTreeNode) and ((n as TXsTreeNode).Index<>0)) do
@@ -155,7 +208,7 @@ begin
      end;
 end;
 
-procedure TForm1.JumpTo(x:cardinal);
+procedure TfrmXsViewMain.JumpTo(x:cardinal);
 var
   n:TTreeNode;
   a:array of cardinal;
@@ -185,7 +238,8 @@ begin
     while (ai<>0) and (n<>nil) do
      begin
       dec(ai);
-      while (n<>nil) and not((n is TXsTreeNode) and ((n as TXsTreeNode).Index=a[ai])) do
+      while (n<>nil) and not((n is TXsTreeNode)
+        and ((n as TXsTreeNode).Index=a[ai])) do
        begin
         if (n is TXsTreeNode) and (n.HasChildren) and (n.Count=0)
           and ((n as TXsTreeNode).Index=0) then
@@ -210,13 +264,13 @@ begin
    end;
 end;
 
-procedure TForm1.DoShow;
+procedure TfrmXsViewMain.DoShow;
 begin
   inherited;
   if ParamCount<>0 then LoadFile(ParamStr(1));
 end;
 
-procedure TForm1.AppActivate(Sender: TObject);
+procedure TfrmXsViewMain.AppActivate(Sender: TObject);
 begin
   //TODO: check file modified? reload?
 end;
@@ -230,20 +284,35 @@ begin
   Index:=0;
   ExpandIndex:=0;
   JumpIndex:=0;
+  JumpedTo:=nil;
 end;
 
-function TForm1.JumpNode(n:TTreeNode;const prefix:string;i:cardinal):TXsTreeNode;
+function TfrmXsViewMain.JumpNode(n:TTreeNode;const prefix:string;
+  i:cardinal):TXsTreeNode;
 begin
   if i=0 then
     Result:=nil
   else
    begin
     Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode;
-    Result.JumpIndex:=i;
+    if (n<>nil) and (n is TXsTreeNode)
+      and (FSphere[i].Parent=FSphere[(n as TXsTreeNode).Index].Parent)
+      and not(FSphere[i].ThingType in [ttVar,ttVarByRef,ttThis])
+    then
+     begin
+      //BuildNode(Result,i)
+      Result.HasChildren:=true;
+      Result.ExpandIndex:=i;
+      Result.ExpandSingle:=true;
+     end
+    else
+      Result.JumpIndex:=i;
+    //TODO: if FSphere[i].Parent=FSphere[(n as TXsTreeNode).Index].Parent ?
    end;
 end;
 
-function TForm1.ListNode(n:TTreeNode;const prefix:string;i:cardinal):TXsTreeNode;
+function TfrmXsViewMain.ListNode(n:TTreeNode;const prefix:string;
+  i:cardinal):TXsTreeNode;
 begin
   if i=0 then
     //Result:=nil
@@ -256,9 +325,10 @@ begin
    end;
 end;
 
-function TForm1.BuildNode(Node:TTreeNode;i:cardinal):TXsTreeNode;
+function TfrmXsViewMain.BuildNode(Node:TTreeNode;i:cardinal):TXsTreeNode;
 var
   p:PStratoThing;
+  q:TStratoIndex;
   j:cardinal;
   n:TXsTreeNode;
   s:string;
@@ -269,11 +339,12 @@ begin
    begin
     p:=FSphere[i];
     s:=IntToStr(i)+': '+StratoDumpThing(FSphere,i,p);
-    if (p.ThingType<>ttBinaryData) and (p.Source<>0) then
+    if (p.ThingType<>ttSourceFile) and (p.ThingType<>ttBinaryData)
+      and (p.SrcPos<>0) and StratoGetSourceFile(FSphere,i,q,j) then
       s:=Format('%s  [%s(%d:%d)]',[s
-        ,FSphere.GetBinaryData(PStratoSourceFile(FSphere[p.Source]).FileName)
-        ,p.SrcPos div StratoTokenizeLineIndex
-        ,p.SrcPos mod StratoTokenizeLineIndex
+        ,FSphere.GetBinaryData(PStratoSourceFile(FSphere[q]).FileName)
+        ,p.SrcPos div j
+        ,p.SrcPos mod j
         ]);
     n:=TreeView1.Items.AddChild(Node,s) as TXsTreeNode;
     n.Index:=i;
@@ -282,9 +353,9 @@ begin
       ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration:
         j:=p.FirstItem;
       ttAlias,ttGlobal,ttImport,ttTry,ttDeferred,ttThrow:
-        n.JumpIndex:=p.Subject;
+        n.JumpIndex:=p.Target;
       ttArray:
-        n.JumpIndex:=p.ItemType;
+        n.JumpIndex:=p.ElementType;
       ttFunction:
         j:=p.FirstItem;
       ttVar,ttConstant,ttLiteral:
@@ -294,28 +365,27 @@ begin
        end;
       ttSignature:
        begin
-        JumpNode(n,':sub=',p.Subject);
+        JumpNode(n,':obj=',p.Target);
         ListNode(n,':arg->',p.FirstArgument);
         JumpNode(n,':res=',p.EvaluatesTo);
        end;
-      ttOverload:
+      ttOverload,ttConstructor:
        begin
-        JumpNode(n,':sig=',p.Signature);
-        JumpNode(n,':arg->',p.FirstArgument);
+        JumpNode(n,':sig=',p.Target);
+        ListNode(n,':arg->',p.FirstArgument);
         BuildNode(n,p.Body);
        end;
       ttFnCall:
        begin
-        JumpNode(n,':fn=',p.Subject);
-        JumpNode(n,':sig=',p.Signature);
+        JumpNode(n,':sub=',p.Target);
         ListNode(n,':arg->',p.FirstArgument);
-        JumpNode(n,':{}->',p.Body);
+        JumpNode(n,':{} ',p.Body);
        end;
       ttArgument:
        begin
         n.JumpIndex:=p.EvaluatesTo;
         JumpNode(n,':dft=',p.InitialValue);
-        JumpNode(n,':val=',p.Subject);
+        JumpNode(n,':val=',p.Target);
        end;
       ttThis,ttInherited:
         n.JumpIndex:=p.EvaluatesTo;
@@ -323,8 +393,8 @@ begin
        begin
         n.JumpIndex:=p.EvaluatesTo;
         JumpNode(n,':par=',p.Parent);
-        JumpNode(n,':sub=',p.Subject);
-        ListNode(n,':arg=',p.FirstArgument);
+        JumpNode(n,':sub=',p.Target);
+        ListNode(n,':arg->',p.FirstArgument);
        end;
       ttCodeBlock:
        begin
@@ -335,30 +405,29 @@ begin
       ttAssign:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':ValueFrom->',p.ValueFrom);
-        JumpNode(n,':AssignTo->',p.AssignTo);
+        JumpNode(n,':ValueFrom ',p.ValueFrom);
+        JumpNode(n,':AssignTo ',p.AssignTo);
        end;
       ttUnaryOp:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':Right:',p.Right);
+        JumpNode(n,':Right ',p.Right);
        end;
       ttBinaryOp:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':Left:',p.Left);
-        JumpNode(n,':Right:',p.Right);
+        JumpNode(n,':Left ',p.Left);
+        JumpNode(n,':Right ',p.Right);
        end;
       ttCast:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':sub=',p.Subject);
+        JumpNode(n,':sub=',p.Target);
        end;
       ttClass:
        begin
-        JumpNode(n,':InheritsFrom->',p.InheritsFrom);
-        ListNode(n,':ctor->',p.FirstConstructor);
-        ListNode(n,'->',p.FirstItem);
+        n.JumpIndex:=p.InheritsFrom;
+        j:=p.FirstItem;
        end;
       ttSelection:
        begin
@@ -368,23 +437,23 @@ begin
        end;
       ttIteration:
        begin
-        ListNode(n,':First ',p.DoFirst);
+        ListNode(n,':First ',p.DoElse);
         JumpNode(n,':If ',p.DoIf);
         ListNode(n,':Then ',p.DoThen);
         BuildNode(n,p.Body);
        end;
       ttIterationPE:
        begin
-        ListNode(n,':{}->',p.Body);
-        ListNode(n,':First ',p.DoFirst);
+        BuildNode(n,p.Body);
+        ListNode(n,':First ',p.DoElse);
         JumpNode(n,':If ',p.DoIf);
         ListNode(n,':Then ',p.DoThen);
        end;
       ttCatch:
        begin
-        n.JumpIndex:=p.ItemType;
+        n.JumpIndex:=p.DoIf;
         JumpNode(n,':v=',p.FirstItem);
-        ListNode(n,'->',p.Subject);
+        BuildNode(n,p.Body);
        end;
       ttPointer,ttArgByRef,ttVarByRef:
         n.JumpIndex:=p.EvaluatesTo;
@@ -393,25 +462,21 @@ begin
         n.JumpIndex:=p.EvaluatesTo;
         BuildNode(n,p.ValueFrom);
        end;
-      ttConstructor:
+      ttDestructor:
        begin
-        JumpNode(n,':sub=',p.Subject);
-        JumpNode(n,':sig=',p.Signature);
-        JumpNode(n,':arg->',p.FirstArgument);
+        JumpNode(n,':sig=',p.Target);
         BuildNode(n,p.Body);
        end;
-      ttDestructor:
-        BuildNode(n,p.Body);
       ttInterface:
        begin
-        JumpNode(n,':InheritsFrom->',p.InheritsFrom);
+        JumpNode(n,':InheritsFrom ',p.InheritsFrom);
         ListNode(n,'->',p.FirstItem);
        end;
       ttProperty:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':ValueFrom=',p.ValueFrom);
-        JumpNode(n,':AssignTo=',p.AssignTo);
+        JumpNode(n,':ValueFrom ',p.ValueFrom);
+        JumpNode(n,':AssignTo ',p.AssignTo);
        end;
     end;
     if j<>0 then
@@ -423,7 +488,7 @@ begin
    end;
 end;
 
-procedure TForm1.TreeView1Expanding(Sender: TObject; Node: TTreeNode;
+procedure TfrmXsViewMain.TreeView1Expanding(Sender: TObject; Node: TTreeNode;
   var AllowExpansion: Boolean);
 var
   i:cardinal;
@@ -434,11 +499,14 @@ begin
     try
       Node.HasChildren:=false;
       i:=(Node as TXsTreeNode).ExpandIndex;
-      while i<>0 do
-       begin
-        BuildNode(Node,i);
-        i:=FSphere[i].Next;
-       end;
+      if (Node as TXsTreeNode).ExpandSingle then
+        BuildNode(Node,i)
+      else
+        while i<>0 do
+         begin
+          BuildNode(Node,i);
+          i:=FSphere[i].Next;
+         end;
     finally
       TreeView1.Items.EndUpdate;
     end;
@@ -446,7 +514,7 @@ begin
   //AllowExpansion:=true;
 end;
 
-procedure TForm1.ListBox1DblClick(Sender: TObject);
+procedure TfrmXsViewMain.ListBox1DblClick(Sender: TObject);
 var
   i,j,l:integer;
   s:string;
@@ -467,12 +535,12 @@ begin
    end;
 end;
 
-procedure TForm1.Close1Click(Sender: TObject);
+procedure TfrmXsViewMain.Close1Click(Sender: TObject);
 begin
   Close;
 end;
 
-procedure TForm1.Clearclicktrack1Click(Sender: TObject);
+procedure TfrmXsViewMain.Clearclicktrack1Click(Sender: TObject);
 begin
   ListBox1.Items.BeginUpdate;
   try
@@ -482,19 +550,19 @@ begin
   end;
 end;
 
-procedure TForm1.txtGoToKeyPress(Sender: TObject; var Key: Char);
+procedure TfrmXsViewMain.txtGoToKeyPress(Sender: TObject; var Key: Char);
 begin
   if Key=#13 then btnGoTo.Click;
 end;
 
-procedure TForm1.GoTo1Click(Sender: TObject);
+procedure TfrmXsViewMain.GoTo1Click(Sender: TObject);
 begin
   panHeader.Visible:=true;
   txtGoTo.SelectAll;
   txtGoTo.SetFocus;
 end;
 
-procedure TForm1.btnGoToClick(Sender: TObject);
+procedure TfrmXsViewMain.btnGoToClick(Sender: TObject);
 var
   p:TStratoIndex;
   b:boolean;
@@ -518,7 +586,7 @@ begin
    end;
 end;
 
-procedure TForm1.TreeView1KeyPress(Sender: TObject; var Key: Char);
+procedure TfrmXsViewMain.TreeView1KeyPress(Sender: TObject; var Key: Char);
 begin
   if Key=#13 then TreeView1DblClick(Sender);
 end;

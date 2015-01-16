@@ -13,27 +13,29 @@ type
     FData:array of array of TStratoThing;
     FDataSize,FDataIndex:cardinal;
     FBasePath:string;
-    function AddInternal(ThingType:cardinal;Name:TStratoName):TStratoIndex;
     function GetNode(ID: TStratoIndex): PStratoThing;
   public
     constructor Create;
     destructor Destroy; override;
-    function Add(ThingType:cardinal;const Name:UTF8String):TStratoIndex;
-    function AddTo(var First:TStratoIndex;ThingType:cardinal;
-      const Name:UTF8String):TStratoIndex; overload;
+    function Add(ThingType: cardinal; var Info: PStratoThing): TStratoIndex;
+    function AddTo(var First: TStratoIndex; ThingType: cardinal;
+      Name: TStratoName; var Info: PStratoThing): TStratoIndex; overload;
     function AddTo(var First:TStratoIndex;Item:TStratoIndex):boolean; overload;
+    function AddTo(var First: TStratoIndex; ThingType: cardinal;
+      Name: TStratoName; var Index: TStratoIndex;
+      var Info: PStratoThing): boolean; overload;
     procedure Prepend(var First:TStratoIndex;Item:TStratoIndex);
     procedure Append(var First:TStratoIndex;Item:TStratoIndex);
     function Lookup(First:TStratoIndex;Name:TStratoName):TStratoIndex;
-    function FQN(x:TStratoIndex):UTF8String;
+    function FQN(p:TStratoIndex):UTF8String;
     function AddBinaryData(const x:UTF8String):TStratoIndex;
-    function GetBinaryData(x:TStratoIndex):UTF8String;
+    function GetBinaryData(p:TStratoIndex):UTF8String;
     function Header:PStratoHeader;
     procedure AddGlobalVar(p:TStratoIndex);
     procedure ReadSettings(const IniPath:string);
     procedure LoadFromFile(const FilePath:string);
     procedure SaveToFile(const FilePath:string);
-    procedure Error(x:TStratoIndex;const Msg:string);
+    procedure Error(p:TStratoIndex;const Msg:string);
     procedure InlineError(Sender:TObject;Line,LPos:cardinal;
       const ErrorMsg:string);
     property Dict:TStringDictionary read FDict;
@@ -47,8 +49,10 @@ implementation
 uses stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
 
 const
-  StratoSphereDataBlockSize=340;//~16KiB/48B
+  StratoSphereDataBlockSize=$1000;
   StratoSphereDataGrowSize=$100;
+
+  StratoSphereFileVersion=$00000001;//0.1
 
 { TStratoSphere }
 
@@ -65,14 +69,14 @@ begin
 
   //header
   h:=@FData[0][0];
-  h.FileMarker:=ttHeader;
-  h.Name:=0;//?
-  h.Version:=$00000001;//0.1
+  h.FileMarker:=ttFileMarker;
   h.ThingCount:=0;//see SaveToFile
-  h.SrcIndexLineMultiplier:=StratoTokenizeLineIndex;
+  h.Version:=StratoSphereFileVersion;
   h.FirstNameSpace:=1;
-  h.FirstGlobalVar:=0;
-  h.GlobalByteSize:=0;
+  h.FirstGlobalVar:=0;//default
+  h.GlobalByteSize:=0;//default
+  h.FirstInitialization:=0;//default
+  h.FirstFinalization:=0;//default
 
   //runtime
   FData[0][1].ThingType:=ttNameSpace;
@@ -108,26 +112,38 @@ begin
   end;
 end;
 
-procedure TStratoSphere.Error(x: TStratoIndex; const Msg: string);
+procedure TStratoSphere.Error(p: TStratoIndex; const Msg: string);
 var
+  q:TStratoIndex;
   px:PStratoThing;
 begin
-  px:=Node[x];
-  if (x=0) or (px.Source=0) then
+  q:=p;
+  while (q<>0) and (q<FDataIndex)
+    and not(Node[q].ThingType in [ttNameSpace,ttOverload,ttConstructor]) do
+    q:=Node[q].Parent;
+  if q<>0 then
+    case Node[q].ThingType of
+      ttNameSpace:q:=PStratoNameSpaceData(Node[q]).SourceFile;
+      ttOverload,ttConstructor:q:=Node[q].SourceFile;
+      else q:=0;//raise?
+    end;
+  px:=Node[p];
+  if (p=0) or (q=0) then
     Writeln(ErrOutput,Msg)
   else
    begin
     Writeln(ErrOutput,Format('%s(%d:%d): %s',
-      [GetBinaryData(PStratoSourceFile(Node[px.Source]).FileName)
-      ,px.SrcPos div StratoTokenizeLineIndex
-      ,px.SrcPos mod StratoTokenizeLineIndex
+      [GetBinaryData(PStratoSourceFile(Node[q]).FileName)
+      ,px.SrcPos div PStratoSourceFile(Node[q]).SrcPosLineIndex
+      ,px.SrcPos mod PStratoSourceFile(Node[q]).SrcPosLineIndex
       ,Msg
       ]));
    end;
   ExitCode:=1;
 end;
 
-function TStratoSphere.AddInternal(ThingType:cardinal;Name:TStratoName):TStratoIndex;
+function TStratoSphere.Add(ThingType: cardinal;
+  var Info: PStratoThing): TStratoIndex;
 var
   i,j:cardinal;
 begin
@@ -144,45 +160,45 @@ begin
     SetLength(FData[i],StratoSphereDataBlockSize);
    end;
   Result:=FDataIndex;
-  //ZeroMemory?
-  FData[i][j].ThingType:=ThingType;
-  FData[i][j].Name:=Name;
   inc(FDataIndex);
+  Info:=@FData[i][j];
+  //ZeroMemory(Info^?
+  Info.ThingType:=ThingType;
 end;
 
-function TStratoSphere.Add(ThingType:cardinal; const Name:UTF8String): TStratoIndex;
-begin
-  Result:=AddInternal(ThingType,FDict.StrIdx(Name));
-end;
-
-function TStratoSphere.AddTo(var First:TStratoIndex;ThingType:cardinal;
-  const Name:UTF8String):TStratoIndex;
+function TStratoSphere.AddTo(var First: TStratoIndex; ThingType: cardinal;
+  Name: TStratoName; var Info: PStratoThing): TStratoIndex;
 var
-  x:TStratoName;
   p:PStratoThing;
 begin
-  //assert caller sets Sphere[Result].Parent
-  x:=FDict.StrIdx(Name);
   if First=0 then
    begin
     //first item
-    First:=AddInternal(ThingType,x);
+    First:=Add(ThingType,Info);
+    Info.Name:=Name;
     Result:=First;
    end
   else
    begin
+    //assert all named things
     p:=Node[First];
-    while (p.Next<>0) and (p.Name<>x) do p:=Node[p.Next];
-    if p.Name=x then
-      Result:=0 //duplicate !
-    else
+    while (p.Next<>0) and (p.Name<>Name) do p:=Node[p.Next];
+    if p.Next=0 then
      begin
       //add
-      Result:=AddInternal(ThingType,x);
+      Result:=Add(ThingType,Info);
+      Info.Name:=Name;
       //TODO: sort? build better look-up lists?
-      p.Next:=Result;
+      p.Next:=Result;//assert was 0
+     end
+    else
+     begin
+       //duplicate ! assert caller handles zero values
+      Result:=0;
+      Info:=nil;
      end;
    end;
+  //assert caller sets Info.Parent
 end;
 
 function TStratoSphere.AddTo(var First:TStratoIndex;Item:TStratoIndex):boolean;
@@ -218,6 +234,22 @@ begin
    end;
 end;
 
+function TStratoSphere.AddTo(var First: TStratoIndex; ThingType: cardinal;
+  Name: TStratoName; var Index: TStratoIndex;
+  var Info: PStratoThing): boolean;
+begin
+  Index:=AddTo(First,ThingType,Name,Info);
+  if Index=0 then
+   begin
+    //create anyway to prevent errors on further parsing
+    Index:=Add(ThingType,Info);
+    Info.Name:=Name;
+    Result:=false;
+   end
+  else
+    Result:=true;
+end;
+
 procedure TStratoSphere.Prepend(var First: TStratoIndex; Item: TStratoIndex);
 begin
   Node[Item].Next:=First;
@@ -240,13 +272,15 @@ end;
 
 function TStratoSphere.GetNode(ID: TStratoIndex): PStratoThing;
 begin
-  if ID=0 then Result:=nil else
+  if ID=0 then
+    Result:=nil
+  else
     if ID<FDataIndex then
       Result:=@FData
         [ID div StratoSphereDataBlockSize]
         [ID mod StratoSphereDataBlockSize]
     else
-      Result:=nil;
+      Result:=nil;//raise?
 end;
 
 function TStratoSphere.Lookup(First:TStratoIndex;Name:TStratoName):TStratoIndex;
@@ -256,53 +290,57 @@ begin
     Result:=Node[Result].Next;
 end;
 
-function TStratoSphere.FQN(x: TStratoIndex): UTF8String;
-var
-  n:TStratoIndex;
+function TStratoSphere.FQN(p: TStratoIndex): UTF8String;
 begin
-  if x=0 then Result:='' else
+  Result:='';
+  while (p<>0) and (p<FDataIndex) do
    begin
-    if Node[x].Name=0 then
-      Result:=UTF8String(IntToStr(x))
-    else
-      Result:=FDict.Str[Node[x].Name];
-    n:=Node[x].Parent;
-    while (n<>0) and (n<FDataIndex) do
-     begin
-      if Node[n].Name=0 then
-        Result:=UTF8String(IntToStr(n))+'.'+Result
+    //TODO: tt__Named
+    if Node[p].ThingType in [ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration,
+      ttVar,ttConstant,ttImport,ttSignature,ttFunction,ttArgument,
+      ttPointer,ttVarByRef,ttArgByRef,ttClass,ttInterface,ttProperty] then
+      if Node[p].Name=0 then
+        Result:=UTF8String(IntToStr(p))+'.'+Result
       else
-        Result:=FDict.Str[Node[n].Name]+'.'+Result;
-      n:=Node[n].Parent;
-     end;
+        Result:=FDict.Str[Node[p].Name]+'.'+Result;
+    p:=Node[p].Parent;
    end;
+  if Result<>'' then SetLength(Result,Length(Result)-1);//trailing "."
 end;
 
 function TStratoSphere.AddBinaryData(const x: UTF8String): TStratoIndex;
 var
   l,i:cardinal;
+  p,q:PStratoBinaryData;
 begin
   l:=Length(x);
-  Result:=Add(ttBinaryData,'');
-  Node[Result].Name:=l;//Length
+  Result:=Add(ttBinaryData,PStratoThing(p));
+  p.DataLength:=l;//Length
   //need more than one node?
   i:=l+8;//check including header of first node
+  //TODO: calculate, not iterate
   while i>SizeOf(TStratoThing) do
    begin
-    AddInternal(ttBinaryData,0);
+    Add(ttBinaryData,PStratoThing(q));//to inc FDataIndex
     dec(i,SizeOf(TStratoThing));
    end;
   //p.???:=FDataIndex-Result;?
   //store data
-  Move(x[1],Node[Result].Parent,l);
+  Move(x[1],p.DataStart,l);
 end;
 
-function TStratoSphere.GetBinaryData(x: TStratoIndex): UTF8String;
+function TStratoSphere.GetBinaryData(p: TStratoIndex): UTF8String;
+var
+  l:integer;
 begin
-  //assert x<>0 and x<FDataIndex
-  //assert Node[x].ThingType:=ttBinary
-  SetLength(Result,Node[x].Name);
-  Move(Node[x].Parent,Result[1],Node[x].Name);
+  if p=0 then Result:='' else
+   begin
+    //assert x<>0 and x<FDataIndex
+    //assert Node[x].ThingType:=ttBinary
+    l:=PStratoBinaryData(Node[p]).DataLength;
+    SetLength(Result,l);
+    Move(PStratoBinaryData(Node[p]).DataStart,Result[1],l);
+   end;
 end;
 
 function TStratoSphere.Header:PStratoHeader;
@@ -313,14 +351,15 @@ end;
 procedure TStratoSphere.AddGlobalVar(p: TStratoIndex);
 var
   q:TStratoIndex;
+  qx:PStratoThing;
 begin
+  //assert p<>0
   //assert Node[p].ThingType=ttVar
   Node[p].Offset:=Header.GlobalByteSize;
   if Node[p].EvaluatesTo<>0 then
     inc(Header.GlobalByteSize,Node[Node[p].EvaluatesTo].ByteSize);
-
-  q:=AddInternal(ttGlobal,0);
-  Node[q].Subject:=p;
+  q:=Add(ttGlobal,qx);
+  qx.Target:=p;
   Append(Header.FirstGlobalVar,q);
 end;
 
@@ -335,11 +374,11 @@ begin
   try
     f.Read(FData[0][0],SizeOf(TStratoThing));
     h:=@FData[0][0];
-    if h.FileMarker<>ttHeader then
+    if h.FileMarker<>ttFileMarker then
       raise Exception.Create('File is not a sphere data file');
     //TODO: check?
-    h.Version:=$00000001;//0.1
-    h.SrcIndexLineMultiplier:=StratoTokenizeLineIndex;
+    if h.Version<>StratoSphereFileVersion then
+      raise Exception.Create('File is of an unsupported version');
 
     FDataIndex:=h.ThingCount+1;
     i:=(FDataIndex div StratoSphereDataBlockSize)+1;

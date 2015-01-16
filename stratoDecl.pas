@@ -13,19 +13,22 @@ const
   //use below guide to determine which fields
   //are in use for each ThingType
 
-  ttHeader       = $00727453;//'Str'#0;
-    //SrcIndexLineMultiplier: see stratoTokenizer
-    //Version: see TStratoSphere.Create
+  ttFileMarker   = $00727453;//'Str'#0;
+    //(node 0: use PStratoHeader)
 
   ttSourceFile   = $0100;
+    //(use PStratoSourceFile)
     //FileSize
     //FileName (ttBinaryData)
+    //SrcPosLineIndex
+    //InitializationCode (0,ttCodeBlock)
+    //FinalizationCode (0,ttCodeBlock
     //TODO: FileCRC32,FileDate
 
   ttBinaryData   = $0200;
-    //[Name]:size of data
-    //[Parent]:start of data
-
+    //(use PStratoBinaryData)
+    //DataLength: data in (DataLength+8 div 32) node(s)
+    //DataStart: start of inlined data
 
   tt__Resolvable = $0010;
     //[bitmask: things that use FirstItem]
@@ -34,24 +37,26 @@ const
   tt__IsType     = $0040;
     //[bitmask: things allowed as EvaluatesTo]
 
+  //TODO: tt__Named?
+
   ttNameSpace    = $0011;
-    //FirstInitialization (ttCodeBlock)
-    //FirstFinalization (ttCodeBlock)
-    //FirstItem (*)
+    //(use PStratoNameSpace)
+    //FirstItem	(0,*)
+    //Source (0,ttSourceFile)
+    //FirstInitialization (0,ttCodeBlock)
+    //FirstFinalization (0,ttCodeBlock)
 
   ttTypeDecl     = $0050;
+    //FirstItem (0,*)
     //ByteSize: memory used by var of type
-    //FirstItem (*)
-    //InheritsFrom (ttTypeDecl)
 
   ttRecord       = $0051;
     //ByteSize
-    //FirstItem (*)
-    //InheritsFrom (ttRecord)
+    //FirstItem (0,*)
 
   ttEnumeration  = $0052;
     //ByteSize
-    //FirstItem (ttConstant)
+    //FirstItem (0,ttConstant)
 
   ttLiteral      = $0021;
     //EvaluatesTo (ttTypeDecl)
@@ -73,52 +78,52 @@ const
     //FirstStatement (*)
 
   tt__Directed   = $0080;
-    //[bitmask: things that use Subject]
+    //[bitmask: things that use Target]
 
   ttImport       = $0081;
-    //Subject
+    //Target (ttNameSpace)
 
   ttAlias        = $0082;
-    //Subject
+    //Target (*)
 
   ttGlobal       = $0083;
-    //Subject (ttVar)
+    //Target (ttVar)
 
 
   ttSignature    = $00E0;
-    //Subject (ttTypeDecl): call subject (this)
-    //EvaluatesTo (ttTypeDecl): return value
+    //Target (ttTypeDecl): call subject (this)
+    //EvaluatesTo (0,ttTypeDecl): return value
     //FirstArgument (*): first argument
 
   ttFunction     = $0001;
-    //FirstItem (ttOverload): first overload
+    //FirstItem (0,ttOverload): first overload
 
   ttOverload     = $0002;
-    //Signature (ttSignature): call signature
-    //Body (ttCodeBlock): overload body
+    //SourceFile (ttSourceFile)
     //FirstArgument (*): first argument value in overload body
+    //Target (ttSignature): call signature
+    //Body (ttCodeBlock): overload body
 
   ttFnCall       = $0084;
-    //Subject (ttOverload, ttVarIndex)
-    //FirstArgument (*)
-    //Signature (ttSignature): matching signature
-    //Body (ttCodeBlock): body from overload with matching signature (see ttOverload)
+    //FirstArgument (0,ttArgument)
+    //Target (ttVarIndex,ttOverload,ttConstructor,ttDestructor): 
+    //Body (0,ttCodeBlock,ttVarIndex): body from overload
 
   ttArgument     = $00A0;
-    //Subject (*): argument value (not ValueFrom!)
-    //EvaluatesTo (ttTypeDecl): argument type (used to find suitable signature)
     //InitialValue (ttLiteral): default value (signature only)
+    //Target (*): argument value [ATTENTION! Target and not ValueFrom!]
+    //EvaluatesTo (ttTypeDecl): argument type (used to find suitable signature)
 
   ttAssign       = $0024;
     //Op
     //EvaluatesTo (ttTypeDecl)
     //ValueFrom (*)
-    //AssignTo (ttVar)
+    //AssignTo (ttVar,ttVarIndex,ttCast)
 
   ttUnaryOp      = $0025;
     //Op
     //EvaluatesTo (ttTypeDecl)
-    //Right (*): [ATTENTION! Right and not Subject!]
+    //Right (*): [ATTENTION! Right and not Target!]
 
   ttBinaryOp     = $0026;
     //Op
@@ -127,7 +132,7 @@ const
     //Right (*)
 
   ttCast         = $00A1;
-    //Subject (*)
+    //Target (*)
     //EvaluatesTo (ttTypeDecl)
 
   ttSelection    = $0123;
@@ -139,36 +144,35 @@ const
   ttIteration    = $0101;
   ttIterationPE  = $0102;//post evaluation
     //DoIf: criterium
-    //DoFirst: initialization (e.g. i=0)
+    //DoElse: initialization (e.g. i=0) [should be DoFirst but saving a label]
     //DoThen: do between body and criterium (e.g. i++)
     //Body
 
   ttTry          = $0003;
-    //Subject: (ttDeffered or ttCatch)
+    //Target: (ttDeferred,ttCatch)
 
   ttThrow        = $0004;
-    //Subject: object (creator) to throw
+    //Target: object (creator) to throw
     //TODO: (EvaluatesTo?
 
   ttDeferred     = $0005;
-    //Subject: deferred command
+    //Target: deferred command
 
   ttCatch        = $0006;
-    //Subject: exception handling command(s)
-    //ItemType: exception object mask
-    //FirstItem (ttVar): exception object reference
+    //DoIf (0,ttTypeDecl): exception object mask
+    //FirstArgument (ttVar): exception object reference
+    //Body (*) exception handling command(s)
 
   ttSysCall      = $0007;
     //Op : internal value (see PerformSysCall)
 
-
   ttArray        = $0041;
-    //ByteSize
-    //ItemType (ttTypeDecl)
+    //ByteSize: total array memory size
+    //ElementType (ttTypeDecl)
 
   ttVarIndex     = $0027;
     //Parent (ttVar)
-    //Subject: struct member
+    //Target
     //EvaluateTo
     //FirstArgument: index value
 
@@ -199,18 +203,18 @@ const
     //EvaluatesTo (ttTypeDecl)
 
   ttClass        = $00D0;
-    //ByteSize (of data, not value since that's a pointer)
-    //FirstConstructor (ttConstructor)
-    //FirstItem (ttVar, ttFunction, ttProperty)
-    //InheritsFrom (ttClass)
+    //FirstItem (0, ttVar, ttFunction, ttProperty, ttConstructor)
+    //ByteSize: size of data, not value since that's a pointer
+    //InheritsFrom (0, ttClass)
+    //Target (ttClassInfo)
 
   ttConstructor  = $000A;
-    //Signature (ttSignature)
-    //Body (ttCodeBlock): first overload body
     //FirstArgument (*): first argument value in overload body
+    //Target (ttSignature)
+    //Body (ttCodeBlock): first overload body
 
   ttDestructor   = $000B;
-    //Signature (ttSignature)
+    //Target (ttSignature)
     //Body (ttCodeBlock)
 
   ttInterface    = $00D1;
@@ -226,65 +230,96 @@ const
 type
   TStratoThing=record
     ThingType:cardinal;
-    Name:TStratoName;
     Parent:TStratoIndex;
-    Next:TStratoIndex; //TODO: something better than linked list for look-up
+    Next:TStratoIndex;
     case cardinal of
       //ATTENTION!
       //  Below identifiers carefully chosen and ordered to correctly overlap
       //  in accorance with their meaning given by the value of ThingType.
-      ttCodeBlock,ttTypeDecl:(
+      ttTypeDecl:(
+        Name:TStratoName;
+        FirstItem:TStratoIndex;
         ByteSize:cardinal;
-        ItemType,FirstItem,FirstStatement:TStratoIndex;
-        Source:TStratoIndex;
-        SrcPos,
-        x_Reserved1,x_Reserved2:cardinal;
+        InheritsFrom:TStratoIndex;
+        SrcPos:cardinal;
       );
       ttVar:(
+        FirstStatement:TStratoIndex;//ttCodeBlock
+        InitialValue:TStratoIndex;
         Offset:cardinal;
-        EvaluatesTo,InitialValue,InheritsFrom:TStratoIndex;
+        EvaluatesTo:TStratoIndex;
       );
-      ttSignature,ttOverload,ttFnCall:(
-        Subject,Signature,FirstArgument,Body:TStratoIndex;
+      ttAssign:(
+        Op:cardinal;
+        ValueFrom,
+        AssignTo:TStratoIndex;
       );
       ttBinaryOp:(
-        Op:cardinal;
-        FirstConstructor,//ttClass
-        Left,Right:TStratoIndex;
+        SourceFile:TStratoIndex;//ttOverload only!
+        Left,
+        Right:TStratoIndex;
       );
-      ttNameSpace,ttAssign:(
-        FirstInitialization,
-        FirstFinalization,
-        ValueFrom,AssignTo:TStratoIndex;
+      ttOverload:(
+        ElementType:cardinal;//ttArray only!
+        FirstArgument,
+        Target:TStratoIndex;
       );
-      ttSelection,ttIteration:(
-        DoIf,DoFirst,DoThen,DoElse:TStratoIndex;
+      ttSelection:(
+        DoIf,
+        DoThen,
+        DoElse,//ttSelection:DoElse,ttIteration:DoFirst
+        Body:TStratoIndex;
       );
   end;
   PStratoThing=^TStratoThing;
 
   TStratoHeader=record
-    FileMarker:cardinal;//ttHeader
-    Name:cardinal;
-    FirstInitialization,FirstFinalization:TStratoIndex;
-    ThingCount:cardinal;
-    SrcIndexLineMultiplier:cardinal;
-    FirstNameSpace,FirstGlobalVar:TStratoIndex;
-    GlobalByteSize:cardinal;
-    x_Reserved4,x_Reserved5:TStratoIndex;
+    FileMarker,
+    ThingCount,
     Version:cardinal;
+    FirstNameSpace,
+    FirstGlobalVar:TStratoIndex;
+    GlobalByteSize:cardinal;
+    FirstInitialization,
+    FirstFinalization:TStratoIndex;
   end;
   PStratoHeader=^TStratoHeader;
 
   TStratoSourceFile=record
-    ThingType:cardinal;
-    Name:TStratoName;
-    InitializationCode,FinalizationCode:TStratoIndex;
+    ThingType:cardinal;//ttSourceFile
+    FileName:TStratoName;
     FileSize:cardinal;
-    NameSpace,FileName:TStratoIndex;
-    //FileCRC32,FileDate:cardinal;
+    SrcPosLineIndex:cardinal;
+    xReserved1,//FileCRC32?
+    xReserved2,//FileDate?
+    InitializationCode,
+    FinalizationCode:TStratoIndex;
   end;
   PStratoSourceFile=^TStratoSourceFile;
+
+  TStratoBinaryData=record
+    ThingType,//ttBinaryData
+    DataLength,
+    DataStart,
+    xPadding1,
+    xPadding2,
+    xPadding3,
+    xPadding4,
+    xPadding5:cardinal;
+  end;
+  PStratoBinaryData=^TStratoBinaryData;
+
+  TStratoNameSpaceData=record
+    ThingType:cardinal;//ttNameSpace
+    Parent,
+    Next:TStratoIndex;
+    Name:TStratoName;
+    FirstItem,
+    SourceFile:TStratoIndex;
+    FirstInitialization,
+    FirstFinalization:TStratoIndex;
+  end;
+  PStratoNameSpaceData=^TStratoNameSpaceData;
 
 implementation
 

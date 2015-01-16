@@ -11,16 +11,32 @@ function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;
-  const FieldName:UTF8String;FieldType:TStratoIndex;Offset:cardinal):TStratoIndex;
+  const FieldName:Utf8String;FieldType:TStratoIndex;Offset:cardinal;
+  var Index:TStratoIndex;var Info:PStratoThing):boolean;
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 procedure StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 
 procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
   MergeOnto:TStratoIndex);
 
+const
+{$IFDEF DEBUG}
+  IndexStep1=999999901;
+  IndexStep2=999999902;
+  IndexStep3=999999903;
+  IndexStep4=999999904;
+  IndexStep5=999999905;
+{$ELSE}
+  IndexStep1={TStratoIndex}cardinal(-$E);
+  IndexStep2={TStratoIndex}cardinal(-$D);
+  IndexStep3={TStratoIndex}cardinal(-$C);
+  IndexStep4={TStratoIndex}cardinal(-$B);
+  IndexStep5={TStratoIndex}cardinal(-$A);
+{$ENDIF}
+
 implementation
 
-uses SysUtils, stratoRunTime;
+uses SysUtils, stratoRunTime, stratoFn;
 
 function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 var
@@ -35,12 +51,11 @@ begin
     else
       case px.ThingType of
         ttFnCall:
-          if px.Signature<>0 then
-            Result:=Sphere[px.Signature].EvaluatesTo;
+          Result:=FnSignature(Sphere,px).EvaluatesTo;
         //TODO: ttAlias?
         //TODO: ttFunction?
         ttOverload:
-          Result:=px.Signature;//TODO:  stAssignment check
+          Result:=px.Target;//ttSignature
         //else Result:=0;//see default
       end;
    end;
@@ -104,7 +119,7 @@ begin
           x1:=Sphere[s1];
           x2:=Sphere[s2];
           if SameType(Sphere,x1.EvaluatesTo,x2.EvaluatesTo) and
-            SameType(Sphere,x1.Subject,x2.Subject) then
+            SameType(Sphere,x1.Target,x2.Target) then
            begin
             s1:=x1.FirstArgument;
             s2:=x2.FirstArgument;
@@ -132,30 +147,31 @@ begin
 end;
 
 function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;
-  const FieldName:UTF8String;FieldType:TStratoIndex;Offset:cardinal):TStratoIndex;
+  const FieldName:Utf8String;FieldType:TStratoIndex;Offset:cardinal;
+  var Index:TStratoIndex;var Info:PStratoThing):boolean;
 var
-  p,q:PStratoThing;
+  p:PStratoThing;
   s,i:cardinal;
 begin
   p:=Sphere[Struct];
-  Result:=Sphere.AddTo(p.FirstItem,ttVar,FieldName);
-  if Result<>0 then
+  Index:=Sphere.AddTo(p.FirstItem,ttVar,Sphere.Dict.StrIdx(FieldName),Info);
+  if Index=0 then Result:=false else
    begin
-    q:=Sphere[Result];
-    q.Parent:=Struct;
-    q.EvaluatesTo:=FieldType;
+    Info.Parent:=Struct;
+    Info.EvaluatesTo:=FieldType;
     if FieldType=0 then s:=0 else s:=ByteSize(Sphere,FieldType);
     if Offset=OffsetUseDefault then
      begin
-      q.Offset:=p.ByteSize;
+      Info.Offset:=p.ByteSize;
       inc(p.ByteSize,s);
      end
     else
      begin
-      q.Offset:=Offset;
+      Info.Offset:=Offset;
       i:=Offset+s;
       if i>p.ByteSize then p.ByteSize:=i;
      end;
+    Result:=true;
    end;
 end;
 

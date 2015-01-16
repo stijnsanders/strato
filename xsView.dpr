@@ -2,7 +2,7 @@ program xsView;
 
 uses
   Forms,
-  xsViewMain in 'xsViewMain.pas' {Form1},
+  xsViewMain in 'xsViewMain.pas' {frmXsViewMain},
   stratoDecl in 'stratoDecl.pas',
   stratoSphere in 'stratoSphere.pas',
   stratoDebug in 'stratoDebug.pas';
@@ -11,6 +11,6 @@ uses
 
 begin
   Application.Initialize;
-  Application.CreateForm(TForm1, Form1);
+  Application.CreateForm(TfrmXsViewMain, frmXsViewMain);
   Application.Run;
 end.

@@ -1,4 +1,4 @@
-object Form1: TForm1
+object frmXsViewMain: TfrmXsViewMain
   Left = 192
   Top = 124
   Width = 557

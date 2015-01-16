@@ -6,6 +6,8 @@ uses stratoTokenizer, stratoSphere, stratoDecl;
 
 procedure StratoDumpTokens(const t:TStratoSourceTokenList);
 function StratoDumpThing(s:TStratoSphere; i:cardinal; p:PStratoThing):string;
+function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
+  var q:TStratoIndex;var LineIndex:cardinal):boolean;
 procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
 
 implementation
@@ -36,21 +38,23 @@ function StratoDumpThing(s:TStratoSphere; i:cardinal; p:PStratoThing):string;
 begin
   case p.ThingType of
     ttSourceFile:
-      Result:=Format('src  fn=%d ns=%d ini=%d fin=%d',
+      Result:=Format('src  fn=%d ini=%d fin=%d',
         [PStratoSourceFile(p).FileName
-        ,PStratoSourceFile(p).NameSpace
+        //,PStratoSourceFile(p).FileSize
+        //,PStratoSourceFile(p).NameSpace
         ,PStratoSourceFile(p).InitializationCode
         ,PStratoSourceFile(p).FinalizationCode
         ]);
-    ttNameSpace:
-      Result:=Format('ns   %s  ->%d  ini=%d fin=%d',
-        [s.FQN(i),p.FirstItem
-        ,p.FirstInitialization,p.FirstFinalization]);
     ttBinaryData:
       Result:=Format('"%s"',[s.GetBinaryData(i)]);
-    ttImport:
-      Result:=Format('<<<  %s  %d',
-        [s.FQN(i),p.Subject]);
+    ttNameSpace:
+      Result:=Format('ns   %s  ->%d  src=%d ini=%d fin=%d',
+        [s.FQN(i)
+        ,PStratoNameSpaceData(p).FirstItem
+        ,PStratoNameSpaceData(p).SourceFile
+        ,PStratoNameSpaceData(p).FirstInitialization
+        ,PStratoNameSpaceData(p).FirstFinalization
+        ]);
     ttTypeDecl:
       Result:=Format('type %s  #%d ->%d',
         [s.FQN(i),p.ByteSize,p.FirstItem]);
@@ -60,50 +64,44 @@ begin
     ttEnumeration:
       Result:=Format('enum %s  ->%d',
         [s.FQN(i),p.FirstItem]);
-    ttArray:
-      Result:=Format('arr  %s  #%d t=%d',
-        [s.FQN(i),p.ByteSize,p.ItemType]);
-    ttAlias:
-      Result:=Format('---> %d',
-        [p.Subject]);
-    ttGlobal:
-      Result:=Format('===> %d  %s',
-        [p.Subject,s.FQN(p.Subject)]);
+    ttLiteral:
+      Result:=Format('lit  t=%d v=%d',
+        [p.EvaluatesTo,p.InitialValue]);
     ttVar:
       Result:=Format('var  %s  @%d t=%d v=%d',
         [s.FQN(i),p.Offset,p.EvaluatesTo,p.InitialValue]);
     ttConstant:
       Result:=Format('cons %s  t=%d v=%d',
         [s.FQN(i),p.EvaluatesTo,p.InitialValue]);
-    ttLiteral:
-      Result:=Format('lit  t=%d v=%d',
-        [p.EvaluatesTo,p.InitialValue]);
+    ttCodeBlock:
+      Result:=Format('{}   #%d var->%d cmd->%d t=%d',
+        [p.ByteSize,p.FirstItem
+        ,p.FirstStatement,p.EvaluatesTo]);
+    ttImport:
+      Result:=Format('<<<  %s  %d',
+        [s.FQN(i),p.Target]);
+    ttAlias:
+      Result:=Format('---> %d',
+        [p.Target]);
+    ttGlobal:
+      Result:=Format('===> %d  %s',
+        [p.Target,s.FQN(p.Target)]);
     ttSignature:
       Result:=Format('sig  %s  "%d.(%d):%d"',
-        [s.FQN(i),p.Subject,p.FirstArgument,p.EvaluatesTo]);
+        [s.FQN(i),p.Target,p.FirstArgument,p.EvaluatesTo]);
     ttFunction:
       Result:=Format('fn:  %s  ->%d',
         [s.FQN(i),p.FirstItem]);
     ttOverload:
       Result:=Format('fn   %s  %d(%d){%d}',
-        [s.FQN(i),p.Signature,p.FirstArgument,p.Body]);
+        [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
     ttFnCall:
-      Result:=Format('call %s  fn=%d  %d(%d){%d}',
+      Result:=Format('call %s  %d(%d){%d}',
         [s.Dict[p.Name]{s.FQN(i)}
-        ,p.Subject,p.Signature,p.FirstArgument,p.Body]);
+        ,p.Target,p.FirstArgument,p.Body]);
     ttArgument:
       Result:=Format('arg  %s  t=%d d=%d v=%d',
-        [s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Subject]);
-    ttThis:
-      Result:=Format('this @%d t=%d',[p.Offset,p.EvaluatesTo]);
-    ttInherited:
-      Result:=Format('inh  t=%d',[p.EvaluatesTo]);
-    ttVarIndex:
-      Result:=Format('.[]  %d.%d[%d]  t=%d',
-        [p.Parent,p.Subject,p.FirstArgument,p.EvaluatesTo]);
-    ttCodeBlock:
-      Result:=Format('{}   #%d ->%d,%d t=%d',
-        [p.ByteSize,p.FirstItem,p.FirstStatement,p.EvaluatesTo]);
+        [s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Target]);//not ValueFrom!
     ttAssign:
       Result:=Format(':=   %d %s %d  t=%d',
         [p.AssignTo,TokenName[TStratoToken(p.Op)],p.ValueFrom,p.EvaluatesTo]);
@@ -115,27 +113,37 @@ begin
         [p.Left,TokenName[TStratoToken(p.Op)],p.Right,p.EvaluatesTo]);
     ttCast:
       Result:=Format('cast %d into %d',
-        [p.Subject,p.EvaluatesTo]);
+        [p.Target,p.EvaluatesTo]);
     ttSelection:
       Result:=Format('if   (%d){%d}{%d} t=%d',
         [p.DoIf,p.DoThen,p.DoElse,p.EvaluatesTo]);
     ttIteration:
       Result:=Format('for  &({%d}%d{%d}){%d}',
-        [p.DoFirst,p.DoIf,p.DoThen,p.Body]);
+        [p.DoElse,p.DoIf,p.DoThen,p.Body]);
     ttIterationPE:
       Result:=Format('loop &{%d}({%d}%d{%d})',
-        [p.Body,p.DoFirst,p.DoIf,p.DoThen]);
+        [p.Body,p.DoElse,p.DoIf,p.DoThen]);
     ttTry:
-      Result:=Format(':::  ->%d',[p.Subject]);
+      Result:=Format(':::  ->%d',[p.Target]);
+    ttThrow:
+      Result:=Format('!!!  ->%d',[p.Target]);
     ttDeferred:
-      Result:=Format('>>>  ->%d',[p.Subject]);
+      Result:=Format('>>>  ->%d',[p.Target]);
     ttCatch:
       Result:=Format('???  t=%d v=%d ->%d',
-        [p.ItemType,p.FirstItem,p.Subject]);
-    ttThrow:
-      Result:=Format('!!!  ->%d',[p.Subject]);
+        [p.DoIf,p.FirstArgument,p.Body]);
     ttSysCall:
-      Result:=Format('sys  %d',[p.Op]);
+      Result:=Format('sys  %.4x',[p.Op]);
+    ttArray:
+      Result:=Format('arr  %s  #%d t=%d',
+        [s.FQN(i),p.ByteSize,p.ElementType]);
+    ttVarIndex:
+      Result:=Format('.[]  %d.%d[%d]  t=%d',
+        [p.Parent,p.Target,p.FirstArgument,p.EvaluatesTo]);
+    ttThis:
+      Result:=Format('this @%d t=%d',[p.Offset,p.EvaluatesTo]);
+    ttInherited:
+      Result:=Format('inh  t=%d',[p.EvaluatesTo]);
     ttPointer:
       Result:=Format('ptr  %s  t=%d',
         [s.FQN(i),p.EvaluatesTo]);
@@ -146,15 +154,14 @@ begin
       Result:=Format('dref %d t=%d',
         [p.ValueFrom,p.EvaluatesTo]);
     ttClass:
-      Result:=Format('cls  %s  #%d ctor=%d ->%d <-%d',
-        [s.FQN(i),p.ByteSize
-        ,p.FirstConstructor,p.FirstItem,p.InheritsFrom]);
+      Result:=Format('cls  %s  #%d ->%d <-%d',
+        [s.FQN(i),p.ByteSize,p.FirstItem,p.InheritsFrom]);
     ttConstructor:
       Result:=Format('ctor %d: %d(%d){%d}',
-        [p.Parent,p.Signature,p.FirstArgument,p.Body]);
+        [p.Parent,p.Target,p.FirstArgument,p.Body]);
     ttDestructor:
       Result:=Format('dtor %d: %d(){%d}',
-        [p.Parent,p.Signature,p.Body]);
+        [p.Parent,p.Target,p.Body]);
     ttInterface:
       Result:=Format('intf %s  ->%d <-%d',
         [s.FQN(i),p.FirstItem,p.InheritsFrom]);
@@ -168,64 +175,89 @@ begin
       Result:=Format('prop %s  t=%d get=%d set=%d',
         [s.FQN(i),p.EvaluatesTo,p.ValueFrom,p.AssignTo]);
     else
-      Result:=Format('?    "%s" (%.4x) %d,%d,%d,%d',
-        [s.FQN(i),p.ThingType,p.ByteSize
-        ,p.ItemType,p.FirstItem,p.FirstStatement]);
+      Result:=Format('?    "%s" (%.4x) %d,%d,%d,%d,%d',
+        [s.FQN(i),p.ThingType,p.Name,p.FirstItem
+        ,p.ByteSize,p.EvaluatesTo,p.SrcPos]);
   end;
+end;
+
+function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
+  var q:TStratoIndex;var LineIndex:cardinal):boolean;
+begin
+  //assert p<>0
+  //assert Sphere[p].SrcPos<>0
+  //assert not Sphere[p].ThingType in [ttHeader,ttSourceFile,ttBinaryData]
+  q:=p;
+  while (q<>0) and not(s[q].ThingType in [ttNameSpace,ttOverload,ttConstructor]) do
+    q:=s[q].Parent;
+  if q<>0 then
+    case s[q].ThingType of
+      ttNameSpace:q:=PStratoNameSpaceData(s[q]).SourceFile;
+      ttOverload,ttConstructor:q:=s[q].SourceFile;
+      else q:=0;//raise?
+    end;
+  if q=0 then LineIndex:=1 else
+   begin
+    LineIndex:=PStratoSourceFile(s[q]).SrcPosLineIndex;
+    if LineIndex=0 then LineIndex:=1;
+   end;
+  Result:=q<>0;
 end;
 
 procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
 var
   f:TFileStream;
-  i:cardinal;
-  p:PStratoThing;
+  px:PStratoThing;
+  p,q:TStratoIndex;
+  l:cardinal;
   x:string;
   xx:AnsiString;
 begin
   f:=TFileStream.Create(fn,fmCreate);
   try
-    p:=PStratoThing(s.Header);
+    px:=PStratoThing(s.Header);
     xx:=Format(
       'Strato v=%.8x ini=%d fin=%d ns=%d global=%d #%d'#13#10,
-      [PStratoHeader(p).Version
-      ,PStratoHeader(p).FirstInitialization
-      ,PStratoHeader(p).FirstFinalization
-      ,PStratoHeader(p).FirstNameSpace
-      ,PStratoHeader(p).FirstGlobalVar
-      ,PStratoHeader(p).GlobalByteSize
+      [PStratoHeader(px).Version
+      ,PStratoHeader(px).FirstInitialization
+      ,PStratoHeader(px).FirstFinalization
+      ,PStratoHeader(px).FirstNameSpace
+      ,PStratoHeader(px).FirstGlobalVar
+      ,PStratoHeader(px).GlobalByteSize
       ])+
       'index   parent  next    source  line :col what info'#13#10;
     f.Write(xx[1],Length(xx));
 
-    i:=1;
-    while i<s.NodeCount do
+    p:=1;
+    while p<s.NodeCount do
      begin
-      p:=s[i];
-      if p.ThingType=ttBinaryData then
+      px:=s[p];
+      if px.ThingType=ttBinaryData then
        begin
-        x:=Format('%7d "%s"',[i,s.GetBinaryData(i)]);
-        inc(i,((p.Name+8) div SizeOf(TStratoThing)));
+        x:=Format('%7d "%s"',[p,s.GetBinaryData(p)]);
+        inc(p,((PStratoBinaryData(px).DataLength+8) div SizeOf(TStratoThing)));
        end
       else
        begin
         try
           //TODO: switches
-          if p.Source=0 then
+          if (px.SrcPos=0) or (px.ThingType=ttNameSpace)
+            or not(StratoGetSourceFile(s,p,q,l)) then
             x:=Format('%7d %7d %7d                   ',
-              [i,p.Parent,p.Next,p.Source])
+              [p,px.Parent,px.Next])
           else
             x:=Format('%7d %7d %7d %7d %5d:%3d ',
-              [i,p.Parent,p.Next,p.Source
-              ,p.SrcPos div StratoTokenizeLineIndex
-              ,p.SrcPos mod StratoTokenizeLineIndex
-              ]);//TODO: StratoTokenizeLineIndex from header
-          x:=x+StratoDumpThing(s,i,p);
+              [p,px.Parent,px.Next,q
+              ,px.SrcPos div l
+              ,px.SrcPos mod l
+              ]);
+          x:=x+StratoDumpThing(s,p,px);
         except
           on e:Exception do
-            x:=Format('%7d ! %s',[i,e.Message]);
+            x:=Format('%7d ! %s',[p,e.Message]);
         end;
        end;
-      inc(i);
+      inc(p);
       xx:=AnsiString(x+#13#10);
       f.Write(xx[1],Length(xx));
      end;
