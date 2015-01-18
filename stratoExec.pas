@@ -1098,27 +1098,28 @@ begin
         if (p1=0) and (px.DoElse<>0) then //DoFirst
          begin
           Push(p,p,0,np);
-          p:=px.DoElse
+          p:=px.DoElse;
          end
         else
          begin
-          i:=0;//default
+          if p1<>0 then np:=mp;
           if px.DoIf=0 then i:=1 else
+           begin
+            i:=0;//default
             if p1=px.DoIf then
              begin
               if vt=TypeDecl_bool then
                 Move(FMem[vp],i,SystemWordSize)
               else
                 Sphere.Error(pe,'iteration criterium value is not boolean');
-              vt:=0;
-              np:=mp;
              end
             else
              begin
               Push(p,px.DoIf,0,np);
               p:=px.DoIf;
-              vt:=0;//silence DoFirst/DoThen leftover
              end;
+           end;
+          vt:=0;
           //perform Body,DoThen
           if (i<>0) and not((px.Body=0) and (px.DoThen=0)) then
            begin
@@ -1142,25 +1143,28 @@ begin
          end
         else
          begin
-          i:=0;//default
+          if p1<>0 then np:=mp;
           if px.DoIf=0 then i:=1 else
+           begin
+            i:=0;//default
             if p1=px.DoIf then
              begin
               if vt=TypeDecl_bool then
                 Move(FMem[vp],i,SystemWordSize)
               else
                 Sphere.Error(pe,'iteration criterium value is not boolean');
-              vt:=0;
-              np:=mp;
              end
             else
              begin
               Push(p,px.DoIf,0,np);
               p:=px.DoIf;
              end;
+           end;
+          vt:=0;
+          //perform Body,DoThen
           if (i<>0) and not((px.Body=0) and (px.DoThen=0)) then
            begin
-            Push(p,p,0,np);
+            Push(p,p,0,mp);
             p:=px.DoThen;
            end;
          end;
