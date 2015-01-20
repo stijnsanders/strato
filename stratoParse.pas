@@ -1191,18 +1191,14 @@ var
            end;
           pAssignment:
            begin
-            while (px.ValueFrom<>0) and (Sphere[px.ValueFrom].ThingType=ttAssign) do
-              px:=Sphere[px.ValueFrom];
             px.ValueFrom:=q;
             if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then
              begin
-              px.EvaluatesTo:=ResType(Sphere,q);
-              Sphere[stack[stackIndex-1].t].EvaluatesTo:=px.EvaluatesTo;
-              if px.EvaluatesTo<>0 then
-                inc(Sphere[cb].ByteSize,ByteSize(Sphere,px.EvaluatesTo));
-             end
-            else
-              px.EvaluatesTo:=ResType(Sphere,px.AssignTo);
+              r:=ResType(Sphere,q);
+              Sphere[stack[stackIndex-1].t].EvaluatesTo:=r;
+              if r<>0 then
+                inc(Sphere[cb].ByteSize,ByteSize(Sphere,r));
+             end;
             //TODO: check types here? (or at run-time?)
             if not SameType(Sphere,
               ResType(Sphere,px.ValueFrom),
@@ -1210,20 +1206,6 @@ var
               Source.Error('assignment type mismatch');
             //TODO: auto-cast?
             //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
-            if px.EvaluatesTo<>0 then
-             begin
-              q:=px.AssignTo;
-              qx:=Sphere[q];
-              if (q<>0) and (qx.ThingType=ttVar) and (qx.EvaluatesTo=0)
-                and (ResType(Sphere,p)<>0)
-                then
-               begin
-                r:=ResType(Sphere,px.ValueFrom);
-                qx.EvaluatesTo:=r;
-                qx.Offset:=Sphere[cb].ByteSize;
-                inc(Sphere[cb].ByteSize,ByteSize(Sphere,r));
-               end;
-             end;
            end;
           pUnTypedVar:
            begin
@@ -1757,7 +1739,6 @@ begin
                          begin
                           //Sphere[p].EvaluatesTo:=q;
                           Sphere[p].Target:=q;
-                          cbInhCalled:=false;
                          end;
                         else
                          begin

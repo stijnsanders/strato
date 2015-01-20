@@ -103,8 +103,8 @@ begin
       Result:=Format('arg  %s  t=%d d=%d v=%d',
         [s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Target]);//not ValueFrom!
     ttAssign:
-      Result:=Format(':=   %d %s %d  t=%d',
-        [p.AssignTo,TokenName[TStratoToken(p.Op)],p.ValueFrom,p.EvaluatesTo]);
+      Result:=Format(':=   %d %s %d',
+        [p.AssignTo,TokenName[TStratoToken(p.Op)],p.ValueFrom]);
     ttUnaryOp:
       Result:=Format('_x   %s %d  t=%d',
         [TokenName[TStratoToken(p.Op)],p.Right,p.EvaluatesTo]);

@@ -388,7 +388,7 @@ begin
                begin
                 //assert FMem[np]=0
                 Move(FMem[xp],FMem[np],SystemWordSize);
-                i:=Sphere[px.Target].Target;//assert ttClass
+                i:=Sphere[px.Target].Parent;//assert ttClass
                 Move(i,FMem[np+SystemWordSize],SystemWordSize);
                end;
              end;
@@ -500,7 +500,7 @@ begin
             //q:=Sphere[px.Body].FirstItem;
             xp:=mp;//+Sphere[q].Offset;//assert 0 (see StratoFnAddOverload)
            end;
-          vtp(Sphere[px.Target].EvaluatesTo,xp);
+          vtp(Sphere[px.Target].Parent,xp);
          end
         else
         //output result value

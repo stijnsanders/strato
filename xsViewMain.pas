@@ -196,7 +196,8 @@ begin
         TreeView1.Selected:=(n as TXsTreeNode).JumpedTo;
       if n<>TreeView1.Selected then
        begin
-        while (n<>nil) and not((n is TXsTreeNode) and ((n as TXsTreeNode).Index<>0)) do
+        while (n<>nil) and not((n is TXsTreeNode)
+          and ((n as TXsTreeNode).Index<>0)) do
           n:=n.Parent;
         if n<>nil then
          begin
@@ -289,15 +290,29 @@ end;
 
 function TfrmXsViewMain.JumpNode(n:TTreeNode;const prefix:string;
   i:cardinal):TXsTreeNode;
+var
+  p:TStratoIndex;
+  m:TTreeNode;
 begin
   if i=0 then
     Result:=nil
   else
    begin
     Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode;
-    if (n<>nil) and (n is TXsTreeNode)
-      and (FSphere[i].Parent=FSphere[(n as TXsTreeNode).Index].Parent)
-      and not(FSphere[i].ThingType in [ttVar,ttVarByRef,ttThis])
+    if (n<>nil) and (n is TXsTreeNode) then
+     begin
+      m:=n;
+      while (m<>nil) and (m is TXsTreeNode)
+        and (((m as TXsTreeNode).Index=0)
+        or (FSphere[(m as TXsTreeNode).Index].ThingType=ttVarIndex))
+        do m:=m.Parent;
+      if (m as TXsTreeNode).Index=0 then p:=0 else
+        p:=FSphere[(m as TXsTreeNode).Index].Parent;
+     end
+    else p:=0;
+    if (p<>0) and ((FSphere[i].ThingType=ttVarIndex)
+      or ((FSphere[i].Parent=p)
+      and not(FSphere[i].ThingType in [ttVar,ttVarByRef,ttThis])))
     then
      begin
       //BuildNode(Result,i)
@@ -404,7 +419,6 @@ begin
        end;
       ttAssign:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
         JumpNode(n,':ValueFrom ',p.ValueFrom);
         JumpNode(n,':AssignTo ',p.AssignTo);
        end;

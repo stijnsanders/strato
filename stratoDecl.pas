@@ -114,9 +114,8 @@ const
     //Target (*): argument value [ATTENTION! Target and not ValueFrom!]
     //EvaluatesTo (ttTypeDecl): argument type (used to find suitable signature)
 
-  ttAssign       = $0024;
+  ttAssign       = $0003;
     //Op
-    //EvaluatesTo (ttTypeDecl)
     //ValueFrom (*)
     //AssignTo (ttVar,ttVarIndex,ttCast)
 
@@ -148,10 +147,10 @@ const
     //DoThen: do between body and criterium (e.g. i++)
     //Body
 
-  ttTry          = $0003;
+  ttTry          = $0004;
     //Target: (ttDeferred,ttCatch)
 
-  ttThrow        = $0004;
+  ttThrow        = $0008;
     //Target: object (creator) to throw
     //TODO: (EvaluatesTo?
 
