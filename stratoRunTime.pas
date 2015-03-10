@@ -14,7 +14,7 @@ const
   stratoSysCall_mfree=$102;
   stratoSysCall_writeln=$200;
 
-procedure DefaultTypes(Sphere:TStratoSphere;ns:TStratoIndex);
+procedure DefaultTypes(Sphere:TStratoSphere);
 
 var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
@@ -25,8 +25,9 @@ implementation
 
 uses SysUtils;
 
-procedure DefaultTypes(Sphere:TStratoSphere;ns:TStratoIndex);
+procedure DefaultTypes(Sphere:TStratoSphere);
 var
+  ns:TStratoIndex;
   p:PStratoThing;
 
   function A(const Name:UTF8String;s:integer): TStratoIndex;
@@ -136,7 +137,13 @@ var
   end;
   
 begin
-  //TODO: move the higher numbers (sparse sphere data)
+  //assert Sphere.Header.FirstNameSpace=0
+  //Sphere.MarkIndex($10000);
+  Sphere.MarkIndex(10000);
+  ns:=Sphere.Add(ttNameSpace,p);
+  p.Name:=Sphere.Dict.StrIdx('Strato');
+  Sphere.Header.FirstNameSpace:=ns;
+
   p:=nil;
   TypeDecl_void:=A('void',0);
   TypeDecl_type:=A('type',SystemWordSize);
@@ -170,6 +177,8 @@ begin
   //TODO: exitcode (and all system things)
   //TODO: objects with reference counting
   //TODO: strings with reference counting, copy-on-write, etc
+
+  Sphere.MarkIndex(0);
 end;
 
 end.

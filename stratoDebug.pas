@@ -228,8 +228,8 @@ begin
       'index   parent  next    source  line :col what info'#13#10;
     f.Write(xx[1],Length(xx));
 
-    p:=1;
-    while p<s.NodeCount do
+    p:=0;
+    while s.NextIndex(p) do
      begin
       px:=s[p];
       if px.ThingType=ttBinaryData then
@@ -257,7 +257,6 @@ begin
             x:=Format('%7d ! %s',[p,e.Message]);
         end;
        end;
-      inc(p);
       xx:=AnsiString(x+#13#10);
       f.Write(xx[1],Length(xx));
      end;

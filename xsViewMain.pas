@@ -223,7 +223,7 @@ begin
     ai:=0;
     while i<>0 do
      begin
-      if i>=FSphere.NodeCount then i:=0;
+      //if i>=FSphere.NodeCount then i:=0;
       if ai=al then
        begin
         inc(al,$400);//grow;

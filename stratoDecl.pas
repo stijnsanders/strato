@@ -284,6 +284,17 @@ type
   end;
   PStratoHeader=^TStratoHeader;
 
+  TStratoBlockHeader=record
+    FirstIndex,
+    ThingCount,
+    xReserved1:cardinal;
+    xReserved2,
+    xReserved3:TStratoIndex;
+    xReserved4:cardinal;
+    xReserved5,
+    xReserved6:TStratoIndex;
+  end;
+
   TStratoSourceFile=record
     ThingType:cardinal;//ttSourceFile
     FileName:TStratoName;

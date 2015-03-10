@@ -123,7 +123,7 @@ begin
             //run-time
             if DoRunTime then
              begin
-              DefaultTypes(n,1);
+              DefaultTypes(n);
               DoRunTime:=false;
              end;
 

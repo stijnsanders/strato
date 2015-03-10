@@ -51,7 +51,10 @@ begin
     else
       case px.ThingType of
         ttFnCall:
-          Result:=FnSignature(Sphere,px).EvaluatesTo;
+         begin
+          px:=FnSignature(Sphere,px);
+          if px=nil then Result:=0 else Result:=px.EvaluatesTo;
+         end;
         //TODO: ttAlias?
         //TODO: ttFunction?
         ttOverload:
