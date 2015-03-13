@@ -185,7 +185,7 @@ begin
     while (i<FBlockCount) and (FBlock[i].First<>j) do inc(i);
     if i<>FBlockCount then
      begin
-      //raise?
+      //block full, start a new one at the end
       j:=0;
       for i:=0 to FBlockCount-1 do
         if j<FBlock[i].First+StratoSphereDataBlockSize then
@@ -488,12 +488,22 @@ var
   x:UTF8String;
   h:TStratoBlockHeader;
 begin
+  //ZeroMemory(
+  h.FirstIndex:=0;
+  h.ThingCount:=0;
+  h.xReserved1:=0;
+  h.xReserved2:=0;
+  h.xReserved3:=0;
+  h.xReserved4:=0;
+  h.xReserved5:=0;
+  h.xReserved6:=0;
+
   f:=TFileStream.Create(FilePath,fmCreate);
   try
     Header.ThingCount:=FBlock[0].Index;
 
     i:=0;
-    while i<FBlockSize do
+    while i<FBlockCount do
      begin
       f.Write(FBlock[i].Data[0],FBlock[i].Index*SizeOf(TStratoThing));
       inc(i);

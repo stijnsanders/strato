@@ -38,12 +38,11 @@ function StratoDumpThing(s:TStratoSphere; i:cardinal; p:PStratoThing):string;
 begin
   case p.ThingType of
     ttSourceFile:
-      Result:=Format('src  fn=%d ini=%d fin=%d',
-        [PStratoSourceFile(p).FileName
-        //,PStratoSourceFile(p).FileSize
-        //,PStratoSourceFile(p).NameSpace
-        ,PStratoSourceFile(p).InitializationCode
+      Result:=Format('src  ini=%d fin=%d fn=%d fs=%d',
+        [PStratoSourceFile(p).InitializationCode
         ,PStratoSourceFile(p).FinalizationCode
+        ,PStratoSourceFile(p).FileName
+        ,PStratoSourceFile(p).FileSize
         ]);
     ttBinaryData:
       Result:=Format('"%s"',[s.GetBinaryData(i)]);
@@ -232,31 +231,37 @@ begin
     while s.NextIndex(p) do
      begin
       px:=s[p];
-      if px.ThingType=ttBinaryData then
-       begin
-        x:=Format('%7d "%s"',[p,s.GetBinaryData(p)]);
-        inc(p,((PStratoBinaryData(px).DataLength+8) div SizeOf(TStratoThing)));
-       end
-      else
-       begin
-        try
-          //TODO: switches
-          if (px.SrcPos=0) or (px.ThingType=ttNameSpace)
-            or not(StratoGetSourceFile(s,p,q,l)) then
-            x:=Format('%7d %7d %7d                   ',
-              [p,px.Parent,px.Next])
-          else
-            x:=Format('%7d %7d %7d %7d %5d:%3d ',
-              [p,px.Parent,px.Next,q
-              ,px.SrcPos div l
-              ,px.SrcPos mod l
-              ]);
-          x:=x+StratoDumpThing(s,p,px);
-        except
-          on e:Exception do
-            x:=Format('%7d ! %s',[p,e.Message]);
-        end;
-       end;
+      case px.ThingType of
+        ttBinaryData:
+         begin
+          x:=Format('%7d "%s"',[p,s.GetBinaryData(p)]);
+          inc(p,((PStratoBinaryData(px).DataLength+8) div SizeOf(TStratoThing)));
+         end;
+        ttSourceFile:
+          x:=Format('%7d %33s ',[p,''])+
+            StratoDumpThing(s,p,px);
+        else
+          try
+            if px.ThingType=ttNameSpace then
+              x:=Format('%7d %7d %7d %7d %9s ',
+                [p,px.Parent,px.Next
+                ,PStratoNameSpaceData(px).SourceFile,''])
+            else
+            if (px.SrcPos=0) or not(StratoGetSourceFile(s,p,q,l)) then
+              x:=Format('%7d %7d %7d %17s ',
+                [p,px.Parent,px.Next,''])
+            else
+              x:=Format('%7d %7d %7d %7d %5d:%3d ',
+                [p,px.Parent,px.Next,q
+                ,px.SrcPos div l
+                ,px.SrcPos mod l
+                ]);
+            x:=x+StratoDumpThing(s,p,px);
+          except
+            on e:Exception do
+              x:=Format('%7d ! %s',[p,e.Message]);
+          end;
+      end;
       xx:=AnsiString(x+#13#10);
       f.Write(xx[1],Length(xx));
      end;

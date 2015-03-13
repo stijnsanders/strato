@@ -52,7 +52,7 @@ var
     n:=Sphere.Dict.StrIdx(nn);
   end;
 
-  function LookUpNameSpace(var Fresh:boolean):TStratoIndex;
+  function LookUpNameSpace(var Fresh:boolean;SetSrc:boolean):TStratoIndex;
   var
     n:TStratoName;
     nn:UTF8String;
@@ -74,7 +74,7 @@ var
       //not found, create
       ns:=Sphere.Add(ttNameSpace,PStratoThing(nx));
       nx.Name:=n;
-      nx.SourceFile:=src;//?
+      //nx.SourceFile:=src;//?
       //nx.SrcPos:=
       Sphere[p].Next:=ns;
       Fresh:=true;
@@ -94,11 +94,16 @@ var
           Source.Error('duplicate namespace "'+nn+'"');
         nx.Parent:=ns;
         nx.Name:=n;
-        nx.SourceFile:=src;//?
+        //nx.SourceFile:=src;//?
         //nx.SrcPos:=
         Fresh:=true;
        end;
       ns:=p;
+     end;
+    if SetSrc then
+     begin
+      nx:=PStratoNameSpaceData(Sphere[ns]);
+      if nx.SourceFile=0 then nx.SourceFile:=src;
      end;
     Result:=ns;
   end;
@@ -125,7 +130,7 @@ var
     case Source.Token of
       stIdentifier:
        begin
-        ns:=LookupNameSpace(b);
+        ns:=LookupNameSpace(b,false);
         //TODO: load from standard library !!!
         if b then
          begin
@@ -1338,13 +1343,14 @@ begin
   Result:=0;//default
   src:=Sphere.Add(ttSourceFile,px);
   PStratoSourceFile(px).FileName:=Sphere.AddBinaryData(UTF8String(Source.FilePath));
-  PStratoSourceFile(px).FileSize:=0;//TODO: FileSize, FileCRC32, FileDate
+  PStratoSourceFile(px).FileSize:=Source.FileSize;
+  //PStratoSourceFile(px).FileDate? checksum?
   PStratoSourceFile(px).SrcPosLineIndex:=Source.LineIndex;
   if not Source.IsEmpty then
    begin
     //namespace
     if Source.IsNext([stIdentifier]) then
-      ns:=LookUpNameSpace(b)
+      ns:=LookUpNameSpace(b,true)
     else
      begin
       //default: use file name
@@ -1352,6 +1358,8 @@ begin
         //(''''+StringReplace(Source.FilePath),'''','''''',[rfReplaceAll])+'''');?
       ns:=Sphere.Add(ttNameSpace,px);
       px.Name:=Sphere.Dict.StrIdx(nn);
+      px.SourceFile:=src;
+      //px.SrcPos:=
       //TODO: split by '.'
       p:=Sphere.Header.FirstNameSpace;
       //assert p<>0 since Sphere.FirstGlobalNameSpace is runtime
@@ -1970,7 +1978,8 @@ begin
                 //TODO: silence further errors
                 p:=Sphere.Add(ttNameSpace,px);//silence further errors
                 px.Name:=Sphere.Dict.StrIdx('!!!'+nn);//n
-                px.SrcPos:=Source.SrcPos;
+                px.SourceFile:=src;
+                //px.SrcPos:=
                end;
               ID(n,nn);
               fqn:=fqn+'.'+nn;
@@ -2036,7 +2045,8 @@ begin
                 //TODO: silence further errors
                 p:=Sphere.Add(ttNameSpace,px);//silence further errors
                 px.Name:=Sphere.Dict.StrIdx('!!!'+nn);//n
-                px.SrcPos:=Source.SrcPos;
+                px.SourceFile:=src;
+                //px.SrcPos:=
                end;
               ID(n,nn);
               fqn:=fqn+'.'+nn;

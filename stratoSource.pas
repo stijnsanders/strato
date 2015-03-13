@@ -11,7 +11,7 @@ type
   TStratoSource=class(TObject)
   private
     FTIndex,FTLast,FTLength,FErrors:integer;
-    FLineIndex:cardinal;
+    FLineIndex,FFileSize:cardinal;
     FTContent:boolean;
     FTokens:TStratoSourceTokenList;
     FSource:UTF8String;
@@ -32,6 +32,7 @@ type
     procedure Error(const msg: string);
     function SrcPos:integer;
     property FilePath:string read FFilePath;
+    property FileSize:cardinal read FFileSize;
     property LineIndex:cardinal read FLineIndex;
     property ErrorCount:integer read FErrors;
     property Tokens:TStratoSourceTokenList read FTokens;
@@ -59,6 +60,7 @@ begin
   f:=TFileStream.Create(FilePath,fmOpenRead or fmShareDenyWrite);
   try
     i:=f.Size;
+    FFileSize:=i;
     f.Read(z,2);
     if z=$FEFF then //UTF16 byte order mark
      begin
