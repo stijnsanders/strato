@@ -1053,10 +1053,10 @@ var
         {$ENDIF}
         z00:=z;
         case z of
-          pCodeBlock:
+          pCodeBlock://ttCodeBlock
             //see also stAClose in main loop!
             done:=true;//always only one (need to parse "}" correctly)
-          pIfThen:
+          pIfThen://ttSelection
            begin
             px.DoThen:=q;
             StratoSelectionCheckType(Sphere,p);
@@ -1067,7 +1067,7 @@ var
             px.DoElse:=q;
             StratoSelectionCheckType(Sphere,p);
            end;
-          pArgList:
+          pArgList://ttFnCall
            begin
             if q<>0 then
              begin
@@ -1099,6 +1099,8 @@ var
             p:=q;
             done:=true;//always only one (need to parse ")" correctly)
            end;
+
+          //ttIteration,ttIterationPE
           pForBodyFirst:
            begin
             if (q<>0) and (Sphere[q].ThingType=ttCodeBlock)
@@ -1156,6 +1158,8 @@ var
               Source.Error('unexpected iteration body with return value');
             px.Body:=q;
            end;
+
+          //ttUnaryOp
           pUnary:
            begin
             px.EvaluatesTo:=ResType(Sphere,q);
@@ -1184,6 +1188,8 @@ var
             qx.ByteSize:=SystemWordSize;
             qx.EvaluatesTo:=q;
            end;
+
+          //ttBinaryOp
           pMulDiv,pAddSub,pShift,pAnd,pOr:
            begin
             px.Right:=q;
@@ -1194,24 +1200,28 @@ var
             px.Right:=q;
             px.EvaluatesTo:=TypeDecl_bool;
            end;
+          //ttAssign
           pAssignment:
            begin
             px.ValueFrom:=q;
-            if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then
+            r:=ResType(Sphere,q);
+            if r=0 then
+              Source.Error('invalid assignment value')
+            else
              begin
-              r:=ResType(Sphere,q);
-              Sphere[stack[stackIndex-1].t].EvaluatesTo:=r;
-              if r<>0 then
+              if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then
+               begin
+                Sphere[stack[stackIndex-1].t].EvaluatesTo:=r;
                 inc(Sphere[cb].ByteSize,ByteSize(Sphere,r));
+               end;
+              //TODO: check types here? (or at run-time?)
+              if not SameType(Sphere,r,ResType(Sphere,px.AssignTo)) then
+                Source.Error('assignment type mismatch');
+              //TODO: auto-cast?
+              //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
              end;
-            //TODO: check types here? (or at run-time?)
-            if not SameType(Sphere,
-              ResType(Sphere,px.ValueFrom),
-              ResType(Sphere,px.AssignTo)) then
-              Source.Error('assignment type mismatch');
-            //TODO: auto-cast?
-            //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
            end;
+           
           pUnTypedVar:
            begin
             //see also pAssignment above and stColon below
@@ -1220,8 +1230,8 @@ var
               Source.Error('no type for local var "'+string(Sphere.FQN(p))+'"');
             p:=q;
            end;
-          pDefer,pThrow:px.Target:=q;
-          pCatch:px.Body:=q;
+          pDefer,pThrow:px.Target:=q;//ttDeferred,ttThrow
+          pCatch:px.Body:=q;//ttCatch
           //else ?
         end;
         if z=z00 then
@@ -2438,17 +2448,14 @@ begin
               qx.SrcPos:=Source.SrcPos;
               qx.Op:=cardinal(st);
               px:=Sphere[p];
-              if px.ThingType=ttAssign then
-               begin
-                qx.AssignTo:=px.ValueFrom;
-                px.ValueFrom:=q;
-                Push(pAssignment,p);
-               end
-              else
+              //if px.ThingType=ttAssign ?
+              if IsAssignable(Sphere,p) then
                begin
                 qx.AssignTo:=p;
                 Push(pAssignment,q);
-               end;
+               end
+              else
+                Source.Error('invalid assignment target');
               p:=0;
              end;
            end;

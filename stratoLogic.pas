@@ -10,6 +10,7 @@ const
 function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
+function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;
   const FieldName:Utf8String;FieldType:TStratoIndex;Offset:cardinal;
   var Index:TStratoIndex;var Info:PStratoThing):boolean;
@@ -147,6 +148,16 @@ begin
     else
       Result:=false;
    end;
+end;
+
+function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
+begin
+  Result:=(p<>0) and (Sphere[p].ThingType in
+    [ttVar
+    ,ttVarIndex //TODO: check what is indexed to?
+    ,ttProperty
+    //TODO: more?
+    ]);
 end;
 
 function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;

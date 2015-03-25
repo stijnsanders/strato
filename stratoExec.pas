@@ -1066,7 +1066,7 @@ begin
                 else
                   Sphere.Error(pe,'//TODO: assignment operators');
               end;
-            vtp(q,xp);
+            vt:=0;//vtp(q,xp);
             np:=mp;
            end;
       ttSelection:
