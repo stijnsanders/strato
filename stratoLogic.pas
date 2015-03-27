@@ -156,6 +156,7 @@ begin
     [ttVar
     ,ttVarIndex //TODO: check what is indexed to?
     ,ttProperty
+    ,ttCast //TODO: check about dirty casts
     //TODO: more?
     ]);
 end;

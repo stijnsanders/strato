@@ -108,84 +108,6 @@ var
     Result:=ns;
   end;
 
-  procedure ParseImport;
-  var
-    ns,p:TStratoIndex;
-    px:PStratoThing;
-    ss:TStratoSource;
-    alias:UTF8String;
-    fn:string;
-    b:boolean;
-    i,l:integer;
-  begin
-    ns:=0;//default
-    //alias?
-    if Source.IsNext([stIdentifier,stOpEQ]) then
-     begin
-      alias:=Source.GetID;
-      Source.Token;//stOpEQ
-     end
-    else
-      alias:='';
-    case Source.Token of
-      stIdentifier:
-       begin
-        ns:=LookupNameSpace(b,false);
-        //TODO: load from standard library !!!
-        if b then
-         begin
-          fn:=Sphere.BasePath+string(Sphere.FQN(ns))+'.xs';
-          if FileExists(fn) then
-           begin
-            b:=false;
-            ss:=TStratoSource.Create;
-            ss.LoadFromFile(fn);
-            ns:=StratoParseSource(Sphere,ss);
-           end;
-         end;
-        if b then
-          Source.Error('unknown namespace "'+string(Sphere.FQN(ns))+'"');
-       end;
-      stStringLiteral:
-       begin
-        ss:=TStratoSource.Create;
-        //TODO: resolve relative path, list of paths, system paths
-        //TODO: allow duplicates? detect by full path?
-        ss.LoadFromFile(string(Source.GetStr));
-        ns:=StratoParseSource(Sphere,ss);
-       end;
-      else Source.Error('unsupported import subject syntax');
-    end;
-    Source.Skip(stSemiColon);
-    //register
-    if ns<>0 then
-      if alias<>'' then //alias
-       begin
-        p:=Sphere.AddTo(Sphere[Locals[0]].FirstItem,
-          ttImport,Sphere.Dict.StrIdx(alias),px);
-        if p=0 then
-          Source.Error('duplicate identifier "'+alias+'"')
-        else
-         begin
-          px.SrcPos:=Source.SrcPos;
-          px.Parent:=Locals[0];
-          px.Target:=ns;
-         end;
-       end
-      else
-       begin
-        //TODO: store locals in Sphere?
-        l:=Length(Locals);
-        i:=0;
-        while (i<>l) and (Locals[i]<>ns) do inc(i);
-        if i=l then
-         begin
-          SetLength(Locals,i+1);
-          Locals[i]:=ns;
-         end;
-       end;
-  end;
-
   function LookUp:TStratoIndex;
   var
     i,j,l:integer;
@@ -321,6 +243,7 @@ var
       vt:TStratoIndex;
       v1,v2:UTF8String;
     end;
+    
     procedure Combine(pp:TPrecedence);
     var
       p0:TPrecedence;
@@ -425,6 +348,7 @@ var
          end;
        end;
     end;
+
     procedure Push(p:TPrecedence;const vv:UTF8String);
     begin
       Combine(p);
@@ -441,6 +365,7 @@ var
       vt:=0;
       v:='';
     end;
+
   begin
     st:=st_Unknown;
     Result:=0;//default
@@ -588,6 +513,91 @@ var
         else
           Source.Error('invalid integer value');
       end;
+  end;
+
+  procedure ParseImport;
+  var
+    ns,p,q:TStratoIndex;
+    px:PStratoThing;
+    ss:TStratoSource;
+    alias:UTF8String;
+    fn:string;
+    b:boolean;
+    i,l:integer;
+  begin
+    ns:=0;//default
+    fn:='';//default;
+    //alias?
+    if Source.IsNext([stIdentifier,stOpEQ]) then
+     begin
+      alias:=Source.GetID;
+      Source.Token;//stOpEQ
+     end
+    else
+      alias:='';
+    case Source.Token of
+      stIdentifier:
+       begin
+        ns:=LookupNameSpace(b,false);
+        //TODO: load from standard library !!!
+        if b then
+         begin
+          fn:=Sphere.BasePath+string(Sphere.FQN(ns))+'.xs';
+          if FileExists(fn) then
+            b:=false
+          else
+            fn:='';
+         end;
+        if b then
+          Source.Error('unknown namespace "'+string(Sphere.FQN(ns))+'"');
+       end;
+      stStringLiteral:
+       begin
+        //TODO: resolve relative path, list of paths, system paths
+        //TODO: allow duplicates? detect by full path?
+        fn:=string(Source.GetStr);
+       end;
+      else Source.Error('unsupported import subject syntax');
+    end;
+    if Source.IsNext([stAt]) then q:=ParseInteger else q:=0;
+    Source.Skip(stSemiColon);
+    //load and parse
+    if fn<>'' then
+     begin
+      if q=0 then p:=0 else p:=Sphere.MarkIndex(q);
+      ss:=TStratoSource.Create;
+      ss.OnError:=Source.OnError;//?
+      ss.LoadFromFile(fn);
+      ns:=StratoParseSource(Sphere,ss);
+      if q<>0 then Sphere.MarkIndex(p);
+     end;
+    //register
+    if ns<>0 then
+      if alias<>'' then //alias
+       begin
+        p:=Sphere.AddTo(Sphere[Locals[0]].FirstItem,
+          ttImport,Sphere.Dict.StrIdx(alias),px);
+        if p=0 then
+          Source.Error('duplicate identifier "'+alias+'"')
+        else
+         begin
+          px.SrcPos:=Source.SrcPos;
+          px.Parent:=Locals[0];
+          px.Target:=ns;
+         end;
+       end
+      else
+       begin
+        //TODO: store locals in Sphere?
+        l:=Length(Locals);
+        i:=0;
+        while (i<>l) and (Locals[i]<>ns) do inc(i);
+        if i=l then
+         begin
+          SetLength(Locals,i+1);
+          Locals[i]:=ns;
+         end;
+       end;
   end;
 
   function LookUpType(const tname:string):TStratoIndex;
@@ -2450,12 +2460,10 @@ begin
               px:=Sphere[p];
               //if px.ThingType=ttAssign ?
               if IsAssignable(Sphere,p) then
-               begin
-                qx.AssignTo:=p;
-                Push(pAssignment,q);
-               end
+                qx.AssignTo:=p
               else
                 Source.Error('invalid assignment target');
+              Push(pAssignment,q);
               p:=0;
              end;
            end;

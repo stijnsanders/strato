@@ -54,6 +54,8 @@ IDEA'S
 * merge xsu's? or:
 * 'link' hsu's by prefix ID, map links to hsu with relative prefixes.
 * still to InheritedFrom on ttRecord?
+* all offsets into TypeDecl_object negative to instance pointers
+* switch to allow pointer arith, default off! (also 'dirty' pointer casts?)
 
 DO OR DON'T?
 ============

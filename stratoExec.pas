@@ -965,6 +965,7 @@ begin
       ttAssign:
         if p1=0 then //evaluate AssignTo
          begin
+          //see also stratoLogic IsAssignable
           q:=px.AssignTo;
           qx:=Sphere[q];
           if px.ValueFrom=0 then

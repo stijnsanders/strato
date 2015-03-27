@@ -381,6 +381,7 @@ var
   x,y:cardinal;
 begin
   inc(FErrors);
+  //TODO: display FFilePath here relative to 'project root'?
   if FTLast<FTLength then
    begin
     x:=FTokens[FTLast].SrcPos div FLineIndex;

@@ -20,7 +20,7 @@ type
   public
     constructor Create;
     destructor Destroy; override;
-    procedure MarkIndex(Index:TStratoIndex);
+    function MarkIndex(Index:TStratoIndex): TStratoIndex;
     function Add(ThingType: cardinal; var Info: PStratoThing): TStratoIndex;
     function AddTo(var First: TStratoIndex; ThingType: cardinal;
       Name: TStratoName; var Info: PStratoThing): TStratoIndex; overload;
@@ -53,8 +53,8 @@ implementation
 uses stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
 
 const
-  StratoSphereDataBlockSize=$1000;
-  StratoSphereDataGrowSize=$100;
+  StratoSphereDataBlockSize=500;//$1000;
+  StratoSphereDataGrowSize=100;//$100;
 
   StratoSphereFileVersion=$00000101;//0.1.1
 
@@ -96,17 +96,19 @@ begin
   inherited Destroy;
 end;
 
-procedure TStratoSphere.MarkIndex(Index: TStratoIndex);
+function TStratoSphere.MarkIndex(Index: TStratoIndex): TStratoIndex;
 var
   i:cardinal;
 begin
+  //TODO: push/pop (or cleaner separate branches?)
+  Result:=FBlock[FBlockIndex].First;
   {
   if (Index and (StratoSphereDataGrowSize-1))<>0 then
     raise Exception.Create('Block start indexes must be a multiple of block growth size');
   }
   i:=0;
   while (i<FBlockCount) and not((Index>=FBlock[i].First)
-    and (Index<FBlock[i].Index+FBlock[i].Size)) do inc(i);
+    and (Index<FBlock[i].First+FBlock[i].Size)) do inc(i);
   //TODO: check Index+StratoSphereDataBlockSize outside of current blocks
   if i=FBlockCount then
    begin
@@ -538,16 +540,25 @@ end;
 
 function TStratoSphere.NextIndex(var Index:TStratoIndex):boolean;
 var
-  i:cardinal;
+  i,j,f:cardinal;
 begin
   i:=0;//TODO: keep over calls?
   while (i<FBlockCount) and not((Index>=FBlock[i].First)
     and (Index<FBlock[i].First+FBlock[i].Size)) do inc(i);
   inc(Index);
   if i=FBlockCount then Result:=false else
-    if Index>=FBlock[i].First+FBlock[i].Index then
+   begin
+    f:=FBlock[i].First;
+    if Index>=f+FBlock[i].Index then
      begin
-      inc(i);
+      i:=FBlockCount;
+      j:=0;
+      while (j<FBlockCount) do
+       begin
+        if (FBlock[j].First>f) and
+          ((i=FBlockCount) or (FBlock[j].First<FBlock[i].First)) then i:=j;
+        inc(j);
+       end;
       if i=FBlockCount then Result:=false else
        begin
         Index:=FBlock[i].First;
@@ -556,6 +567,7 @@ begin
      end
     else
       Result:=true;
+   end;
 end;
 
 procedure TStratoSphere.InlineError(Sender: TObject; Line, LPos: cardinal;
