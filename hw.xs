@@ -1,36 +1,7 @@
 hw
 //hello world example program
 
-object:={
-	_basetype:type;//class
-	_refcount:number;
-	//implemented interfaces?
-}
-
-object(){
-	@ @@:pointer:=__malloc(@?@@);
-	_basetype:=?@@;
-	_refcount:=0;
-}
-
--object(){
-	//assert _refcount=0
-	//__dealloc(@(@@));
-}
-
-object._addref(){
-	__xinc(_refcount);
-}
-
-object._release(){
-	(__xdec(_refcount)==0) {-@@();} {}
-}
-
-/*
-object."[]"(x:string):string{
-	??:="["+x+"]";
-}
-*/
+<<< oo
 
 test1:object={
 	_value:number;
@@ -86,7 +57,7 @@ test2.vtest(x:number):number{
 	x:=test1(11);
 	Shell.write((x:test1).x:string);
 	(x:test1).x:=100;
-	
+
 	yy:test1;
 	yy:=test2(111);
 	Shell.write(yy.vtest(222):string);
@@ -122,13 +93,13 @@ test.Next():string{
 {
 	x:someintf;
 	x.Wait();
-	
+
 	y:test;
 	y.value:=12;
-	
+
 	xx:test.someop;
 	xx:=test.test1;
-	
+
 	Shell.write(y.xx(1));
 }{
 	Shell.write("all done");

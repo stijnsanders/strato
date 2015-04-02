@@ -68,7 +68,7 @@ begin
         [p.EvaluatesTo,p.InitialValue]);
     ttVar:
       Result:=Format('var  %s  @%d t=%d v=%d',
-        [s.FQN(i),p.Offset,p.EvaluatesTo,p.InitialValue]);
+        [s.FQN(i),integer(p.Offset),p.EvaluatesTo,p.InitialValue]);
     ttConstant:
       Result:=Format('cons %s  t=%d v=%d',
         [s.FQN(i),p.EvaluatesTo,p.InitialValue]);
@@ -169,7 +169,7 @@ begin
         [s.FQN(i),p.EvaluatesTo]);
     ttVarByRef:
       Result:=Format('^var %s  @%d t=%d',
-        [s.FQN(i),p.Offset,p.EvaluatesTo]);
+        [s.FQN(i),integer(p.Offset),p.EvaluatesTo]);
     ttProperty:
       Result:=Format('prop %s  t=%d get=%d set=%d',
         [s.FQN(i),p.EvaluatesTo,p.ValueFrom,p.AssignTo]);
@@ -211,6 +211,15 @@ var
   l:cardinal;
   x:string;
   xx:AnsiString;
+  procedure xn(zz,z:cardinal);
+  begin
+    while (z<>0) and (zz<>0) do
+     begin
+      x[zz]:=char($30+z mod 10);
+      z:=z div 10;
+      dec(zz);
+     end;
+  end;
 begin
   f:=TFileStream.Create(fn,fmCreate);
   try
@@ -242,20 +251,28 @@ begin
             StratoDumpThing(s,p,px);
         else
           try
+            x:=Format('%7d %33s ',[p,'']);
             if px.ThingType=ttNameSpace then
-              x:=Format('%7d %7d %7d %7d %9s ',
-                [p,px.Parent,px.Next
-                ,PStratoNameSpaceData(px).SourceFile,''])
+             begin
+              xn(15,px.Parent);
+              xn(23,px.Next);
+              xn(31,PStratoNameSpaceData(px).SourceFile);
+             end
             else
             if (px.SrcPos=0) or not(StratoGetSourceFile(s,p,q,l)) then
-              x:=Format('%7d %7d %7d %17s ',
-                [p,px.Parent,px.Next,''])
+             begin
+              xn(15,px.Parent);
+              xn(23,px.Next);
+             end
             else
-              x:=Format('%7d %7d %7d %7d %5d:%3d ',
-                [p,px.Parent,px.Next,q
-                ,px.SrcPos div l
-                ,px.SrcPos mod l
-                ]);
+             begin
+              xn(15,px.Parent);
+              xn(23,px.Next);
+              xn(31,q);
+              xn(37,px.SrcPos div l);
+              x[38]:=':';
+              xn(41,px.SrcPos mod l);
+             end;
             x:=x+StratoDumpThing(s,p,px);
           except
             on e:Exception do

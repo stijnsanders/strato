@@ -11,9 +11,6 @@ function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
-function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;
-  const FieldName:Utf8String;FieldType:TStratoIndex;Offset:cardinal;
-  var Index:TStratoIndex;var Info:PStratoThing):boolean;
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 procedure StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 
@@ -159,35 +156,6 @@ begin
     ,ttCast //TODO: check about dirty casts
     //TODO: more?
     ]);
-end;
-
-function StratoRecordAddField(Sphere:TStratoSphere;Struct:TStratoIndex;
-  const FieldName:Utf8String;FieldType:TStratoIndex;Offset:cardinal;
-  var Index:TStratoIndex;var Info:PStratoThing):boolean;
-var
-  p:PStratoThing;
-  s,i:cardinal;
-begin
-  p:=Sphere[Struct];
-  Index:=Sphere.AddTo(p.FirstItem,ttVar,Sphere.Dict.StrIdx(FieldName),Info);
-  if Index=0 then Result:=false else
-   begin
-    Info.Parent:=Struct;
-    Info.EvaluatesTo:=FieldType;
-    if FieldType=0 then s:=0 else s:=ByteSize(Sphere,FieldType);
-    if Offset=OffsetUseDefault then
-     begin
-      Info.Offset:=p.ByteSize;
-      inc(p.ByteSize,s);
-     end
-    else
-     begin
-      Info.Offset:=Offset;
-      i:=Offset+s;
-      if i>p.ByteSize then p.ByteSize:=i;
-     end;
-    Result:=true;
-   end;
 end;
 
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);

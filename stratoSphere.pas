@@ -151,14 +151,17 @@ var
   px:PStratoThing;
 begin
   q:=p;
-  while (q<>0) and
-    not(Node[q].ThingType in [ttNameSpace,ttOverload,ttConstructor]) do
+  while (q<>0) and not(Node[q].ThingType
+    in [ttNameSpace,ttPrivate,ttOverload,ttConstructor]) do
     q:=Node[q].Parent;
   if q<>0 then
     case Node[q].ThingType of
-      ttNameSpace:q:=PStratoNameSpaceData(Node[q]).SourceFile;
-      ttOverload,ttConstructor:q:=Node[q].SourceFile;
-      else q:=0;//raise?
+      ttNameSpace:
+        q:=PStratoNameSpaceData(Node[q]).SourceFile;
+      ttOverload,ttConstructor,ttPrivate:
+        q:=Node[q].SourceFile;
+      else
+        q:=0;//raise?
     end;
   px:=Node[p];
   if (p=0) or (q=0) then
