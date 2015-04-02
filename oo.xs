@@ -7,7 +7,7 @@ object:={
 }
 
 object(){
-	@ @@:pointer:=__malloc(@?@@);
+	@ @@:pointer:=__malloc(@?@@)+@?0*2;
 	_basetype:=?@@;
 	_refcount:=0;
 }
