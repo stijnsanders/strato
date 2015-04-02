@@ -12,7 +12,7 @@ function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
-procedure StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
+function StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
 
 procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
   MergeOnto:TStratoIndex);
@@ -184,7 +184,7 @@ begin
           ;//TODO: auto-expand on numerics?
 end;
 
-procedure StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
+function StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
 var
   p:PStratoThing;
   p1,p2:TStratoIndex;
@@ -204,6 +204,7 @@ begin
       p.EvaluatesTo:=p1
     //TODO: auto-expand on numerics?
    end;
+  Result:=p.EvaluatesTo<>0;
 end;
 
 procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;

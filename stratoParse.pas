@@ -84,8 +84,8 @@ type
     procedure Juxta(var p:TStratoIndex);
     procedure PushBinary(p:TPrecedence;st:TStratoToken;var q:TStratoIndex);
 
-    procedure ParseDeclaration(st:TStratoToken);
-    procedure ParseLogic(st:TStratoToken);
+    procedure ParseDeclaration;
+    procedure ParseLogic;
 
     procedure CheckPassed(p:TStratoIndex);
     procedure CbAdd(p:TStratoIndex);
@@ -100,10 +100,11 @@ function StratoParseSource(Sphere: TStratoSphere;
 var
   p:TStratoParser;
 begin
-  if Source.IsEmpty then Result:=0 else
+  if Source.Done then Result:=0 else
    begin
     p:=TStratoParser.Create(Sphere,Source);
     try
+      p.ParseHeader;
       p.Parse;
       Result:=p.NameSpace;
     finally
@@ -244,6 +245,7 @@ begin
     ss.OnError:=Source.OnError;//?
     ss.LoadFromFile(fn);
     ns:=StratoParseSource(Sphere,ss);
+    Source.ErrorCount:=Source.ErrorCount+ss.ErrorCount;
     if q<>0 then Sphere.MarkIndex(p);
    end;
   //TODO: if (fn='') and (q<>0) then 'already loaded at...'?
@@ -1359,7 +1361,8 @@ begin
         pMulDiv,pAddSub,pShift,pAnd,pOr:
          begin
           px.Right:=q;
-          StratoOperatorCheckType(Sphere,p);
+          if not StratoOperatorCheckType(Sphere,p) then
+            Source.Error('binary operator operand type mismatch');
          end;
         pEqual,pComparative:
          begin
@@ -1560,33 +1563,32 @@ begin
 end;
 
 procedure TStratoParser.Parse;
-var
-  st:TStratoToken;
 begin
   stackIndex:=0;
   stackSize:=stackGrowSize;
   SetLength(stack,stackSize);
   cb:=0;
   cbInhCalled:=false;
-  while Source.NextToken(st) do
+  while not Source.Done do
     if cb=0 then
-      ParseDeclaration(st)
+      ParseDeclaration
     else
-      ParseLogic(st);
+      ParseLogic;
   if stackIndex<>0 then
     Source.Error('unexpected end of source ('+IntToStr(stackIndex)+')');
 end;
 
-procedure TStratoParser.ParseDeclaration(st:TStratoToken);
+procedure TStratoParser.ParseDeclaration;
 var
   n:TStratoName;
   nn,fqn:UTF8String;
   ns,p,q,r:TStratoIndex;
+  st:TStratoToken;
   px,qx,rx:PStratoThing;
   i:cardinal;
   b:boolean;
 begin
-  //assert cb=0
+  while (cb=0) and Source.NextToken(st) do
   case st of
 
     stImport: //import a namespace
@@ -2177,16 +2179,17 @@ begin
   end;
 end;
 
-procedure TStratoParser.ParseLogic(st:TStratoToken);
+procedure TStratoParser.ParseLogic;
 var
   n:TStratoName;
   nn,fqn:UTF8String;
   ns,p,q,r:TStratoIndex;
+  st:TStratoToken;
   px,qx,rx:PStratoThing;
   i:cardinal;
   b:boolean;
 begin
-  //assert cb<>0
+  while (cb<>0) and Source.NextToken(st) do
   case st of
 
     stIdentifier:
