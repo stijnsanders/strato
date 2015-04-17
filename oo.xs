@@ -1,4 +1,4 @@
-oo
+oo @ 8000
 
 object:={
 	_basetype:type@-@?0;//class
@@ -6,15 +6,20 @@ object:={
 	//implemented interfaces?
 }
 
+object_base_size=@?0*2;
+
 object(){
-	@ @@:pointer:=__malloc(@?@@)+@?0*2;
+	@ @@:pointer:=__malloc(@?@@+object_base_size);
+	@ @@:number+=object_base_size;
 	_basetype:=?@@;
 	_refcount:=0;
 }
 
 -object(){
 	//assert _refcount=0
-	//__dealloc(@(@@));
+	x:pointer:=@ @@:pointer;
+	x:number-=object_base_size;
+	__mfree(x);
 }
 
 object._addref(){

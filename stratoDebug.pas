@@ -244,7 +244,7 @@ begin
         ttBinaryData:
          begin
           x:=Format('%7d "%s"',[p,s.GetBinaryData(p)]);
-          inc(p,((PStratoBinaryData(px).DataLength+8) div SizeOf(TStratoThing)));
+          inc(p,((PStratoBinaryData(px).DataLength+8-1) div SizeOf(TStratoThing)));
          end;
         ttSourceFile:
           x:=Format('%7d %33s ',[p,''])+

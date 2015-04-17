@@ -173,6 +173,10 @@ begin
     stratoSysCall_writeln,[TypeDecl_string],0);
   C('__malloc','__malloc(number)',
     stratoSysCall_malloc,[TypeDecl_number],TypeDecl_pointer);
+  C('__realloc','__realloc(pointer,number)',
+    stratoSysCall_realloc,[TypeDecl_pointer,TypeDecl_number],TypeDecl_pointer);
+  C('__mfree','__mfree(pointer)',
+    stratoSysCall_mfree,[TypeDecl_pointer],0);
 
   //TODO: exitcode (and all system things)
   //TODO: objects with reference counting

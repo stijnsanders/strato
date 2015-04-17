@@ -58,6 +58,7 @@ type
       var p,ns:TStratoIndex;var b:boolean);
     function ParseLiteral(st0:TStratoToken):TStratoIndex;
     function ParseInteger:cardinal;
+    function ParseIntegerRaw:cardinal;
     function LookUpType(const tname:string):TStratoIndex;
     procedure ParseRecordDecl(x:TStratoIndex);
     function ParseSignature(ns:TStratoIndex;const name:UTF8String):TStratoIndex;
@@ -77,6 +78,7 @@ type
     end;
     cb:TStratoIndex;
     cbInhCalled:boolean;
+    mark1,mark2:TStratoIndex;
 
     procedure Push(p:TPrecedence;t:TStratoIndex);
     procedure CodeLookup(n:TStratoName;var p:TStratoIndex);
@@ -84,6 +86,7 @@ type
     procedure Juxta(var p:TStratoIndex);
     procedure PushBinary(p:TPrecedence;st:TStratoToken;var q:TStratoIndex);
 
+    procedure ParseHeader;
     procedure ParseDeclaration;
     procedure ParseLogic;
 
@@ -91,7 +94,6 @@ type
     procedure CbAdd(p:TStratoIndex);
   public
     constructor Create(ASphere: TStratoSphere; ASource: TStratoSource);
-    procedure ParseHeader;
     procedure Parse;
   end;
 
@@ -104,7 +106,6 @@ begin
    begin
     p:=TStratoParser.Create(Sphere,Source);
     try
-      p.ParseHeader;
       p.Parse;
       Result:=p.NameSpace;
     finally
@@ -235,7 +236,10 @@ begin
      end;
     else Source.Error('unsupported import subject syntax');
   end;
-  if Source.IsNext([stAt]) then q:=ParseInteger else q:=0;
+  if Source.IsNext([stAt,stNumericLiteral]) then
+    q:=ParseIntegerRaw
+  else
+    q:=0;
   Source.Skip(stSemiColon);
   //load and parse
   if fn<>'' then
@@ -455,7 +459,7 @@ var
                 Source.Error('unknown unary operator');
             end;
           pSizeOf:
-            w:=IntToStr(ByteSize(Sphere,vt));
+            v:=IntToStr(ByteSize(Sphere,vt));
           pMulDiv,pAddSub,pShift,pAnd,pOr,pEqual,pComparative:
             if vt=TypeDecl_number then
               if TryStrToInt64(string(v),i) and TryStrToInt64(string(w),j) then
@@ -685,6 +689,17 @@ begin
     end;
 end;
 
+function TStratoParserBase.ParseIntegerRaw: cardinal;
+begin
+  //TODO: support constants?
+  //TODO: into ParseInteger(Store:boolean)?
+  if not TryStrToInt(string(Source.GetID),integer(Result)) then
+   begin
+    Source.Error('invalid integer constant');
+    Result:=0;
+   end;
+end;
+
 function TStratoParserBase.LookUpType(const tname:string):TStratoIndex;
 var
   p:TStratoIndex;
@@ -785,6 +800,7 @@ begin
         if Source.IsNext([stAt]) then
          begin
           offset:=0;
+          //TODO: absorb following into ParseInteger?
           neg:=false;
           b:=true;
           while b and Source.NextToken(st) do
@@ -823,7 +839,9 @@ begin
             end;
             //TODO: stack and combine like ParseLiteral
             if Source.IsNext([stOpMul,stNumericLiteral]) then
-              if not TryStrToInt(string(Source.GetID),integer(j)) then
+              if TryStrToInt(string(Source.GetID),integer(j)) then
+                i:=i*j
+              else
                 Source.Error('record field offset factor not an integer');
             if i<>0 then
               if neg then
@@ -1081,6 +1099,8 @@ begin
   Sphere:=ASphere;
   Source:=ASource;
   FNameSpace:=0;//default
+  mark1:=0;
+  mark2:=0;
 
   src:=Sphere.Add(ttSourceFile,PStratoThing(px));
   px.FileName:=Sphere.AddBinaryData(UTF8String(Source.FilePath));
@@ -1091,6 +1111,25 @@ end;
 
 const
   stackGrowSize=$100;
+
+procedure TStratoParser.Parse;
+begin
+  ParseHeader;
+  stackIndex:=0;
+  stackSize:=stackGrowSize;
+  SetLength(stack,stackSize);
+  cb:=0;
+  cbInhCalled:=false;
+  while not Source.Done do
+    if cb=0 then
+      ParseDeclaration
+    else
+      ParseLogic;
+  if stackIndex<>0 then
+    Source.Error('unexpected end of source ('+IntToStr(stackIndex)+')');
+  if mark1<>0 then
+    Sphere.MarkIndex(mark2);
+end;
 
 procedure TStratoParser.Push(p:TPrecedence;t:TStratoIndex);
 begin
@@ -1521,10 +1560,16 @@ begin
   //namespace
   if Source.IsNext([stIdentifier]) then
    begin
-    if LookUpNameSpace(ns,n) then
-      px:=Sphere[ns]
-    else
+    if LookUpNameSpace(ns,n) then px:=Sphere[ns] else px:=nil;
+    if Source.IsNext([stAt,stNumericLiteral]) then
      begin
+      mark1:=ParseIntegerRaw;
+      mark2:=Sphere.MarkIndex(mark1);
+     end;
+    if px=nil then
+     begin
+      //
+      //create namespace
       p:=Sphere.Add(ttNameSpace,px);
       if ns=0 then
         Sphere.AddTo(Sphere.Header.FirstNameSpace,p)
@@ -1560,22 +1605,6 @@ begin
   SetLength(Locals,2);
   Locals[0]:=ns;
   Locals[1]:=Sphere.Header.FirstNameSpace;//runtime
-end;
-
-procedure TStratoParser.Parse;
-begin
-  stackIndex:=0;
-  stackSize:=stackGrowSize;
-  SetLength(stack,stackSize);
-  cb:=0;
-  cbInhCalled:=false;
-  while not Source.Done do
-    if cb=0 then
-      ParseDeclaration
-    else
-      ParseLogic;
-  if stackIndex<>0 then
-    Source.Error('unexpected end of source ('+IntToStr(stackIndex)+')');
 end;
 
 procedure TStratoParser.ParseDeclaration;
@@ -1793,7 +1822,8 @@ begin
                       Source.Error('unsupported type or constant reference');
                   end;
                end;
-              stStringLiteral,stNumericLiteral,stBOpen,stPOpen://constant
+              stStringLiteral,stNumericLiteral,
+              stBOpen,stPOpen,stOpSizeOf://constant
                begin
                 p:=Sphere.AddTo(Sphere[ns].FirstItem,ttConstant,n,px);
                 if p=0 then
@@ -1844,6 +1874,7 @@ begin
                   qx.EvaluatesTo:=p;
                  end;
                end;
+{
               stOpSizeOf:
                begin
                 p:=Sphere.AddTo(Sphere[ns].FirstItem,ttConstant,n,px);
@@ -1856,7 +1887,13 @@ begin
                 px.Parent:=ns;
                 px.SrcPos:=Source.SrcPos;
                 px.EvaluatesTo:=TypeDecl_Number;
-                q:=LookUpType('sizeof type');
+                if Source.IsNext([stNumericLiteral]) then
+                 begin
+                  q:=TypeDecl_number;
+                  Source.GetID;//skip
+                 end
+                else
+                  q:=LookUpType('sizeof type');
                 if q=0 then
                   Source.Error('unknown sizeof type')
                 else
@@ -1870,6 +1907,7 @@ begin
                   px.InitialValue:=q;
                  end;
                end;
+}
               else
                 Source.Error('unsupported type or constant');
              end;

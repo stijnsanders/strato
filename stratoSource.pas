@@ -19,7 +19,7 @@ type
     FOnError:TStratoSourceErrorHandler;
   public
     procedure LoadFromFile(const FilePath:string);
-    function IsEmpty:boolean;
+    function Done:boolean;
     function NextToken(var st:TStratoToken):boolean;
     function Token:TStratoToken;
     function IsNext(const st:array of TStratoToken):boolean; //advances index on true!
@@ -34,7 +34,7 @@ type
     property FilePath:string read FFilePath;
     property FileSize:cardinal read FFileSize;
     property LineIndex:cardinal read FLineIndex;
-    property ErrorCount:integer read FErrors;
+    property ErrorCount:integer read FErrors write FErrors;
     property Tokens:TStratoSourceTokenList read FTokens;
     property OnError:TStratoSourceErrorHandler read FOnError write FOnError;
   end;
@@ -97,9 +97,9 @@ begin
   FErrors:=0;
 end;
 
-function TStratoSource.IsEmpty: boolean;
+function TStratoSource.Done: boolean;
 begin
-  Result:=Length(FTokens)=0;
+  Result:=FTIndex>=FTLength;
 end;
 
 function TStratoSource.NextToken(var st:TStratoToken):boolean;
@@ -110,7 +110,10 @@ begin
     Result:=true;
    end
   else
+   begin
+    st:=st_Unknown;
     Result:=false;
+   end;
 end;
 
 function TStratoSource.Token: TStratoToken;
