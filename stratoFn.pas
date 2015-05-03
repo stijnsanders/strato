@@ -5,15 +5,17 @@ interface
 uses stratoDecl, stratoSphere, stratoSource;
 
 function StratoFnAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
-  Fn,Signature,SourceFile:TStratoIndex;const Name:UTF8String):TStratoIndex;
+  Fn,Signature,SourceFile:TStratoIndex):TStratoIndex;
 function StratoFnOverloadCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
-  Fn,Signature,SourceFile:TStratoIndex;const Name:UTF8String):TStratoIndex;
+  Fn,Signature,SourceFile:TStratoIndex):TStratoIndex;
 function StratoFnCallAddArgument(Sphere:TStratoSphere;
   FnCall,Value:TStratoIndex;var Info:PStratoThing):TStratoIndex;
-procedure StratoFnCallFindSignature(Sphere:TStratoSphere;
-  FnCall,Subject:TStratoIndex);
+function StratoFnCallFindSignature(Sphere:TStratoSphere;
+  FnCall:TStratoIndex):boolean;
 function StratoFnCallFindInherited(Sphere:TStratoSphere;
   Method:PStratoThing;Name:TStratoName):TStratoIndex;
+function StratoFnCallFindVirtual(Sphere:TStratoSphere;
+  ImplClass,Target:PStratoThing):TStratoIndex;
 function StratoFnCodeBlock(Sphere:TStratoSphere;
   Parent,ThisType,ValueType:TStratoIndex;
   ValueName:TStratoName;SrcPos:cardinal):TStratoIndex;
@@ -65,7 +67,7 @@ begin
 end;
 
 function StratoFnAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
-  Fn,Signature,SourceFile:TStratoIndex;const Name:UTF8String):TStratoIndex;
+  Fn,Signature,SourceFile:TStratoIndex):TStratoIndex;
 var
   p,q:TStratoIndex;
   fx,px:PStratoThing;
@@ -132,13 +134,13 @@ begin
 end;
 
 function StratoFnOverloadCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
-  Fn,Signature,SourceFile:TStratoIndex;const Name:UTF8String):TStratoIndex;
+  Fn,Signature,SourceFile:TStratoIndex):TStratoIndex;
 var
   p,q:TStratoIndex;
   fx,px,qx,sx,cx:PStratoThing;
   bs,tt:cardinal;
 begin
-  q:=StratoFnAddOverload(Sphere,Source,Fn,Signature,SourceFile,Name);
+  q:=StratoFnAddOverload(Sphere,Source,Fn,Signature,SourceFile);
   px:=Sphere[Fn];
   fx:=Sphere[q];
   sx:=Sphere[Signature];
@@ -225,23 +227,34 @@ begin
   Sphere.Append(Sphere[FnCall].FirstArgument,Result);
 end;
 
-procedure StratoFnCallFindSignature(Sphere:TStratoSphere;
-  FnCall,Subject:TStratoIndex);
+function StratoFnCallFindSignature(Sphere:TStratoSphere;
+  FnCall:TStratoIndex):boolean;
 var
   p,q:TStratoIndex;
-  px,cx:PStratoThing;
+  px,cx,dx:PStratoThing;
 begin
   //assert all Arguments added
   cx:=Sphere[FnCall];
-  cx.Target:=0;//default
+  p:=cx.Target;
+  px:=Sphere[p];
+  //TODO: remove use of fnCall.Body
+  //cx.Target:=0;//default
   cx.Body:=0;//default
-  p:=Subject;
-  while (p<>0) and (Sphere[p].ThingType=ttVarIndex) do
-    p:=Sphere[p].Target;
-  if (p<>0) and (Sphere[p].ThingType=ttVar) then
-    p:=Sphere[p].EvaluatesTo;
-  //if (p<>0) and (Sphere[p].ThingType=ttInterface) then?//TODO:
+  if (p<>0) and (px.ThingType=ttVarIndex) and (px.EvaluatesTo=0) then
+   begin
+    dx:=px;
+    p:=px.Target;
+    px:=Sphere[p];
+   end
+  else
+    dx:=cx;
   if p<>0 then
+    case px.ThingType of
+      ttVar,ttVarIndex:
+        p:=px.EvaluatesTo;
+      //ttInterface? //TODO:
+    end;
+  if p=0 then Result:=false else
    begin
     px:=Sphere[p];
     case px.ThingType of
@@ -283,11 +296,12 @@ begin
       else
         p:=0;//error?
     end;
-    if p<>0 then
+    if p=0 then Result:=false else
      begin
       //found! set body from matching overload
-      cx.Target:=p;
-      cx.Body:=Sphere[p].Body;
+      Result:=true;
+      dx.Target:=p;
+      //cx.Body:=Sphere[p].Body;
      end;
    end;
 end;
@@ -327,7 +341,7 @@ begin
           while (p<>0) and (Sphere[p].ThingType<>ttDestructor) do
             p:=Sphere[p].Next;
          end;
-        ttOverload:
+        ttOverload,ttClass:
          begin
           p:=Sphere.Lookup(Sphere[q].FirstItem,Name);
           if (p<>0) and (Sphere[p].ThingType=ttFunction) then
@@ -365,6 +379,39 @@ begin
      end;
     Result:=p;
    end;
+end;
+
+function StratoFnCallFindVirtual(Sphere:TStratoSphere;
+  ImplClass,Target:PStratoThing):TStratoIndex;
+var
+  n:TStratoName;
+  p:TStratoIndex;
+  qx:PStratoThing;
+begin
+  //assert ImplClass<>nil and ImplClass.ThingType=ttClass
+  //assert Target.ThingType=ttOverload
+  qx:=Target;
+  while (qx<>nil) and (qx.ThingType<>ttFunction) do //TODO: in [] like Sphere.FQN?
+    qx:=Sphere[qx.Parent];
+  if qx<>nil then
+   begin
+    n:=qx.Name;
+    qx:=ImplClass;
+   end;
+  p:=0;
+  while (p=0) and (qx<>nil) do
+   begin
+    p:=Sphere.Lookup(qx.FirstItem,n);
+    if (p<>0) and (Sphere[p].ThingType=ttFunction) then
+      p:=Sphere[p].FirstItem
+    else
+      p:=0;//error?
+    while (p<>0) and not(StratoFnArgListsMatch(Sphere,
+      Target.FirstArgument,Sphere[p].FirstArgument)) do
+      p:=Sphere[p].Next;
+    if p=0 then qx:=Sphere[qx.InheritsFrom];
+   end;
+  Result:=p;
 end;
 
 function StratoFnCodeBlock(Sphere:TStratoSphere;

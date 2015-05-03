@@ -1077,7 +1077,7 @@ begin
               qx.Parent:=x;
               qx.SrcPos:=Source.SrcPos;
              end;
-            StratoFnAddOverload(Sphere,Source,p,ParseSignature(x,nn),src,nn);
+            StratoFnAddOverload(Sphere,Source,p,ParseSignature(x,nn),src);
            end;
           else Source.Error('unsupported interface field syntax');
         end;
@@ -1283,12 +1283,8 @@ begin
             qx.SrcPos:=Source.SrcPos;
            end;
           //subject stored in px.Target when Push(pArgList
-          if px.Target<>0 then
-           begin
-            StratoFnCallFindSignature(Sphere,p,px.Target);
-            if px.Target=0 then
-              Source.Error('no function overload found with these arguments');
-           end;
+          if not StratoFnCallFindSignature(Sphere,p) then
+            Source.Error('no function overload found with these arguments');
           done:=true;//always only one (need to parse ")" correctly)
          end;
         pBrackets:
@@ -1950,8 +1946,8 @@ begin
                    end;
                   rx.Parent:=ns;
                   rx.SrcPos:=Source.SrcPos;
-                  StratoFnAddOverload(Sphere,Source,r,q,src,nn);
-                  StratoFnAddOverload(Sphere,Source,r,p,src,nn);
+                  StratoFnAddOverload(Sphere,Source,r,q,src);
+                  StratoFnAddOverload(Sphere,Source,r,p,src);
                  end
                 else
                   Source.Error('duplicate identifier "'+nn+'"');
@@ -2001,7 +1997,7 @@ begin
                     qx.SrcPos:=Source.SrcPos;
                    end;
                 end;
-              cb:=StratoFnOverloadCodeBlock(Sphere,Source,q,p,src,nn);
+              cb:=StratoFnOverloadCodeBlock(Sphere,Source,q,p,src);
               cbInhCalled:=false;
               p:=0;
              end;

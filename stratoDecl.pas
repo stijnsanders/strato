@@ -89,6 +89,11 @@ const
   ttGlobal       = $0083;
     //Target (ttVar)
 
+  ttPrivate      = $0091;
+    //SourceFile (ttSourceFile)
+    //FirstItem (*)
+    //Target (ttNameSpace)
+
 
   ttSignature    = $00E0;
     //Target (ttTypeDecl): call subject (this)
@@ -107,7 +112,6 @@ const
   ttFnCall       = $0084;
     //FirstArgument (0,ttArgument)
     //Target (ttVarIndex,ttOverload,ttConstructor,ttDestructor): 
-    //Body (0,ttCodeBlock,ttVarIndex): body from overload
 
   ttArgument     = $00A0;
     //InitialValue (ttLiteral): default value (signature only)

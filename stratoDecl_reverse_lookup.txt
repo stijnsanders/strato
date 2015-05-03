@@ -32,6 +32,7 @@
 0082 ttAlias
 0083 ttGlobal
 0084 ttFnCall
+0091 ttPrivate
 00A0 ttArgument
 00A1 ttCast
 00A2 ttArgByRef

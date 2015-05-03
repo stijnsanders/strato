@@ -95,9 +95,9 @@ begin
       Result:=Format('fn   %s  %d(%d){%d}',
         [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
     ttFnCall:
-      Result:=Format('call %s  %d(%d){%d}',
-        [s.Dict[p.Name]{s.FQN(i)}
-        ,p.Target,p.FirstArgument,p.Body]);
+      Result:=Format('call %s  %d(%d)',//{%d}',
+        [s.Dict[p.Name]//s.FQN(i)
+        ,p.Target,p.FirstArgument]);//,p.Body]);
     ttArgument:
       Result:=Format('arg  %s  t=%d d=%d v=%d',
         [s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Target]);//not ValueFrom!

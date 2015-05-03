@@ -2,7 +2,7 @@ unit stratoSphere;
 
 interface
 
-{xxx$D-}
+{$D-}
 
 uses SysUtils, Classes, stratoDict, stratoSource, stratoDecl;
 
@@ -53,8 +53,8 @@ implementation
 uses stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
 
 const
-  StratoSphereDataBlockSize=500;//$1000;
-  StratoSphereDataGrowSize=100;//$100;
+  StratoSphereDataBlockSize=100;//$1000;
+  StratoSphereDataGrowSize=50;//$100;
 
   StratoSphereFileVersion=$00000101;//0.1.1
 
@@ -106,6 +106,8 @@ begin
   if (Index and (StratoSphereDataGrowSize-1))<>0 then
     raise Exception.Create('Block start indexes must be a multiple of block growth size');
   }
+  if Index>=IndexStep1-1 then
+    raise Exception.Create('Block start index reserved');
   i:=0;
   while (i<FBlockCount) and not((Index>=FBlock[i].First)
     and (Index<FBlock[i].First+FBlock[i].Size)) do inc(i);
