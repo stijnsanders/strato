@@ -766,181 +766,6 @@ begin
      end;
 end;
 
-procedure TStratoParser.ParseRecord;
-var
-  p,q,r:TStratoIndex;
-  px,qx:PStratoThing;
-  offset,i,j,s:cardinal;
-  st:TStratoToken;
-  tt:TStratoThingType;
-  b,neg:boolean;
-  fn:UTF8String;
-  n:TStratoName;
-begin
-  while (cb=0) and (rd<>0) and Source.NextToken(st) do
-  case st of
-
-    stIdentifier:
-     begin
-      offset:=OffsetUseDefault;//default
-      p:=0;//default
-      tt:=ttVar;//default
-      fn:=Source.GetID;
-      if Source.IsNext([stColon]) then
-        case Source.Token of
-          stIdentifier:
-            p:=LookUpType('field type');
-          stAOpen:
-           begin
-            p:=Sphere.Add(ttRecord,px);
-            px.Name:=Sphere.Dict.StrIdx(fn);
-            px.Parent:=rd;
-            px.SrcPos:=Source.SrcPos;
-            rd:=p;//push? see stAClose below
-            //TODO: add struct/typedecl itself to something? x?ns?
-           end;
-          //more?
-          else Source.Error('unsupported record field type syntax');
-        end;
-      //offset
-      if Source.IsNext([stAt]) then
-       begin
-        offset:=0;
-        //TODO: absorb following into ParseInteger?
-        neg:=false;
-        b:=true;
-        while b and Source.NextToken(st) do
-         begin
-          i:=0;//default;
-          j:=1;//default;
-          case st of
-            stNumericLiteral:
-              if not TryStrToInt(string(Source.GetID),integer(i)) then
-                Source.Error('record field offset not an integer');
-            stOpSub:neg:=true;
-            stOpAdd:neg:=false;
-            stIdentifier:
-             begin
-              q:=Sphere.Lookup(Sphere[rd].FirstItem,
-                Sphere.Dict.StrIdx(Source.GetID));
-              if q=0 then
-                Source.Error('record field not found')
-              else
-                i:=Sphere[q].Offset;
-             end;
-            stOpSizeOf:
-              if Source.NextToken(st) then
-                case st of
-                  stIdentifier:
-                    i:=ByteSize(Sphere,LookUpType('offset type'));
-                  stNumericLiteral:
-                   begin
-                    Source.Skip(st);//Source.GetID;
-                    i:=SystemWordSize;//ByteSize(Sphere,TypeDecl_number);
-                   end;
-                  else Source.Error('invalid record field offset syntax');
-                end;
-            //stSemiColon:b:=false; else Source.Error?
-            else b:=false;
-          end;
-          //TODO: stack and combine like ParseLiteral
-          if Source.IsNext([stOpMul,stNumericLiteral]) then
-            if TryStrToInt(string(Source.GetID),integer(j)) then
-              i:=i*j
-            else
-              Source.Error('record field offset factor not an integer');
-          if i<>0 then
-            if neg then
-             begin
-              dec(offset,i);
-              neg:=false;
-             end
-            else
-              inc(offset,i);
-         end;
-       end
-      else
-      if Source.IsNext([stAOpen]) then
-       begin
-        tt:=ttProperty;
-        //getter and setter, see below
-       end;
-      if tt=ttVar then Source.Skip(stSemiColon);
-
-      //register field with record
-      n:=Sphere.Dict.StrIdx(fn);
-      qx:=Sphere[rd];
-      r:=Sphere.AddTo(qx.FirstItem,tt,n,px);
-      if r=0 then
-       begin
-        Source.Error('duplicate record field "'+fn+'"');
-        r:=Sphere.Add(tt,px);
-        px.Name:=n;
-       end;
-      px.Parent:=rd;
-      px.EvaluatesTo:=p;
-      if p=0 then s:=0 else s:=ByteSize(Sphere,p);
-      if tt=ttVar then
-        if offset=OffsetUseDefault then
-         begin
-          px.Offset:=qx.ByteSize;
-          inc(qx.ByteSize,s);
-         end
-        else
-         begin
-          if integer(offset)<0 then
-           begin
-            if rd<>TypeDecl_object then
-             begin
-              offset:=-integer(offset);
-              Source.Error('negative record field offset not allowed');
-             end;
-           end
-          else
-           begin
-            i:=offset+s;
-            if i>qx.ByteSize then qx.ByteSize:=i;
-           end;
-          px.Offset:=offset;
-         end;
-      px.SrcPos:=Source.SrcPos;
-
-      //property: getter (and maybe setter)
-      if tt=ttProperty then
-       begin
-        //opening stAOpen consumed by Next above
-        if Source.IsNext([stAClose]) then
-         begin
-          //forward only
-          if Source.IsNext([stAOpen,stAClose]) then //empty setter also? skip
-            Source.Skip(stAClose);
-          Source.Skip(stSemiColon);
-          //TODO: check declared somewhere later
-         end
-        else
-         begin
-          cb:=StratoFnCodeBlock(Sphere,r,rd,p,n,Source.SrcPos);
-          px.ValueFrom:=cb;
-          cbInhCalled:=false;
-         end;
-       end;
-
-     end;
-
-    //stQuestionMark: nested interface?
-    //more?
-
-    stAClose:
-     begin
-      //'pop'
-      p:=Sphere[rd].Parent;
-      if Sphere[p].ThingType=ttRecord then rd:=p else rd:=0;
-     end;
-
-    else Source.Error('unsupported record field syntax');
-  end;
-end;
-
 function TStratoParserBase.ParseSignature(ns:TStratoIndex;
   const name:UTF8String):TStratoIndex;
 var
@@ -2273,6 +2098,181 @@ begin
 
     st_Unknown:Source.Error('unknown token');
     else Source.Error('unexpected token');
+  end;
+end;
+
+procedure TStratoParser.ParseRecord;
+var
+  p,q,r:TStratoIndex;
+  px,qx:PStratoThing;
+  offset,i,j,s:cardinal;
+  st:TStratoToken;
+  tt:TStratoThingType;
+  b,neg:boolean;
+  fn:UTF8String;
+  n:TStratoName;
+begin
+  while (cb=0) and (rd<>0) and Source.NextToken(st) do
+  case st of
+
+    stIdentifier:
+     begin
+      offset:=OffsetUseDefault;//default
+      p:=0;//default
+      tt:=ttVar;//default
+      fn:=Source.GetID;
+      if Source.IsNext([stColon]) then
+        case Source.Token of
+          stIdentifier:
+            p:=LookUpType('field type');
+          stAOpen:
+           begin
+            p:=Sphere.Add(ttRecord,px);
+            px.Name:=Sphere.Dict.StrIdx(fn);
+            px.Parent:=rd;
+            px.SrcPos:=Source.SrcPos;
+            rd:=p;//push? see stAClose below
+            //TODO: add struct/typedecl itself to something? x?ns?
+           end;
+          //more?
+          else Source.Error('unsupported record field type syntax');
+        end;
+      //offset
+      if Source.IsNext([stAt]) then
+       begin
+        offset:=0;
+        //TODO: absorb following into ParseInteger?
+        neg:=false;
+        b:=true;
+        while b and Source.NextToken(st) do
+         begin
+          i:=0;//default;
+          j:=1;//default;
+          case st of
+            stNumericLiteral:
+              if not TryStrToInt(string(Source.GetID),integer(i)) then
+                Source.Error('record field offset not an integer');
+            stOpSub:neg:=true;
+            stOpAdd:neg:=false;
+            stIdentifier:
+             begin
+              q:=Sphere.Lookup(Sphere[rd].FirstItem,
+                Sphere.Dict.StrIdx(Source.GetID));
+              if q=0 then
+                Source.Error('record field not found')
+              else
+                i:=Sphere[q].Offset;
+             end;
+            stOpSizeOf:
+              if Source.NextToken(st) then
+                case st of
+                  stIdentifier:
+                    i:=ByteSize(Sphere,LookUpType('offset type'));
+                  stNumericLiteral:
+                   begin
+                    Source.Skip(st);//Source.GetID;
+                    i:=SystemWordSize;//ByteSize(Sphere,TypeDecl_number);
+                   end;
+                  else Source.Error('invalid record field offset syntax');
+                end;
+            //stSemiColon:b:=false; else Source.Error?
+            else b:=false;
+          end;
+          //TODO: stack and combine like ParseLiteral
+          if Source.IsNext([stOpMul,stNumericLiteral]) then
+            if TryStrToInt(string(Source.GetID),integer(j)) then
+              i:=i*j
+            else
+              Source.Error('record field offset factor not an integer');
+          if i<>0 then
+            if neg then
+             begin
+              dec(offset,i);
+              neg:=false;
+             end
+            else
+              inc(offset,i);
+         end;
+       end
+      else
+      if Source.IsNext([stAOpen]) then
+       begin
+        tt:=ttProperty;
+        //getter and setter, see below
+       end;
+      if tt=ttVar then Source.Skip(stSemiColon);
+
+      //register field with record
+      n:=Sphere.Dict.StrIdx(fn);
+      qx:=Sphere[rd];
+      r:=Sphere.AddTo(qx.FirstItem,tt,n,px);
+      if r=0 then
+       begin
+        Source.Error('duplicate record field "'+fn+'"');
+        r:=Sphere.Add(tt,px);
+        px.Name:=n;
+       end;
+      px.Parent:=rd;
+      px.EvaluatesTo:=p;
+      if p=0 then s:=0 else s:=ByteSize(Sphere,p);
+      if tt=ttVar then
+        if offset=OffsetUseDefault then
+         begin
+          px.Offset:=qx.ByteSize;
+          inc(qx.ByteSize,s);
+         end
+        else
+         begin
+          if integer(offset)<0 then
+           begin
+            if rd<>TypeDecl_object then
+             begin
+              offset:=-integer(offset);
+              Source.Error('negative record field offset not allowed');
+             end;
+           end
+          else
+           begin
+            i:=offset+s;
+            if i>qx.ByteSize then qx.ByteSize:=i;
+           end;
+          px.Offset:=offset;
+         end;
+      px.SrcPos:=Source.SrcPos;
+
+      //property: getter (and maybe setter)
+      if tt=ttProperty then
+       begin
+        //opening stAOpen consumed by Next above
+        if Source.IsNext([stAClose]) then
+         begin
+          //forward only
+          if Source.IsNext([stAOpen,stAClose]) then //empty setter also? skip
+            Source.Skip(stAClose);
+          Source.Skip(stSemiColon);
+          //TODO: check declared somewhere later
+         end
+        else
+         begin
+          cb:=StratoFnCodeBlock(Sphere,r,rd,p,n,Source.SrcPos);
+          px.ValueFrom:=cb;
+          cbInhCalled:=false;
+         end;
+       end;
+
+     end;
+
+    //stQuestionMark: nested interface?
+    //more?
+
+    stAClose:
+     begin
+      //'pop'
+      p:=Sphere[rd].Parent;
+      if Sphere[p].ThingType=ttRecord then rd:=p else rd:=0;
+     end;
+
+    else Source.Error('unsupported record field syntax');
   end;
 end;
 
