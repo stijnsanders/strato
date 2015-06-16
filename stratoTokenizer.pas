@@ -14,6 +14,7 @@ type
     stComma,//','
     stPeriod, //"."
     stColon,//":"
+    stDefine,//"=", specifically not ":=" or "=="!
     stAt,//"@"
     stCaret,//"^"
     stQuestionMark,//"?"
@@ -42,12 +43,12 @@ type
     stOpAssignMod, //"%="
     stOpAssignOr, //"||="
     stOpAssignAnd, //"&&="
-    stOpEQ,
-    stOpNEQ,
-    stOpLT,
-    stOpLTE,
-    stOpGT,
-    stOpGTE,
+    stOpEQ,  //"=="
+    stOpNEQ, //"!="
+    stOpLT,  //"<"
+    stOpLTE, //"<="
+    stOpGT,  //">"
+    stOpGTE, //">="
 
     stOpAnd,
     stOpOr,
@@ -215,10 +216,12 @@ begin
       ''''://string
        begin
         i:=CodeIndex+1;
+        //TODO: support # syntax?
         while (i<=CodeLength) and (Code[i]<>'''') do
          begin
-          while (i<=CodeLength) and (Code[i]<>'''') do inc(i);
-          if (i<CodeLength) and (Code[i+1]='''') then inc(i,2);
+          inc(i);
+          if (i<CodeLength) and (Code[i]='''') and (Code[i+1]='''') then
+            inc(i,2);
          end;
         AddX(i-CodeIndex+1,stStringLiteral);
        end;
@@ -319,8 +322,8 @@ begin
       '=':
         case CodeNext(1) of
           '?':Add(2,stOpTypeIs);
-          '=':Add(2,stOpEq);//raise?
-          else Add(1,stOpEq);
+          '=':Add(2,stOpEq);
+          else Add(1,stDefine);
         end;
       '?':
         case CodeNext(1) of

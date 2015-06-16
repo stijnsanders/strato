@@ -3,6 +3,7 @@ unit stratoDecl;
 interface
 
 type
+  TStratoThingType=type cardinal;
   TStratoIndex=type cardinal;
   TStratoName=type cardinal;
 
@@ -94,7 +95,7 @@ const
     //FirstItem (*)
     //Target (ttNameSpace)
 
-
+    
   ttSignature    = $00E0;
     //Target (ttTypeDecl): call subject (this)
     //EvaluatesTo (0,ttTypeDecl): return value
@@ -111,7 +112,8 @@ const
 
   ttFnCall       = $0084;
     //FirstArgument (0,ttArgument)
-    //Target (ttVarIndex,ttOverload,ttConstructor,ttDestructor): 
+    //Target (ttVarIndex,ttOverload,ttConstructor,ttDestructor):
+    //EvaluatesTo (ttClass): only with ttConstructor, in case of class without own constructor 
 
   ttArgument     = $00A0;
     //InitialValue (ttLiteral): default value (signature only)
@@ -232,7 +234,7 @@ const
 
 type
   TStratoThing=record
-    ThingType:cardinal;
+    ThingType:TStratoThingType;
     Parent:TStratoIndex;
     Next:TStratoIndex;
     case cardinal of
@@ -277,7 +279,7 @@ type
   PStratoThing=^TStratoThing;
 
   TStratoHeader=record
-    FileMarker,
+    FileMarker:TStratoThingType;
     ThingCount,
     Version:cardinal;
     FirstNameSpace,
@@ -300,7 +302,7 @@ type
   end;
 
   TStratoSourceFile=record
-    ThingType:cardinal;//ttSourceFile
+    ThingType:TStratoThingType;//ttSourceFile
     FileName:TStratoName;
     FileSize:cardinal;
     SrcPosLineIndex:cardinal;
@@ -312,7 +314,7 @@ type
   PStratoSourceFile=^TStratoSourceFile;
 
   TStratoBinaryData=record
-    ThingType,//ttBinaryData
+    ThingType:TStratoThingType;//ttBinaryData
     DataLength,
     DataStart,
     xPadding1,
@@ -324,7 +326,7 @@ type
   PStratoBinaryData=^TStratoBinaryData;
 
   TStratoNameSpaceData=record
-    ThingType:cardinal;//ttNameSpace
+    ThingType:TStratoThingType;//ttNameSpace
     Parent,
     Next:TStratoIndex;
     Name:TStratoName;

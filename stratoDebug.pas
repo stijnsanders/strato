@@ -17,7 +17,7 @@ uses SysUtils, Classes;
 const
   TokenName:array[TStratoToken] of string=(
     'id','string','numeric','',
-    ';',',','.',':','@','^','?','&','(',')','{','}','[',']',
+    ';',',','.',':','=','@','^','?','&','(',')','{','}','[',']',
     '---','<<<','>>>',':::','???','!!!','@@','@@@','??',
     ':=','+=','-=','*=','/=','%=','||=','&&=',
     '=','<>','<','<=','>','>=','&&','||','!','|!',
@@ -95,9 +95,14 @@ begin
       Result:=Format('fn   %s  %d(%d){%d}',
         [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
     ttFnCall:
-      Result:=Format('call %s  %d(%d)',//{%d}',
-        [s.Dict[p.Name]//s.FQN(i)
-        ,p.Target,p.FirstArgument]);//,p.Body]);
+      if p.EvaluatesTo<>0 then //if Sphere[p.Target].ThingType=ttConstructor
+        Result:=Format('call %s  %d(%d):%d',
+          [s.Dict[p.Name]
+          ,p.Target,p.FirstArgument,p.EvaluatesTo])
+      else
+        Result:=Format('call %s  %d(%d)',//{%d}',
+          [s.Dict[p.Name]//s.FQN(i)
+          ,p.Target,p.FirstArgument]);//,p.Body]);
     ttArgument:
       Result:=Format('arg  %s  t=%d d=%d v=%d',
         [s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Target]);//not ValueFrom!

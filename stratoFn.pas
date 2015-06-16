@@ -138,7 +138,8 @@ function StratoFnOverloadCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
 var
   p,q:TStratoIndex;
   fx,px,qx,sx,cx:PStratoThing;
-  bs,tt:cardinal;
+  bs:cardinal;
+  tt:TStratoThingType;
 begin
   q:=StratoFnAddOverload(Sphere,Source,Fn,Signature,SourceFile);
   px:=Sphere[Fn];
@@ -261,6 +262,7 @@ begin
       ttClass:
        begin
         //see also StratoFnCallFindInherited!
+        dx.EvaluatesTo:=p;
         q:=p;
         p:=px.FirstItem;
         while (p<>0) and (Sphere[p].ThingType<>ttConstructor) do
@@ -315,7 +317,7 @@ begin
   if (Method=nil) or (Method.Parent=0) then Result:=0 else
    begin
     case Method.ThingType of
-      ttConstructor,ttDestructor:
+      ttConstructor,ttDestructor,ttProperty:
         px:=Sphere[Method.Parent];
       ttOverload:
        begin
@@ -349,17 +351,23 @@ begin
           else
             p:=0;//error?
          end;
-        //ttProperty://TODO!
+        ttProperty:
+         begin
+          p:=Sphere.Lookup(Sphere[q].FirstItem,Name);
+          if (p<>0) and (Sphere[p].ThingType<>ttProperty) then
+            p:=0;//error?
+         end;
         else p:=0;//error?
       end;
-      while (p<>0) and not(StratoFnArgListsMatch(Sphere,
-        Method.FirstArgument,Sphere[p].FirstArgument)) do
-       begin
-        p:=Sphere[p].Next;
-        if Method.ThingType=ttConstructor then
-          while (p<>0) and (Sphere[p].ThingType<>ttConstructor) do
-            p:=Sphere[p].Next;
-       end;
+      if Method.ThingType<>ttProperty then
+        while (p<>0) and not(StratoFnArgListsMatch(Sphere,
+          Method.FirstArgument,Sphere[p].FirstArgument)) do
+         begin
+          p:=Sphere[p].Next;
+          if Method.ThingType=ttConstructor then
+            while (p<>0) and (Sphere[p].ThingType<>ttConstructor) do
+              p:=Sphere[p].Next;
+         end;
       if (p=0) and (q<>0) then
         q:=Sphere[q].InheritsFrom;
      end;
@@ -397,7 +405,9 @@ begin
    begin
     n:=qx.Name;
     qx:=ImplClass;
-   end;
+   end
+  else
+    n:=0;//counter warning
   p:=0;
   while (p=0) and (qx<>nil) do
    begin

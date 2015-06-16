@@ -14,6 +14,7 @@ uses SysUtils, stratoTokenizer, stratoRunTime, stratoFn, stratoLogic;
 type
   TPrecedence=(
     p___,
+    pRecord,
     pCodeBlock,
       p_Statement,
     pThrow,pDefer,pCatch,
@@ -55,12 +56,11 @@ type
     procedure ParseImport;
     function LookUp:TStratoIndex;
     procedure LookUpNext(n:TStratoName;const nn:UTF8String;
-      var p,ns:TStratoIndex;var b:boolean);
+      var p,ns:TStratoIndex;var AddedNew:boolean);
     function ParseLiteral(st0:TStratoToken):TStratoIndex;
     function ParseInteger:cardinal;
     function ParseIntegerRaw:cardinal;
     function LookUpType(const tname:string):TStratoIndex;
-    procedure ParseRecordDecl(x:TStratoIndex);
     function ParseSignature(ns:TStratoIndex;const name:UTF8String):TStratoIndex;
     procedure ParseEnumeration(p:TStratoIndex;px:PStratoThing);
     procedure ParseInterfaceDecl(x:TStratoIndex);
@@ -76,7 +76,7 @@ type
       p:TPrecedence;
       t:TStratoIndex;
     end;
-    cb:TStratoIndex;
+    cb,rd:TStratoIndex;
     cbInhCalled:boolean;
     mark1,mark2:TStratoIndex;
 
@@ -88,6 +88,7 @@ type
 
     procedure ParseHeader;
     procedure ParseDeclaration;
+    procedure ParseRecord;
     procedure ParseLogic;
 
     procedure CheckPassed(p:TStratoIndex);
@@ -198,10 +199,10 @@ begin
   ns:=0;//default
   fn:='';//default;
   //alias?
-  if Source.IsNext([stIdentifier,stOpEQ]) then
+  if Source.IsNext([stIdentifier,stDefine]) then
    begin
     alias:=Source.GetID;
-    Source.Token;//stOpEQ
+    Source.Token;//stDefine
    end
   else
     alias:='';
@@ -295,8 +296,12 @@ begin
   Result:=0;//default
   l:=Length(Locals);
   SetLength(nsx,l);
-  for i:=0 to l-1 do nsx[i]:=Locals[i];
-  j:=l;
+  j:=0;
+  for i:=0 to l-1 do
+   begin
+    nsx[i]:=Locals[i];
+    if nsx[i]<>0 then inc(j);
+   end;
   repeat
     ID(n,nn);
     for i:=0 to l-1 do
@@ -361,18 +366,20 @@ begin
 end;
 
 procedure TStratoParserBase.LookUpNext(n:TStratoName;const nn:UTF8String;
-  var p,ns:TStratoIndex;var b:boolean);
+  var p,ns:TStratoIndex;var AddedNew:boolean);
 var
   i,l:integer;
   px:PStratoNameSpaceData;
 begin
+  AddedNew:=false;//default
   if p=0 then
    begin
     l:=Length(Locals);
     i:=0;
     while (i<>l) and (p=0) do
      begin
-      p:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
+      if Locals[i]<>0 then
+        p:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
       inc(i);
      end;
     if p=0 then //still nothing, check namespaces
@@ -383,11 +390,9 @@ begin
       p:=Sphere.Lookup(Sphere[p].FirstItem,n)
     else
       p:=0;//see placeholder below
-  if (p<>0) and ((Sphere[p].ThingType and tt__Resolvable)<>0) then
-    ns:=p
-  else
+  if (p=0) or ((Sphere[p].ThingType and tt__Resolvable)=0) then
    begin
-    b:=true;//Source.Error see below
+    AddedNew:=true;
     //create to silence further errors?
     p:=Sphere.AddTo(Sphere[ns].FirstItem,ttNameSpace,n,PStratoThing(px));
     if p=0 then
@@ -399,8 +404,8 @@ begin
       px.SourceFile:=src;//?
       //px.SrcPos:=?
      end;
-    ns:=p;
    end;
+  ns:=p;
 end;
 
 function TStratoParserBase.ParseLiteral(st0:TStratoToken):TStratoIndex;
@@ -761,141 +766,179 @@ begin
      end;
 end;
 
-procedure TStratoParserBase.ParseRecordDecl(x:TStratoIndex);
+procedure TStratoParser.ParseRecord;
 var
-  p,q:TStratoIndex;
+  p,q,r:TStratoIndex;
   px,qx:PStratoThing;
   offset,i,j,s:cardinal;
   st:TStratoToken;
+  tt:TStratoThingType;
   b,neg:boolean;
   fn:UTF8String;
+  n:TStratoName;
 begin
-  //assert previous token stAOpen
-  while not(Source.IsNext([stAClose])) and Source.NextToken(st) do
-    case st of
+  while (cb=0) and (rd<>0) and Source.NextToken(st) do
+  case st of
 
-      stIdentifier:
-       begin
-        offset:=OffsetUseDefault;//default
-        p:=0;//default
-        fn:=Source.GetID;
-        if Source.IsNext([stColon]) then
-          case Source.Token of
-            stIdentifier:
-              p:=LookUpType('field type');
-            stAOpen:
-             begin
-              p:=Sphere.Add(ttRecord,px);
-              px.Name:=Sphere.Dict.StrIdx(fn);
-              px.Parent:=x;
-              px.SrcPos:=Source.SrcPos;
-              //TODO: use custom stack instead of recursion
-              ParseRecordDecl(p);
-              //TODO: add struct/typedecl itself to something? x?ns?
-             end;
-            //more?
-            else Source.Error('unsupported record field type syntax');
-          end;
-        //offset
-        if Source.IsNext([stAt]) then
-         begin
-          offset:=0;
-          //TODO: absorb following into ParseInteger?
-          neg:=false;
-          b:=true;
-          while b and Source.NextToken(st) do
+    stIdentifier:
+     begin
+      offset:=OffsetUseDefault;//default
+      p:=0;//default
+      tt:=ttVar;//default
+      fn:=Source.GetID;
+      if Source.IsNext([stColon]) then
+        case Source.Token of
+          stIdentifier:
+            p:=LookUpType('field type');
+          stAOpen:
            begin
-            i:=0;//default;
-            j:=1;//default;
-            case st of
-              stNumericLiteral:
-                if not TryStrToInt(string(Source.GetID),integer(i)) then
-                  Source.Error('record field offset not an integer');
-              stOpSub:neg:=true;
-              stOpAdd:neg:=false;
-              stIdentifier:
-               begin
-                q:=Sphere.Lookup(Sphere[x].FirstItem,
-                  Sphere.Dict.StrIdx(Source.GetID));
-                if q=0 then
-                  Source.Error('record field not found')
-                else
-                  i:=Sphere[q].Offset;
-               end;
-              stOpSizeOf:
-                if Source.NextToken(st) then
-                  case st of
-                    stIdentifier:
-                      i:=ByteSize(Sphere,LookUpType('offset type'));
-                    stNumericLiteral:
-                     begin
-                      Source.Skip(st);//Source.GetID;
-                      i:=SystemWordSize;//ByteSize(Sphere,TypeDecl_number);
-                     end;
-                    else Source.Error('invalid record field offset syntax');
-                  end;
-              //stSemiColon:b:=false; else Source.Error?
-              else b:=false;
-            end;
-            //TODO: stack and combine like ParseLiteral
-            if Source.IsNext([stOpMul,stNumericLiteral]) then
-              if TryStrToInt(string(Source.GetID),integer(j)) then
-                i:=i*j
-              else
-                Source.Error('record field offset factor not an integer');
-            if i<>0 then
-              if neg then
-               begin
-                dec(offset,i);
-                neg:=false;
-               end
-              else
-                inc(offset,i);
+            p:=Sphere.Add(ttRecord,px);
+            px.Name:=Sphere.Dict.StrIdx(fn);
+            px.Parent:=rd;
+            px.SrcPos:=Source.SrcPos;
+            rd:=p;//push? see stAClose below
+            //TODO: add struct/typedecl itself to something? x?ns?
            end;
+          //more?
+          else Source.Error('unsupported record field type syntax');
+        end;
+      //offset
+      if Source.IsNext([stAt]) then
+       begin
+        offset:=0;
+        //TODO: absorb following into ParseInteger?
+        neg:=false;
+        b:=true;
+        while b and Source.NextToken(st) do
+         begin
+          i:=0;//default;
+          j:=1;//default;
+          case st of
+            stNumericLiteral:
+              if not TryStrToInt(string(Source.GetID),integer(i)) then
+                Source.Error('record field offset not an integer');
+            stOpSub:neg:=true;
+            stOpAdd:neg:=false;
+            stIdentifier:
+             begin
+              q:=Sphere.Lookup(Sphere[rd].FirstItem,
+                Sphere.Dict.StrIdx(Source.GetID));
+              if q=0 then
+                Source.Error('record field not found')
+              else
+                i:=Sphere[q].Offset;
+             end;
+            stOpSizeOf:
+              if Source.NextToken(st) then
+                case st of
+                  stIdentifier:
+                    i:=ByteSize(Sphere,LookUpType('offset type'));
+                  stNumericLiteral:
+                   begin
+                    Source.Skip(st);//Source.GetID;
+                    i:=SystemWordSize;//ByteSize(Sphere,TypeDecl_number);
+                   end;
+                  else Source.Error('invalid record field offset syntax');
+                end;
+            //stSemiColon:b:=false; else Source.Error?
+            else b:=false;
+          end;
+          //TODO: stack and combine like ParseLiteral
+          if Source.IsNext([stOpMul,stNumericLiteral]) then
+            if TryStrToInt(string(Source.GetID),integer(j)) then
+              i:=i*j
+            else
+              Source.Error('record field offset factor not an integer');
+          if i<>0 then
+            if neg then
+             begin
+              dec(offset,i);
+              neg:=false;
+             end
+            else
+              inc(offset,i);
          end;
-        Source.Skip(stSemiColon);
+       end
+      else
+      if Source.IsNext([stAOpen]) then
+       begin
+        tt:=ttProperty;
+        //getter and setter, see below
+       end;
+      if tt=ttVar then Source.Skip(stSemiColon);
 
-        //register field with record
-        qx:=Sphere[x];
-        if Sphere.AddTo(qx.FirstItem,ttVar,Sphere.Dict.StrIdx(fn),px)=0 then
-          Source.Error('duplicate record field "'+fn+'"')
+      //register field with record
+      n:=Sphere.Dict.StrIdx(fn);
+      qx:=Sphere[rd];
+      r:=Sphere.AddTo(qx.FirstItem,tt,n,px);
+      if r=0 then
+       begin
+        Source.Error('duplicate record field "'+fn+'"');
+        r:=Sphere.Add(tt,px);
+        px.Name:=n;
+       end;
+      px.Parent:=rd;
+      px.EvaluatesTo:=p;
+      if p=0 then s:=0 else s:=ByteSize(Sphere,p);
+      if tt=ttVar then
+        if offset=OffsetUseDefault then
+         begin
+          px.Offset:=qx.ByteSize;
+          inc(qx.ByteSize,s);
+         end
         else
          begin
-          px.Parent:=x;
-          px.EvaluatesTo:=p;
-          if p=0 then s:=0 else s:=ByteSize(Sphere,p);
-          if offset=OffsetUseDefault then
+          if integer(offset)<0 then
            begin
-            px.Offset:=qx.ByteSize;
-            inc(qx.ByteSize,s);
+            if rd<>TypeDecl_object then
+             begin
+              offset:=-integer(offset);
+              Source.Error('negative record field offset not allowed');
+             end;
            end
           else
            begin
-            if integer(offset)<0 then
-             begin
-              if x<>TypeDecl_object then
-               begin
-                offset:=-integer(offset);
-                Source.Error('negative record field offset not allowed');
-               end;
-             end
-            else
-             begin
-              i:=offset+s;
-              if i>qx.ByteSize then qx.ByteSize:=i;
-             end;
-            px.Offset:=offset;
+            i:=offset+s;
+            if i>qx.ByteSize then qx.ByteSize:=i;
            end;
-          px.SrcPos:=Source.SrcPos;
+          px.Offset:=offset;
          end;
+      px.SrcPos:=Source.SrcPos;
 
+      //property: getter (and maybe setter)
+      if tt=ttProperty then
+       begin
+        //opening stAOpen consumed by Next above
+        if Source.IsNext([stAClose]) then
+         begin
+          //forward only
+          if Source.IsNext([stAOpen,stAClose]) then //empty setter also? skip
+            Source.Skip(stAClose);
+          Source.Skip(stSemiColon);
+          //TODO: check declared somewhere later
+         end
+        else
+         begin
+          cb:=StratoFnCodeBlock(Sphere,r,rd,p,n,Source.SrcPos);
+          px.ValueFrom:=cb;
+          cbInhCalled:=false;
+         end;
        end;
 
-      //stQuestionMark: nested interface?
-      //more?
+     end;
 
-      else Source.Error('unsupported record field syntax');
-    end;
+    //stQuestionMark: nested interface?
+    //more?
+
+    stAClose:
+     begin
+      //'pop'
+      p:=Sphere[rd].Parent;
+      if Sphere[p].ThingType=ttRecord then rd:=p else rd:=0;
+     end;
+
+    else Source.Error('unsupported record field syntax');
+  end;
 end;
 
 function TStratoParserBase.ParseSignature(ns:TStratoIndex;
@@ -909,7 +952,7 @@ var
 
   function AddArgument:boolean;
   var
-    tt:cardinal;
+    tt:TStratoThingType;
     r:TStratoIndex;
   begin
     if byref then tt:=ttArgByRef else tt:=ttArgument;
@@ -965,14 +1008,14 @@ begin
               rx.EvaluatesTo:=p;
               NoType:=rx.Next;
              end;
-            if Source.IsNext([stOpEQ]) then //default value
+            if Source.IsNext([stDefine]) then //default value
               q:=ParseLiteral(Source.Token);
             if AddArgument then rx.InitialValue:=q;
             if Source.IsNext([stComma]) or Source.IsNext([stSemiColon]) then ;//skip
            end;
           stComma:
             AddArgument;
-          stOpEq:
+          stDefine:
            begin
             q:=ParseLiteral(Source.Token);
             if byref then
@@ -1014,7 +1057,7 @@ begin
       stIdentifier:
        begin
         ID(n,nn);
-        if Source.IsNext([stOpEQ]) then e:=ParseInteger;
+        if Source.IsNext([stDefine]) then e:=ParseInteger;
         q:=Sphere.AddTo(px.FirstItem,ttConstant,n,qx);
         if q=0 then
           Source.Error('duplicate enumeration entry "'+nn+'"')
@@ -1120,9 +1163,13 @@ begin
   SetLength(stack,stackSize);
   cb:=0;
   cbInhCalled:=false;
+  rd:=0;
   while not Source.Done do
     if cb=0 then
-      ParseDeclaration
+      if rd=0 then
+        ParseDeclaration
+      else
+        ParseRecord
     else
       ParseLogic;
   if stackIndex<>0 then
@@ -1166,7 +1213,7 @@ begin
        begin
         dec(i);
         case stack[i].p of
-          pCodeBlock:
+          pRecord,pCodeBlock:
             p:=Sphere.Lookup(Sphere[stack[i].t].FirstItem,n);
           pCatch:
            begin
@@ -1229,7 +1276,8 @@ begin
     i:=0;
     while (i<>l) and (p=0) do
      begin
-      p:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
+      if Locals[i]<>0 then
+        p:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
       inc(i);
      end;
     if p=0 then //still nothing, check namespaces
@@ -1260,6 +1308,8 @@ begin
       {$ENDIF}
       z00:=z;
       case z of
+        pRecord://tRecord
+          done:=true;//???
         pCodeBlock://ttCodeBlock
           //see also stAClose in main loop!
           done:=true;//always only one (need to parse "}" correctly)
@@ -1598,9 +1648,10 @@ begin
    end;
   FNameSpace:=ns;
   //PStratoSourceFile(px).NameSpace:=ns;//?
-  SetLength(Locals,2);
+  SetLength(Locals,3);
   Locals[0]:=ns;
-  Locals[1]:=Sphere.Header.FirstNameSpace;//runtime
+  Locals[1]:=0;//see stHRule:ttPrivate
+  Locals[2]:=Sphere.Header.FirstNameSpace;//runtime
 end;
 
 procedure TStratoParser.ParseDeclaration;
@@ -1613,7 +1664,7 @@ var
   i:cardinal;
   b:boolean;
 begin
-  while (cb=0) and Source.NextToken(st) do
+  while (cb=0) and (rd=0) and Source.NextToken(st) do
   case st of
 
     stImport: //import a namespace
@@ -1626,7 +1677,8 @@ begin
       b:=false;
       ID(n,nn);
       fqn:=nn;
-      ns:=Locals[0];
+      ns:=Locals[1];
+      if ns=0 then ns:=Locals[0];
       while Source.IsNext([stPeriod,stIdentifier]) do
        begin
         LookUpNext(n,nn,p,ns,b);
@@ -1666,14 +1718,24 @@ begin
                 px.Parent:=ns;
                 px.SrcPos:=Source.SrcPos;
                 px.EvaluatesTo:=q;
-                cb:=StratoFnCodeBlock(Sphere,p,ns,q,n,Source.SrcPos);
-                px.ValueFrom:=cb;
-                cbInhCalled:=false;
+                if Source.IsNext([stAClose]) then
+                 begin
+                  //forward only
+                  if Source.IsNext([stAOpen,stAClose]) then //empty setter also? skip
+                    Source.Skip(stAClose);
+                  //TODO: check declared somewhere later
+                 end
+                else
+                 begin
+                  cb:=StratoFnCodeBlock(Sphere,p,ns,q,n,Source.SrcPos);
+                  px.ValueFrom:=cb;
+                  cbInhCalled:=false;
+                 end;
                 p:=0;
                end
               else
               //class
-              if Source.IsNext([stOpEq,stAOpen]) then
+              if Source.IsNext([stDefine,stAOpen]) then
                begin
                 if q=0 then
                   Source.Error('undeclared base class')
@@ -1692,7 +1754,7 @@ begin
                 px.InheritsFrom:=q;
                 if q<>0 then px.ByteSize:=Sphere[q].ByteSize;
                 Source.Skip(stAOpen);
-                ParseRecordDecl(p);
+                rd:=p;//switch to ParseRecord
                end
               else
               //variable
@@ -1707,12 +1769,12 @@ begin
                 px.Parent:=ns;
                 px.SrcPos:=Source.SrcPos;
                 px.EvaluatesTo:=q;
-                if Source.IsNext([stOpEQ]) then
+                if Source.IsNext([stDefine]) then
                   px.InitialValue:=ParseLiteral(Source.Token);
                 //TODO: check InitialValue.EvaluatesTo with EvaluatesTo
                 Sphere.AddGlobalVar(p);//sets px.Offset
                end;
-              Source.Skip(stSemiColon);
+              if cb=0 then Source.Skip(stSemiColon);
              end;
             //more?
             else
@@ -1723,7 +1785,7 @@ begin
           end;
          end;
 
-        stOpEQ://type, constant or enum
+        stDefine://type, constant or enum
           if Source.IsNext([stPOpen,stIdentifier]) then
            begin
             p:=Sphere.AddTo(Sphere[ns].FirstItem,ttEnumeration,n,px);
@@ -1846,7 +1908,7 @@ begin
                  end;
                 px.Parent:=ns;
                 px.SrcPos:=Source.SrcPos;
-                ParseRecordDecl(p);
+                rd:=p;//switch to ParseRecord
                end;
               stCaret:
                begin
@@ -2022,7 +2084,7 @@ begin
               TypeDecl_object:=p
             else
               Source.Error('only one master base class allowed');
-            ParseRecordDecl(p);
+            rd:=p;//switch to ParseRecord
            end
           else
             Source.Error('unsupported declaration syntax');
@@ -2048,7 +2110,8 @@ begin
       b:=false;
       ID(n,nn);
       fqn:=nn;
-      ns:=Locals[0];
+      ns:=Locals[1];
+      if ns=0 then ns:=Locals[0];
       while Source.IsNext([stPeriod,stIdentifier]) do
        begin
         LookUpNext(n,nn,p,ns,b);
@@ -2061,13 +2124,13 @@ begin
       case st of
         stPOpen:
           if Source.IsNextID([stPClose,stAOpen]) or
-            Source.IsNextID([stPClose,stOpEQ,stAOpen]) then
+            Source.IsNextID([stPClose,stDefine,stAOpen]) then
            begin //inherit this interface
             q:=LookUp;
             if q=0 then
               Source.Error('undeclared base interface');
             Source.Skip(stPClose);
-            Source.Skip(stOpEQ);//if?
+            Source.Skip(stDefine);//if?
             Source.Skip(stAOpen);
             p:=Sphere.AddTo(Sphere[ns].FirstItem,ttInterface,n,px);
             if p=0 then
@@ -2104,7 +2167,8 @@ begin
         b:=false;
         ID(n,nn);
         fqn:=nn;
-        ns:=Locals[0];
+        ns:=Locals[1];
+        if ns=0 then ns:=Locals[0];
         while Source.IsNext([stPeriod,stIdentifier]) do
          begin
           LookUpNext(n,nn,p,ns,b);
@@ -2191,10 +2255,10 @@ begin
       p:=0;
      end;
 
-    {stHRule:
-      if nsPrivate=0 then
+    stHRule:
+      if Locals[1]=0 then
        begin
-        nsPrivate:=Sphere.Add(ttPrivate,px);//AddTo?
+        Locals[1]:=Sphere.AddTo(Sphere[ns].FirstItem,ttPrivate,0,px);
         px.Parent:=ns;
         px.SourceFile:=src;
         //px.FirstItem:=//see Lookup
@@ -2202,7 +2266,6 @@ begin
        end
       else
         Source.Error('Already in private visibility');
-    }
 
     stSemiColon:;//stray semicolon? ignore
 
@@ -2217,7 +2280,7 @@ procedure TStratoParser.ParseLogic;
 var
   n:TStratoName;
   nn,fqn:UTF8String;
-  ns,p,q,r:TStratoIndex;
+  p,q,r:TStratoIndex;
   st:TStratoToken;
   px,qx,rx:PStratoThing;
   i:cardinal;
@@ -2540,15 +2603,20 @@ begin
          begin
           rx:=Sphere[r];
 
-          //property get code block done? check set code block
-          if (rx.ThingType=ttProperty) and (rx.ValueFrom=p)
-            and Source.IsNext([stAOpen]) then
+          //property getter done? parse setter
+          if rx.ThingType=ttProperty then
            begin
-            //TODO: check code block's EvaluatesTo with property's?
-            cb:=StratoFnCodeBlock(Sphere,r,
-              rx.Parent,rx.EvaluatesTo,rx.Name,Source.SrcPos);
-            rx.AssignTo:=cb;
-            cbInhCalled:=false;
+            //TODO: if not(cbInhCalled)
+            if (rx.ValueFrom=p) and Source.IsNext([stAOpen]) then
+             begin
+              //TODO: check code block's EvaluatesTo with property's?
+              cb:=StratoFnCodeBlock(Sphere,r,
+                rx.Parent,rx.EvaluatesTo,rx.Name,Source.SrcPos);
+              rx.AssignTo:=cb;
+              cbInhCalled:=false;
+             end
+            else
+              Source.Skip(stSemiColon);//closing property declaration
            end;
 
           //constructor block done? check inherited called
@@ -2686,6 +2754,13 @@ begin
         CheckPassed(p);
         CbAdd(p);
        end;
+      p:=0;
+     end;
+
+    stDefine:
+     begin
+      Combine(pAssignment,p);
+      Source.Error('use either ":=" or "==".');
       p:=0;
      end;
 
@@ -2965,23 +3040,34 @@ begin
 
     stInherited://"@@@"
      begin
+      p:=0;
       q:=Sphere[cb].Parent;
       if q<>0 then
-        case Sphere[q].ThingType of
+       begin
+        qx:=Sphere[q];
+        case qx.ThingType of
           ttConstructor,ttDestructor:
-            q:=Sphere[q].Parent;
+            q:=qx.Parent;
           ttOverload:
-            q:=Sphere[Sphere[q].Parent].Parent;
-          //TODO: ttProperty!
+            q:=Sphere[qx.Parent].Parent;
+          ttProperty:
+           begin
+            q:=qx.Parent;
+            //assert Sphere[q].ThingType=ttClass
+            if q<>0 then
+              repeat
+                q:=Sphere[q].InheritsFrom;
+                p:=Sphere.Lookup(Sphere[q].FirstItem,qx.Name);
+              until (p<>0) or (q=0);
+            if (p<>0) and (Sphere[p].ThingType<>ttProperty) then p:=0;
+            q:=0;
+           end;
           else q:=0;
         end;
+       end;
       if (q<>0) and (Sphere[q].ThingType=ttClass) then
        begin
-        if q<>0 then
-         begin
-          qx:=Sphere[q];
-          if qx.ThingType=ttClass then q:=qx.InheritsFrom else q:=0;
-         end;
+        q:=Sphere[q].InheritsFrom;
         if q=0 then
           Source.Error('"@@@" undefined')
         else
@@ -2990,11 +3076,11 @@ begin
           px.Parent:=cb;
           px.SrcPos:=Source.SrcPos;
           px.EvaluatesTo:=q;
+          cbInhCalled:=false;
          end;
        end
       else
-        Source.Error('"@@@" undefined');
-      if p<>0 then cbInhCalled:=true;
+        if p=0 then Source.Error('"@@@" undefined');
      end;
 
     //TODO:

@@ -24,12 +24,16 @@ const
   IndexStep3=999999903;
   IndexStep4=999999904;
   IndexStep5=999999905;
+  IndexStep6=999999906;
+  IndexStep7=999999907;
 {$ELSE}
   IndexStep1={TStratoIndex}cardinal(-$E);
   IndexStep2={TStratoIndex}cardinal(-$D);
   IndexStep3={TStratoIndex}cardinal(-$C);
   IndexStep4={TStratoIndex}cardinal(-$B);
   IndexStep5={TStratoIndex}cardinal(-$A);
+  IndexStep6={TStratoIndex}cardinal(-$9);
+  IndexStep7={TStratoIndex}cardinal(-$8);
 {$ENDIF}
 
 implementation
@@ -50,8 +54,18 @@ begin
       case px.ThingType of
         ttFnCall:
          begin
-          px:=FnSignature(Sphere,px);
-          if px=nil then Result:=0 else Result:=px.EvaluatesTo;
+          if (px.Target<>0) and (Sphere[px.Target].ThingType=ttConstructor)
+            and (px.EvaluatesTo<>0) then
+           begin
+            //constructor called may be of base class when class doesn't
+            //have a constructor of its own that matches
+            Result:=px.EvaluatesTo;
+           end
+          else
+           begin
+            px:=FnSignature(Sphere,px);
+            if px=nil then Result:=0 else Result:=px.EvaluatesTo;
+           end;
          end;
         //TODO: ttAlias?
         //TODO: ttFunction?
@@ -83,7 +97,7 @@ end;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 var
   ptr1,ptr2:integer;
-  tt:cardinal;
+  tt:TStratoThingType;
   x1,x2:PStratoThing;
 begin
   //TODO: auto-cast?
