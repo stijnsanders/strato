@@ -1056,7 +1056,7 @@ begin
           else
            begin
             Pop(p1,p2,q,xp);
-            if not SameType(Sphere,vt,q) then
+            if not SameType(Sphere,q,vt) then
               Sphere.Error(pe,'assignment type mismatch')
             else
               case TStratoToken(px.Op) of

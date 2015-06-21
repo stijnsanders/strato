@@ -11,6 +11,7 @@ function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
+function IsAddressable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 function StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
 
@@ -162,14 +163,63 @@ begin
 end;
 
 function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
+var
+  px:PStratoThing;
+  b:boolean;
 begin
-  Result:=(p<>0) and (Sphere[p].ThingType in
-    [ttVar
-    ,ttVarIndex //TODO: check what is indexed to?
-    ,ttProperty
-    ,ttCast //TODO: check about dirty casts
-    //TODO: more?
-    ]);
+  Result:=false;//default
+  if p<>0 then
+   begin
+    px:=Sphere[p];
+    b:=true;
+    while b do
+     begin
+      b:=false;
+      case px.ThingType of
+        ttVar,
+        ttCast,//TODO: check about dirty casts
+        ttThis:
+          Result:=true;
+        ttVarIndex:
+          if px.Target<>0 then
+           begin
+            px:=Sphere[px.Target];
+            b:=true;
+           end;
+        ttProperty:
+          Result:=px.AssignTo<>0;//has a setter (thus isn't read-only)
+        //TODO: more?
+      end;
+     end;
+   end;
+end;
+
+function IsAddressable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
+var
+  px:PStratoThing;
+  b:boolean;
+begin
+  Result:=false;//default
+  if p<>0 then
+   begin
+    px:=Sphere[p];
+    b:=true;
+    while b do
+     begin
+      b:=false;
+      case px.ThingType of
+        ttVar,
+        ttThis:
+          Result:=true;//TODO: always?
+        ttVarIndex:
+          if px.Target<>0 then
+           begin
+            px:=Sphere[px.Target];
+            b:=true;
+           end;
+      end;
+     end;
+   end;
 end;
 
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);

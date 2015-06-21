@@ -236,7 +236,7 @@ begin
     //assert all named things
     p:=Node[First];
     while (p.Next<>0) and (p.Name<>Name) do p:=Node[p.Next];
-    if p.Next=0 then
+    if (p.Next=0) and (p.Name<>Name) then
      begin
       //add
       Result:=Add(ThingType,Info);
@@ -246,7 +246,7 @@ begin
      end
     else
      begin
-       //duplicate ! assert caller handles zero values
+      //duplicate ! assert caller handles zero values
       Result:=0;
       Info:=nil;
      end;

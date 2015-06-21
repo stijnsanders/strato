@@ -1255,16 +1255,20 @@ begin
          end;
         pAddressOf:
          begin
-          //TODO: check ttVar?
           px.ValueFrom:=q;
-          q:=ResType(Sphere,q);
-          while (q<>0) and (Sphere[q].ThingType=ttArray) do
-            q:=Sphere[q].ElementType;
-          px.EvaluatesTo:=Sphere.Add(ttPointer,qx);
-          qx.Parent:=cb;
-          qx.SrcPos:=Source.SrcPos;
-          qx.ByteSize:=SystemWordSize;
-          qx.EvaluatesTo:=q;
+          if IsAddressable(Sphere,q) then
+           begin
+            q:=ResType(Sphere,q);
+            while (q<>0) and (Sphere[q].ThingType=ttArray) do
+              q:=Sphere[q].ElementType;
+            px.EvaluatesTo:=Sphere.Add(ttPointer,qx);
+            qx.Parent:=cb;
+            qx.SrcPos:=Source.SrcPos;
+            qx.ByteSize:=SystemWordSize;
+            qx.EvaluatesTo:=q;
+           end
+          else
+            Source.Error('invalid address-of subject');
          end;
 
         //ttBinaryOp
@@ -1536,13 +1540,21 @@ begin
                 p:=Sphere.AddTo(Sphere[ns].FirstItem,ttProperty,n,px);
                 if p=0 then
                  begin
-                  Source.Error('duplicate identifier "'+nn+'"');
-                  p:=Sphere.Add(ttProperty,px);
-                  px.Name:=n;
+                  p:=Sphere.Lookup(Sphere[ns].FirstItem,n);
+                  px:=Sphere[p];
+                  if (p=0) or (px.ValueFrom<>0) then
+                   begin
+                    Source.Error('duplicate identifier "'+nn+'"');
+                    p:=Sphere.Add(ttProperty,px);
+                    px.Name:=n;
+                   end;
+                 end
+                else
+                 begin
+                  px.Parent:=ns;
+                  px.SrcPos:=Source.SrcPos;
+                  px.EvaluatesTo:=q;
                  end;
-                px.Parent:=ns;
-                px.SrcPos:=Source.SrcPos;
-                px.EvaluatesTo:=q;
                 if Source.IsNext([stAClose]) then
                  begin
                   //forward only
