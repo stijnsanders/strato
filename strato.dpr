@@ -16,7 +16,8 @@ uses
   stratoRunTime in 'stratoRunTime.pas',
   stratoLogic in 'stratoLogic.pas',
   stratoFn in 'stratoFn.pas',
-  stratoExec in 'stratoExec.pas';
+  stratoExec in 'stratoExec.pas',
+  stratoDebugView in 'stratoDebugView.pas' {frmDebugView};
 
 var
   n:TStratoSphere;
@@ -43,7 +44,7 @@ var
   end;
 
 var
-  DoRun,DoTokenize,DoRunTime,DoInlineErrors:boolean;
+  DoRun,DoDebug,DoTokenize,DoRunTime,DoInlineErrors:boolean;
   DoDump,DoDumpHR:string;
 
 begin
@@ -71,6 +72,7 @@ begin
     try
       //defaults
       DoRun:=true;
+      DoDebug:=false;
       DoTokenize:=false;
       DoRunTime:=true;
       DoInlineErrors:=false;
@@ -103,6 +105,7 @@ begin
                   DoRun:=false;
                  end;
                 'C':DoRun:=false;
+                'D':DoDebug:=true;
                 'U':DoDump:=xNext;
                 'H':DoDumpHR:=xNext;
                 'I':
@@ -152,7 +155,7 @@ begin
           if ec=0 then
            begin
 
-            m:=TStratoMachine.Create;
+            m:=TStratoMachine.Create(DoDebug);
             try
               m.Run(n);
             finally

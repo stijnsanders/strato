@@ -5,7 +5,7 @@ interface
 uses stratoTokenizer, stratoSphere, stratoDecl;
 
 procedure StratoDumpTokens(const t:TStratoSourceTokenList);
-function StratoDumpThing(s:TStratoSphere; i:cardinal; p:PStratoThing):string;
+function StratoDumpThing(s:TStratoSphere;i:TStratoIndex;p:PStratoThing):string;
 function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
   var q:TStratoIndex;var LineIndex:cardinal):boolean;
 procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
@@ -34,8 +34,9 @@ begin
     [t[i].SrcPos,t[i].Index,t[i].Length,TokenName[t[i].Token]]));
 end;
 
-function StratoDumpThing(s:TStratoSphere; i:cardinal; p:PStratoThing):string;
+function StratoDumpThing(s:TStratoSphere;i:TStratoIndex;p:PStratoThing):string;
 begin
+  if p=nil then Result:='' else
   case p.ThingType of
     ttSourceFile:
       Result:=Format('src  ini=%d fin=%d fn=%d fs=%d',

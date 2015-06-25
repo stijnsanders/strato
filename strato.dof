@@ -100,7 +100,7 @@ Conditionals=DEBUG
 DebugSourceDirs=
 UsePackages=0
 [Parameters]
-RunParams=-E test.xs -U test.xsu -H test.xsv
+RunParams=-E test.xs -U test.xsu -H test.xsv -D
 HostApplication=
 Launcher=
 UseLauncher=0

@@ -2,7 +2,7 @@ unit stratoExec;
 
 interface
 
-uses SysUtils, stratoDecl, stratoSphere;
+uses SysUtils, stratoDecl, stratoSphere, stratoDebug, stratoDebugView;
 
 type
   TStratoMachine=class(TObject)
@@ -10,19 +10,20 @@ type
     FMem:array of byte; //TODO: array of cardinal?int64? or other way to force alignment?
     FMemSize,FMemIndex,FMemAllocIndex:cardinal;
     //FGlobals:array of Sphere:TStratoSphere; Address:cardinal; end;?
+    FDebugView:TfrmDebugView;
     procedure AllocateGlobals(Sphere:TStratoSphere);
     procedure Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
     procedure LiteralToMemory(Sphere:TStratoSphere;p,q:TStratoIndex;addr:cardinal);
     procedure PerformSysCall(Sphere:TStratoSphere;Fn:TStratoIndex;Ptr:cardinal);
   public
-    constructor Create;
+    constructor Create(DoDebug:boolean=false);
     destructor Destroy; override;
     procedure Run(Sphere:TStratoSphere);
   end;
 
 implementation
 
-uses Windows, stratoFn, stratoRunTime, stratoTokenizer, stratoLogic;
+uses Windows, stratoFn, stratoRunTime, stratoTokenizer, stratoLogic, ComCtrls;
 
 const
   InitialMemSize=$10000;//?
@@ -54,18 +55,23 @@ type
 
 { TStratoMachine }
 
-constructor TStratoMachine.Create;
+constructor TStratoMachine.Create(DoDebug:boolean);
 begin
   inherited Create;
   FMemSize:=InitialMemSize;
   SetLength(FMem,FMemSize);
   FMemIndex:=BaseMemPtr;
   FMemAllocIndex:=FirstAllocMemPtr;
+  if DoDebug then
+    FDebugView:=TfrmDebugView.Create(nil)
+  else
+    FDebugView:=nil;
 end;
 
 destructor TStratoMachine.Destroy;
 begin
   SetLength(FMem,0);
+  FreeAndNil(FDebugView);
   inherited;
 end;
 
@@ -73,6 +79,7 @@ procedure TStratoMachine.Run(Sphere: TStratoSphere);
 var
   p:TStratoName;
 begin
+  FDebugView.Show;
   AllocateGlobals(Sphere);
   //TODO: halt on unhandled exception?
   p:=Sphere.Header.FirstInitialization;
@@ -116,7 +123,7 @@ procedure TStratoMachine.Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
 var
   //TODO: store stack in FMem
   //TODO: TStratoMachineThread object for these:
-  stackIndex,stackLength:integer;
+  stackIndex,stackLength:cardinal;
   stack:array of record
     p,p1,p2:TStratoIndex;
     bp:cardinal;
@@ -318,7 +325,105 @@ var
     vp:=nvp;
     vt0:=0;
   end;
-  
+
+  procedure RefreshDebugView;
+  var
+    li:TListItem;
+    pp:TStratoIndex;
+    ppx:PStratoThing;
+    pi:cardinal;
+  begin
+    if (FDebugView<>nil) and (FDebugView.CheckBreakPoint(p)) then
+     begin
+      FDebugView.ListView1.Items.BeginUpdate;
+      try
+        FDebugView.ListView1.Items.Clear;
+        i:=0;
+        while i<stackIndex do
+         begin
+          li:=FDebugView.ListView1.Items.Add;
+          li.Caption:=IntToStr(i);
+          li.SubItems.Add(IntToStr(stack[i].p));
+          li.SubItems.Add(IntToStr(stack[i].p1));
+          li.SubItems.Add(IntToStr(stack[i].p2));
+          li.SubItems.Add(IntToStr(stack[i].bp));
+          if stack[i].p=0 then
+            li.SubItems.Add('')
+          else
+            li.SubItems.Add(StratoDumpThing(Sphere,stack[i].p,Sphere[stack[i].p]));
+          inc(i);
+         end;
+      finally
+        FDebugView.ListView1.Items.EndUpdate;
+      end;
+      FDebugView.ListView2.Items.BeginUpdate;
+      try
+        FDebugView.ListView2.Items.Clear;
+        i:=BaseMemPtr;
+        while (i<FMemIndex) or (i<np) do
+         begin
+          Move(FMem[i],j,4);
+          li:=FDebugView.ListView2.Items.Add;
+          li.Caption:=IntToStr(i);
+          li.SubItems.Add(Format('%.8x',[j]));
+          li.SubItems.Add(IntToStr(j));
+          inc(i,4);
+         end;
+        i:=FirstAllocMemPtr;
+        while i<FMemAllocIndex do
+         begin
+          Move(FMem[i],j,4);
+          li:=FDebugView.ListView2.Items.Add;
+          li.Caption:=IntToStr(i);
+          li.SubItems.Add(Format('%.8x',[j]));
+          li.SubItems.Add(IntToStr(j));
+          inc(i,4);
+         end;
+      finally
+        FDebugView.ListView2.Items.EndUpdate;
+      end;
+      FDebugView.Memo1.Lines.BeginUpdate;
+      try
+        FDebugView.Memo1.Lines.Clear;
+        FDebugView.Memo1.Lines.Add(Format('p : %d: %s',
+          [p,StratoDumpThing(Sphere,p,Sphere[p])]));
+        if p1=0 then
+          FDebugView.Memo1.Lines.Add('p1')
+        else if p1>=IndexStep1 then
+          FDebugView.Memo1.Lines.Add('p1: '+IntToStr(p1))
+        else
+          FDebugView.Memo1.Lines.Add(Format('p1: %d: %s',
+            [p1,StratoDumpThing(Sphere,p1,Sphere[p1])]));
+        if p2=0 then
+          FDebugView.Memo1.Lines.Add('p2')
+        else if p2>=IndexStep1 then
+          FDebugView.Memo1.Lines.Add('p2: '+IntToStr(p2))
+        else
+          FDebugView.Memo1.Lines.Add(Format('p2: %d: %s',
+            [p2,StratoDumpThing(Sphere,p2,Sphere[p2])]));
+        if vt<>0 then
+         begin
+          FDebugView.Memo1.Lines.Add(Format('vt: %d: %s',
+            [vt,StratoDumpThing(Sphere,vt,Sphere[vt])]));
+          Move(FMem[vp],j,4);//TODO: ByteSize(Sphere,vt);
+          FDebugView.Memo1.Lines.Add(Format('vp: @=%d x=%.8x v=%d',[vp,j,j]));
+         end;
+      finally
+        FDebugView.Memo1.Lines.EndUpdate;
+      end;
+      try
+        ppx:=Sphere[pe];
+        if (pe<>0) and StratoGetSourceFile(Sphere,pe,pp,pi) then
+          FDebugView.ShowSource(Sphere,pp,ppx.SrcPos div pi,ppx.SrcPos mod pi)
+        else
+          FDebugView.Memo2.Clear;
+      except
+        FDebugView.Memo2.Text:=#13#10#13#10'?????';
+      end;
+      FDebugView.WaitNext;
+     end;
+  end;
+
 begin
   stackIndex:=0;
   stackLength:=0;
@@ -337,6 +442,9 @@ begin
     px:=Sphere[p];
     if px.SrcPos<>0 then pe:=p;//else look up stack?
     //assert q=0 or ((q.ThingType and str__Typed)<>0)
+
+    RefreshDebugView;
+    
     case px.ThingType of
 
       ttAlias:p:=px.Target;
