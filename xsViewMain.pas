@@ -4,7 +4,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, ComCtrls, Menus, stratoSphere, ExtCtrls, StdCtrls;
+  Dialogs, ComCtrls, Menus, stratoSphere, ExtCtrls, StdCtrls, ImgList;
 
 type
   TXsTreeNode=class(TTreeNode)
@@ -33,6 +33,10 @@ type
     btnGoTo: TButton;
     Tools1: TMenuItem;
     GoTo1: TMenuItem;
+    ImageList1: TImageList;
+    lblDictName: TLabel;
+    txtDictLookup: TEdit;
+    Dictionarylookup1: TMenuItem;
     procedure Open1Click(Sender: TObject);
     procedure TreeView1CreateNodeClass(Sender: TCustomTreeView;
       var NodeClass: TTreeNodeClass);
@@ -47,6 +51,8 @@ type
     procedure GoTo1Click(Sender: TObject);
     procedure btnGoToClick(Sender: TObject);
     procedure TreeView1KeyPress(Sender: TObject; var Key: Char);
+    procedure txtDictLookupKeyPress(Sender: TObject; var Key: Char);
+    procedure Dictionarylookup1Click(Sender: TObject);
   private
     FSphere:TStratoSphere;
     procedure LoadFile(const FilePath:string);
@@ -215,6 +221,7 @@ var
   a:array of cardinal;
   i,ai,al:cardinal;
   b:boolean;
+  px:PStratoThing;
 begin
   if x<>0 then
    begin
@@ -229,10 +236,18 @@ begin
         inc(al,$400);//grow;
         SetLength(a,al);
        end;
-       if FSphere[i].ThingType=ttBinaryData then dec(i);
-       a[ai]:=i;
-       inc(ai);
-       i:=FSphere[i].Parent;
+       px:=FSphere[i];
+       if px=nil then i:=0 else
+        begin
+         if px.ThingType=ttBinaryData then
+          begin
+           dec(i);
+           px:=FSphere[i];
+          end;
+         a[ai]:=i;
+         inc(ai);
+         i:=px.Parent;
+        end;
      end;
     n:=TreeView1.Items.GetFirstNode;
     b:=true;
@@ -277,6 +292,47 @@ begin
 end;
 
 { TXsTreeNode }
+
+const
+  iiDefault=0;
+  iiList=1;
+  iiItem=2;
+  iiNameSpace=3;
+  iiTypeDecl=4;
+  iiEnum=5;
+  iiRecord=6;
+  iiClass=7;
+  iiInterface=8;
+  iiArray=9;
+  iiSignature=10;
+  iiProperty=11;
+  iiFunction=12;
+  iiOverload=13;
+  iiVar=14;
+  iiThis=15;
+  iiLiteral=16;
+  iiLitVal=17;
+  iiCall=18;
+  iiBlock=19;
+  iiAssign=20;
+  iiArg=21;
+  iiArgByRef=22;
+  iiImport=23;
+  iiBinOp=24;
+  iiUnOp=25;
+  iiCast=26;
+  iiSelection=27;
+  iiIteration=28;
+  iiThrow=29;
+  iiSysCall=30;
+  iiVarIndex=31;
+  iiInherited=32;
+  iiPointer=33;
+  iiAddressOf=34;
+  iiDereference=35;
+  iiConstant=36;
+  iiConstructor=37;
+  iiDestructor=38;
 
 procedure TXsTreeNode.AfterConstruction;
 begin
@@ -323,6 +379,8 @@ begin
     else
       Result.JumpIndex:=i;
     //TODO: if FSphere[i].Parent=FSphere[(n as TXsTreeNode).Index].Parent ?
+    Result.ImageIndex:=iiItem;
+    Result.SelectedIndex:=iiItem;
    end;
 end;
 
@@ -338,13 +396,15 @@ begin
     Result.HasChildren:=true;
     Result.ExpandIndex:=i;
    end;
+  Result.ImageIndex:=iiList;
+  Result.SelectedIndex:=iiList;
 end;
 
 function TfrmXsViewMain.BuildNode(Node:TTreeNode;i:cardinal):TXsTreeNode;
 var
   p:PStratoThing;
   q:TStratoIndex;
-  j:cardinal;
+  j,k:cardinal;
   n:TXsTreeNode;
   s:string;
 begin
@@ -363,6 +423,7 @@ begin
         ]);
     n:=TreeView1.Items.AddChild(Node,s) as TXsTreeNode;
     n.Index:=i;
+    k:=iiDefault;
     j:=0;//set ExpandIndex?
     case p.ThingType of
       ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration:
@@ -394,7 +455,8 @@ begin
        begin
         JumpNode(n,':sub=',p.Target);
         ListNode(n,':arg->',p.FirstArgument);
-        JumpNode(n,':{} ',p.Body);
+        //if Target is ttConstructor?
+        if p.EvaluatesTo<>0 then JumpNode(n,':res->',p.EvaluatesTo);
        end;
       ttArgument:
        begin
@@ -493,6 +555,49 @@ begin
         JumpNode(n,':AssignTo ',p.AssignTo);
        end;
     end;
+    case p.ThingType of
+      ttNameSpace:k:=iiNameSpace;
+      ttTypeDecl:k:=iiTypeDecl;
+      ttRecord:k:=iiRecord;
+      ttEnumeration:k:=iiEnum;
+      ttAlias,ttGlobal:k:=iiItem;
+      ttImport:k:=iiImport;
+      //ttTry,ttDeferred:
+      ttThrow:k:=iiThrow;
+      ttArray:k:=iiArray;
+      ttFunction:k:=iiFunction;
+      ttVar:k:=iiVar;
+      ttConstant:k:=iiConstant;
+      ttLiteral:k:=iiLiteral;
+      ttBinaryData:k:=iiLitVal;
+      ttSignature:k:=iiSignature;
+      ttOverload:k:=iiOverload;
+      ttConstructor:k:=iiConstructor;
+      ttFnCall:k:=iiCall;
+      ttArgument:k:=iiArg;
+      ttThis:k:=iiThis;
+      ttInherited:k:=iiInherited;
+      ttVarIndex:k:=iiVarIndex;
+      ttCodeBlock:k:=iiBlock;
+      ttAssign:k:=iiAssign;
+      ttUnaryOp:k:=iiUnOp;
+      ttBinaryOp:k:=iiBinOp;
+      ttCast:k:=iiCast;
+      ttClass:k:=iiClass;
+      ttSelection:k:=iiSelection;
+      ttIteration,ttIterationPE:k:=iiIteration;
+      //ttCatch:
+      ttPointer:k:=iiPointer;
+      ttArgByRef:k:=iiArgByRef;
+      //ttVarByRef:
+      ttAddressOf:k:=iiAddressOf;
+      ttDereference:k:=iiDereference;
+      ttDestructor:k:=iiDestructor;
+      ttInterface:k:=iiInterface;
+      ttProperty:k:=iiProperty;
+    end;
+    n.ImageIndex:=k;
+    n.SelectedIndex:=k;
     if j<>0 then
      begin
       n.HasChildren:=true;
@@ -603,6 +708,23 @@ end;
 procedure TfrmXsViewMain.TreeView1KeyPress(Sender: TObject; var Key: Char);
 begin
   if Key=#13 then TreeView1DblClick(Sender);
+end;
+
+procedure TfrmXsViewMain.txtDictLookupKeyPress(Sender: TObject;
+  var Key: Char);
+begin
+  if Key=#13 then //btnDictLookup.Click;
+   begin
+    txtDictLookup.SelectAll;
+    lblDictName.Caption:=FSphere.Dict[StrToInt(txtDictLookup.Text)];
+   end;
+end;
+
+procedure TfrmXsViewMain.Dictionarylookup1Click(Sender: TObject);
+begin
+  panHeader.Visible:=true;
+  txtDictLookup.SelectAll;
+  txtDictLookup.SetFocus;
 end;
 
 end.

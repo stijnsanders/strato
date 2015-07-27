@@ -11,6 +11,7 @@ type
     FMemSize,FMemIndex,FMemAllocIndex:cardinal;
     //FGlobals:array of Sphere:TStratoSphere; Address:cardinal; end;?
     FDebugView:TfrmDebugView;
+    FDebugCount:integer;
     procedure AllocateGlobals(Sphere:TStratoSphere);
     procedure Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
     procedure LiteralToMemory(Sphere:TStratoSphere;p,q:TStratoIndex;addr:cardinal);
@@ -62,6 +63,7 @@ begin
   SetLength(FMem,FMemSize);
   FMemIndex:=BaseMemPtr;
   FMemAllocIndex:=FirstAllocMemPtr;
+  FDebugCount:=0;
   if DoDebug then
     FDebugView:=TfrmDebugView.Create(nil)
   else
@@ -328,13 +330,14 @@ var
 
   procedure RefreshDebugView;
   var
-    li:TListItem;
+    li,li1:TListItem;
     pp:TStratoIndex;
     ppx:PStratoThing;
     pi:cardinal;
   begin
     if (FDebugView<>nil) and (FDebugView.CheckBreakPoint(p)) then
      begin
+      li:=nil;//default;
       FDebugView.ListView1.Items.BeginUpdate;
       try
         FDebugView.ListView1.Items.Clear;
@@ -356,6 +359,9 @@ var
       finally
         FDebugView.ListView1.Items.EndUpdate;
       end;
+      if li<>nil then li.MakeVisible(false);
+      FDebugView.ListView1.Selected:=li;
+      li1:=nil;//default
       FDebugView.ListView2.Items.BeginUpdate;
       try
         FDebugView.ListView2.Items.Clear;
@@ -363,10 +369,10 @@ var
         while (i<FMemIndex) or (i<np) do
          begin
           Move(FMem[i],j,4);
-          li:=FDebugView.ListView2.Items.Add;
-          li.Caption:=IntToStr(i);
-          li.SubItems.Add(Format('%.8x',[j]));
-          li.SubItems.Add(IntToStr(j));
+          li1:=FDebugView.ListView2.Items.Add;
+          li1.Caption:=IntToStr(i);
+          li1.SubItems.Add(Format('%.8x',[j]));
+          li1.SubItems.Add(IntToStr(j));
           inc(i,4);
          end;
         i:=FirstAllocMemPtr;
@@ -382,6 +388,8 @@ var
       finally
         FDebugView.ListView2.Items.EndUpdate;
       end;
+      if li1<>nil then li1.MakeVisible(false);
+      FDebugView.ListView1.Selected:=li1;
       FDebugView.Memo1.Lines.BeginUpdate;
       try
         FDebugView.Memo1.Lines.Clear;
@@ -420,7 +428,8 @@ var
       except
         FDebugView.Memo2.Text:=#13#10#13#10'?????';
       end;
-      FDebugView.WaitNext;
+      if FDebugView.WaitNext then
+        inc(FDebugCount);//Set a breakpoint here
      end;
   end;
 
@@ -458,6 +467,8 @@ begin
           Sphere.Error(pe,'call without function overload')
         else
         if p1=0 then //determine call target
+         begin
+          r:=0;//default
           case qx.ThingType of
             ttOverload:
               r:=qx.Body;
@@ -478,7 +489,7 @@ begin
               //see also StratoFnAddOverload
               i:=0;
               Move(i,FMem[np],SystemWordSize);
-              i:=qx.Parent;//assert ttClass
+              i:=px.EvaluatesTo;//assert ttClass
               Move(i,FMem[np+SystemWordSize],SystemWordSize);
               r:=qx.Body;
              end;
@@ -487,7 +498,8 @@ begin
             //TODO: ttInterface? ttClass?
             else
               Sphere.Error(p,'Unexpected call target');
-          end
+          end;
+         end
         else
         if (p2=0) and (p1=IndexStep1) then
           case qx.ThingType of
@@ -497,11 +509,14 @@ begin
               if vp=0 then
                 i:=vt //this null? assert in constructor
               else
-               begin
-                Move(FMem[vp],vp,SystemWordSize);//dereference first
-                //assert object._baseclass @-SystemWordSize
-                Move(FMem[vp-SystemWordSize],i,SystemWordSize);
-               end;
+                if Sphere[vt].ThingType=ttClass then
+                 begin
+                  Move(FMem[vp],vp,SystemWordSize);//dereference first
+                  //assert object._baseclass @-SystemWordSize
+                  Move(FMem[vp-SystemWordSize],i,SystemWordSize);
+                 end
+                else
+                  i:=vt;//more checks?
               if i=vt then
                 q:=qx.Target
               else
@@ -1164,7 +1179,7 @@ begin
           else
            begin
             Pop(p1,p2,q,xp);
-            if not SameType(Sphere,q,vt) then
+            if not SameType(Sphere,vt,q) then
               Sphere.Error(pe,'assignment type mismatch')
             else
               case TStratoToken(px.Op) of

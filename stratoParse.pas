@@ -1047,8 +1047,6 @@ begin
            end;
         end;
        end;
-      if p=0 then
-        p:=Sphere.Lookup(cx.FirstItem,n);
      end;
     //not found? check under 'this'
     if (p=0) and (cx.FirstItem<>0) and

@@ -401,27 +401,25 @@ begin
   qx:=Target;
   while (qx<>nil) and (qx.ThingType<>ttFunction) do //TODO: in [] like Sphere.FQN?
     qx:=Sphere[qx.Parent];
-  if qx<>nil then
+  if qx=nil then Result:=0 else
    begin
     n:=qx.Name;
     qx:=ImplClass;
-   end
-  else
-    n:=0;//counter warning
-  p:=0;
-  while (p=0) and (qx<>nil) do
-   begin
-    p:=Sphere.Lookup(qx.FirstItem,n);
-    if (p<>0) and (Sphere[p].ThingType=ttFunction) then
-      p:=Sphere[p].FirstItem
-    else
-      p:=0;//error?
-    while (p<>0) and not(StratoFnArgListsMatch(Sphere,
-      Target.FirstArgument,Sphere[p].FirstArgument)) do
-      p:=Sphere[p].Next;
-    if p=0 then qx:=Sphere[qx.InheritsFrom];
+    p:=0;
+    while (p=0) and (qx<>nil) do
+     begin
+      p:=Sphere.Lookup(qx.FirstItem,n);
+      if (p<>0) and (Sphere[p].ThingType=ttFunction) then
+        p:=Sphere[p].FirstItem
+      else
+        p:=0;//error?
+      while (p<>0) and not(StratoFnArgListsMatch(Sphere,
+        Target.FirstArgument,Sphere[p].FirstArgument)) do
+        p:=Sphere[p].Next;
+      if p=0 then qx:=Sphere[qx.InheritsFrom];
+     end;
+    Result:=p;
    end;
-  Result:=p;
 end;
 
 function StratoFnCodeBlock(Sphere:TStratoSphere;

@@ -4,7 +4,7 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, StdCtrls, ComCtrls, ExtCtrls, stratoDecl, stratoSphere;
+  Dialogs, StdCtrls, ComCtrls, ExtCtrls, stratoDecl, stratoSphere, ActnList;
 
 type
   TfrmDebugView = class(TForm)
@@ -20,12 +20,16 @@ type
     Memo2: TMemo;
     lblFileName: TLabel;
     btnBreak: TButton;
+    ActionList1: TActionList;
+    actNext: TAction;
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure btnNextClick(Sender: TObject);
     procedure btnRunToClick(Sender: TObject);
     procedure btnBreakClick(Sender: TObject);
+    procedure txtBreakPointsEnter(Sender: TObject);
+    procedure txtBreakPointsExit(Sender: TObject);
   private
-    FDoNext:boolean;
+    FDoNext:integer;
     FBreakAt:array of TStratoIndex;
     FSrcFile:TStratoIndex;
     FSrcPath:string;
@@ -34,7 +38,7 @@ type
     procedure DoCreate; override;
     procedure DoDestroy; override;
   public
-    procedure WaitNext;
+    function WaitNext:boolean;
     function CheckBreakPoint(p:TStratoIndex):boolean;
     procedure ShowSource(s:TStratoSphere;p:TStratoIndex;Line,Col:cardinal);
   end;
@@ -49,30 +53,26 @@ begin
   Action:=caMinimize;
 end;
 
-procedure TfrmDebugView.WaitNext;
+function TfrmDebugView.WaitNext:boolean;
 begin
+  Result:=false;//default
   if Visible then
    begin
     SetLength(FBreakAt,0);//store?
-    FDoNext:=false;
-    while not FDoNext do Application.HandleMessage;
+    FDoNext:=0;
+    while FDoNext=0 do Application.HandleMessage;
+    Result:=FDoNext<>1;
    end;
-end;
-
-procedure TfrmDebugView.btnBreakClick(Sender: TObject);
-begin
-  {
-  try
-    raise Exception.Create('!!!');
-  except
-  end;
-  }
-  FDoNext:=true;//set a breakpoint here!
 end;
 
 procedure TfrmDebugView.btnNextClick(Sender: TObject);
 begin
-  FDoNext:=true;
+  FDoNext:=1;
+end;
+
+procedure TfrmDebugView.btnBreakClick(Sender: TObject);
+begin
+  FDoNext:=2;//see WaitNext call
 end;
 
 procedure TfrmDebugView.btnRunToClick(Sender: TObject);
@@ -107,7 +107,7 @@ begin
   if j=0 then
     raise Exception.Create('No breakpoints defined')
   else
-    FDoNext:=true;
+    FDoNext:=1;
 end;
 
 function TfrmDebugView.CheckBreakPoint(p: TStratoIndex): boolean;
@@ -120,7 +120,7 @@ begin
   else
    begin
     i:=0;
-    while (i<=l) and (FBreakAt[i]<>p) do inc(i);
+    while (i<l) and (FBreakAt[i]<>p) do inc(i);
     Result:=i<>l;
    end;
 end;
@@ -192,6 +192,16 @@ procedure TfrmDebugView.DoDestroy;
 begin
   inherited;
   FSrcData.Free;
+end;
+
+procedure TfrmDebugView.txtBreakPointsEnter(Sender: TObject);
+begin
+  btnRunTo.Default:=true;
+end;
+
+procedure TfrmDebugView.txtBreakPointsExit(Sender: TObject);
+begin
+  btnRunTo.Default:=false;
 end;
 
 end.

@@ -420,7 +420,7 @@ begin
   //assert Node[p].ThingType=ttVar
   Node[p].Offset:=Header.GlobalByteSize;
   if Node[p].EvaluatesTo<>0 then
-    inc(Header.GlobalByteSize,Node[Node[p].EvaluatesTo].ByteSize);
+    inc(Header.GlobalByteSize,ByteSize(Self,Node[p].EvaluatesTo));
   q:=Add(ttGlobal,qx);
   qx.Target:=p;
   Append(Header.FirstGlobalVar,q);
@@ -444,6 +444,7 @@ begin
     if hh.Version<>StratoSphereFileVersion then
       raise Exception.Create('File is of an unsupported version');
 
+    FBlock[0].First:=0;//?
     FBlock[0].Index:=hh.ThingCount;//assert <FBlock[0].Size
     //SetLength(FBlock[0].Data,
     FBlockCount:=0;
@@ -460,10 +461,10 @@ begin
          end;
         FBlock[FBlockCount].First:=h.FirstIndex;
         FBlock[FBlockCount].Index:=h.ThingCount;
-        FBlock[FBlockCount].Size:=(h.ThingCount+(StratoSphereDataBlockSize-1))
-          and not(StratoSphereDataBlockSize-1);
-        SetLength(FBlock[FBlockCount].Data,FBlock[FBlockCount].Size);
        end;
+      FBlock[FBlockCount].Size:=(h.ThingCount+(StratoSphereDataBlockSize-1))
+        and not(StratoSphereDataBlockSize-1);
+      SetLength(FBlock[FBlockCount].Data,FBlock[FBlockCount].Size);
       f.Read(FBlock[FBlockCount].Data[0],h.ThingCount*SizeOf(TStratoThing));
       inc(FBlockCount);
       f.Read(h,SizeOf(TStratoThing));//assert =SizeOf(TStratoBlockHeader)

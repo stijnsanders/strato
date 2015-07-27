@@ -11,6 +11,7 @@ object frmDebugView: TfrmDebugView
   Font.Name = 'Lucida Console'
   Font.Style = []
   OldCreateOrder = False
+  Position = poDefaultPosOnly
   OnClose = FormClose
   DesignSize = (
     625
@@ -35,11 +36,11 @@ object frmDebugView: TfrmDebugView
   end
   object btnNext: TButton
     Left = 8
-    Top = 495
+    Top = 496
     Width = 81
     Height = 25
+    Action = actNext
     Anchors = [akLeft, akBottom]
-    Caption = 'Next'
     TabOrder = 2
     OnClick = btnNextClick
   end
@@ -180,6 +181,8 @@ object frmDebugView: TfrmDebugView
     Height = 21
     Anchors = [akLeft, akRight, akBottom]
     TabOrder = 4
+    OnEnter = txtBreakPointsEnter
+    OnExit = txtBreakPointsExit
   end
   object Memo2: TMemo
     Left = 8
@@ -202,5 +205,14 @@ object frmDebugView: TfrmDebugView
     Caption = '!'
     TabOrder = 6
     OnClick = btnBreakClick
+  end
+  object ActionList1: TActionList
+    OnChange = btnNextClick
+    Left = 16
+    Top = 32
+    object actNext: TAction
+      Caption = '&Next'
+      ShortCut = 119
+    end
   end
 end
