@@ -22,6 +22,7 @@ type
     btnBreak: TButton;
     ActionList1: TActionList;
     actNext: TAction;
+    actRunTo: TAction;
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure btnNextClick(Sender: TObject);
     procedure btnRunToClick(Sender: TObject);
@@ -60,7 +61,7 @@ begin
    begin
     SetLength(FBreakAt,0);//store?
     FDoNext:=0;
-    while FDoNext=0 do Application.HandleMessage;
+    while FDoNext=0 do Application.ProcessMessages;
     Result:=FDoNext<>1;
    end;
 end;
@@ -83,31 +84,35 @@ var
 const
   MaxBreakPoints=$100;
 begin
-  //
   s:=txtBreakPoints.Text;
   l:=Length(s);
-  i:=1;
-  j:=0;
-  SetLength(FBreakAt,MaxBreakPoints);
-  while (i<=l) do
-   begin
-    k:=0;
-    while (i<=l) and (s[i] in ['0'..'9']) do
-     begin
-      k:=k*10+(byte(s[i]) and $F);
-      inc(i);
-     end;
-    if j=MaxBreakPoints then
-      raise Exception.Create('Maximum breakpoints exceeded');
-    FBreakAt[j]:=k;
-    inc(j);
-    while (i<=l) and not(s[i] in ['0'..'9']) do inc(i);
-   end;
-  SetLength(FBreakAt,j);
-  if j=0 then
-    raise Exception.Create('No breakpoints defined')
+  if l=0 then
+    txtBreakPoints.SetFocus
   else
-    FDoNext:=1;
+   begin
+    i:=1;
+    j:=0;
+    SetLength(FBreakAt,MaxBreakPoints);
+    while (i<=l) do
+     begin
+      k:=0;
+      while (i<=l) and (s[i] in ['0'..'9']) do
+       begin
+        k:=k*10+(byte(s[i]) and $F);
+        inc(i);
+       end;
+      if j=MaxBreakPoints then
+        raise Exception.Create('Maximum breakpoints exceeded');
+      FBreakAt[j]:=k;
+      inc(j);
+      while (i<=l) and not(s[i] in ['0'..'9']) do inc(i);
+     end;
+    SetLength(FBreakAt,j);
+    if j=0 then
+      raise Exception.Create('No breakpoints defined')
+    else
+      FDoNext:=1;
+   end;
 end;
 
 function TfrmDebugView.CheckBreakPoint(p: TStratoIndex): boolean;
@@ -139,7 +144,6 @@ var
   i,j,k:integer;
   ss:string;
 begin
-  ///xxxxxxx
   try
     if (p=0) or (Line=0) then
      begin

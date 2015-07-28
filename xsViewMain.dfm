@@ -13,27 +13,40 @@ object frmXsViewMain: TfrmXsViewMain
   Menu = MainMenu1
   OldCreateOrder = False
   Position = poDefault
+  OnResize = FormResize
   PixelsPerInch = 96
   TextHeight = 14
   object Splitter1: TSplitter
     Left = 0
-    Top = 213
+    Top = 212
     Width = 541
-    Height = 3
+    Height = 4
     Cursor = crVSplit
     Align = alBottom
+    ResizeStyle = rsUpdate
+  end
+  object Splitter2: TSplitter
+    Left = 284
+    Top = 41
+    Width = 4
+    Height = 171
+    Cursor = crHSplit
+    Align = alRight
+    ResizeStyle = rsUpdate
+    OnMoved = Splitter2Moved
   end
   object TreeView1: TTreeView
     Left = 0
     Top = 41
-    Width = 541
-    Height = 172
+    Width = 284
+    Height = 171
     Align = alClient
     HideSelection = False
     Images = ImageList1
     Indent = 19
     ReadOnly = True
     TabOrder = 0
+    OnChange = TreeView1Change
     OnCreateNodeClass = TreeView1CreateNodeClass
     OnDblClick = TreeView1DblClick
     OnExpanding = TreeView1Expanding
@@ -96,6 +109,18 @@ object frmXsViewMain: TfrmXsViewMain
       OnKeyPress = txtDictLookupKeyPress
     end
   end
+  object txtSourceView: TMemo
+    Left = 288
+    Top = 41
+    Width = 253
+    Height = 171
+    Align = alRight
+    HideSelection = False
+    ReadOnly = True
+    ScrollBars = ssBoth
+    TabOrder = 3
+    WordWrap = False
+  end
   object MainMenu1: TMainMenu
     Left = 8
     Top = 32
@@ -119,6 +144,12 @@ object frmXsViewMain: TfrmXsViewMain
       object Clearclicktrack1: TMenuItem
         Caption = '&Clear click track'
         OnClick = Clearclicktrack1Click
+      end
+      object Source1: TMenuItem
+        Caption = '&Source'
+        Checked = True
+        ShortCut = 119
+        OnClick = Source1Click
       end
     end
     object Tools1: TMenuItem

@@ -4,7 +4,8 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, ComCtrls, Menus, stratoSphere, ExtCtrls, StdCtrls, ImgList;
+  Dialogs, ComCtrls, Menus, stratoSphere, ExtCtrls, StdCtrls, ImgList,
+  stratoDecl;
 
 type
   TXsTreeNode=class(TTreeNode)
@@ -37,6 +38,9 @@ type
     lblDictName: TLabel;
     txtDictLookup: TEdit;
     Dictionarylookup1: TMenuItem;
+    Splitter2: TSplitter;
+    txtSourceView: TMemo;
+    Source1: TMenuItem;
     procedure Open1Click(Sender: TObject);
     procedure TreeView1CreateNodeClass(Sender: TCustomTreeView;
       var NodeClass: TTreeNodeClass);
@@ -53,8 +57,15 @@ type
     procedure TreeView1KeyPress(Sender: TObject; var Key: Char);
     procedure txtDictLookupKeyPress(Sender: TObject; var Key: Char);
     procedure Dictionarylookup1Click(Sender: TObject);
+    procedure Source1Click(Sender: TObject);
+    procedure TreeView1Change(Sender: TObject; Node: TTreeNode);
+    procedure FormResize(Sender: TObject);
+    procedure Splitter2Moved(Sender: TObject);
   private
     FSphere:TStratoSphere;
+    FSrcFile:TStratoIndex;
+    FSrcPath:string;
+    w1,w2:integer;
     procedure LoadFile(const FilePath:string);
     function JumpNode(n: TTreeNode; const prefix: string;
       i: cardinal): TXsTreeNode;
@@ -74,7 +85,7 @@ var
 implementation
 
 uses
-  stratoDecl, stratoDebug;
+  stratoDebug;
 
 {$R *.dfm}
 
@@ -85,6 +96,8 @@ begin
   inherited;
   FSphere:=nil;
   Application.OnActivate:=AppActivate;
+  FSrcPath:='';
+  FSrcFile:=0;
 end;
 
 procedure TfrmXsViewMain.DoDestroy;
@@ -284,6 +297,8 @@ procedure TfrmXsViewMain.DoShow;
 begin
   inherited;
   if ParamCount<>0 then LoadFile(ParamStr(1));
+  w1:=ClientWidth;
+  w2:=txtSourceView.Width;
 end;
 
 procedure TfrmXsViewMain.AppActivate(Sender: TObject);
@@ -725,6 +740,103 @@ begin
   panHeader.Visible:=true;
   txtDictLookup.SelectAll;
   txtDictLookup.SetFocus;
+end;
+
+procedure TfrmXsViewMain.Source1Click(Sender: TObject);
+var
+  b:boolean;
+begin
+  b:=not(Source1.Checked);
+  Source1.Checked:=b;
+  txtSourceView.Visible:=b;
+  Splitter2.Visible:=b;
+  if b then TreeView1Change(TreeView1,TreeView1.Selected);
+end;
+
+procedure TfrmXsViewMain.TreeView1Change(Sender: TObject; Node: TTreeNode);
+var
+  p,q:TStratoIndex;
+  qx:PStratoThing;
+  pi,Line,Col:cardinal;
+  si:TScrollInfo;
+begin
+  if txtSourceView.Visible then
+    if (Node=nil) or not(Node is TXsTreeNode) then
+     begin
+      txtSourceView.Clear;
+      FSrcFile:=0;
+     end
+    else
+     begin
+      Line:=0;
+      Col:=0;
+      q:=(Node as TXsTreeNode).Index;
+      try
+        if (q<>0) then
+         begin
+          qx:=FSphere[q];
+          if StratoGetSourceFile(FSphere,q,p,pi) then
+           begin
+            Line:=qx.SrcPos div pi;
+            Col:=qx.SrcPos mod pi;
+           end
+          else
+            p:=0;
+         end;
+        if (p=0) or (Line=0) then
+         begin
+          //txtSourceView.Text:=Format('???[%d] %d:%d',[q,Line,Col])
+          txtSourceView.SelLength:=0;
+         end
+        else
+         begin
+          if p<>FSrcFile then
+           begin
+            FSrcFile:=0;//in case of error
+            //TODO: resolve relative path
+            //TODO: cache several?
+            FSrcPath:=FSphere.GetBinaryData(PStratoSourceFile(FSphere[p]).FileName);
+            txtSourceView.Lines.LoadFromFile(FSrcPath);
+            FSrcFile:=p;
+           end;
+          //lblFileName.Caption:=Format('%s %d:%d',[FSrcPath,Line,Col]);
+
+          if Line>7 then
+           begin
+            si.cbSize:=SizeOf(TScrollInfo);
+            si.fMask:=SIF_POS;
+            si.nTrackPos:=SB_VERT;
+            if GetScrollInfo(txtSourceView.Handle,SB_VERT,si) then
+               txtSourceView.Perform(EM_LINESCROLL,0,(integer(Line)-7)-si.nPos);
+           end
+          else;
+          pi:=txtSourceView.Perform(EM_LINEINDEX,Line-1,0)+integer(Col)-1;
+          txtSourceView.Perform(EM_SETSEL,pi,pi+1);
+          //txtSourceView.Perform(EM_SCROLLCARET,0,0);
+         end;
+      except
+        //on e:Exception do?
+         begin
+          txtSourceView.Text:=Format('!!![%d] "%s"%d:%d',[q,FSrcPath,Line,Col]);
+          FSrcFile:=0;
+         end;
+      end;
+     end;
+end;
+
+procedure TfrmXsViewMain.FormResize(Sender: TObject);
+var
+  i:integer;
+begin
+  i:=ClientWidth*w2 div w1;
+  if i<Splitter2.MinSize then i:=Splitter2.MinSize;
+  txtSourceView.Width:=i;
+end;
+
+procedure TfrmXsViewMain.Splitter2Moved(Sender: TObject);
+begin
+  w1:=ClientWidth;
+  w2:=txtSourceView.Width;
 end;
 
 end.

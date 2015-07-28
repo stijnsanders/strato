@@ -2,7 +2,8 @@ unit stratoExec;
 
 interface
 
-uses SysUtils, stratoDecl, stratoSphere, stratoDebug, stratoDebugView;
+uses SysUtils, stratoDecl, stratoSphere, stratoDebug,
+  stratoDebugView, stratoDebugTrail;
 
 type
   TStratoMachine=class(TObject)
@@ -11,13 +12,14 @@ type
     FMemSize,FMemIndex,FMemAllocIndex:cardinal;
     //FGlobals:array of Sphere:TStratoSphere; Address:cardinal; end;?
     FDebugView:TfrmDebugView;
+    FDebugTrail:TfrmDebugTrail;
     FDebugCount:integer;
     procedure AllocateGlobals(Sphere:TStratoSphere);
     procedure Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
     procedure LiteralToMemory(Sphere:TStratoSphere;p,q:TStratoIndex;addr:cardinal);
     procedure PerformSysCall(Sphere:TStratoSphere;Fn:TStratoIndex;Ptr:cardinal);
   public
-    constructor Create(DoDebug:boolean=false);
+    constructor Create(DoDebug:cardinal=0);
     destructor Destroy; override;
     procedure Run(Sphere:TStratoSphere);
   end;
@@ -54,9 +56,14 @@ type
 }
 {$ENDIF}
 
+function IntToStr0(x:cardinal):string;
+begin
+  if x=0 then Result:='' else Result:=Format('%d',[x]);//IntToStr(x);
+end;
+
 { TStratoMachine }
 
-constructor TStratoMachine.Create(DoDebug:boolean);
+constructor TStratoMachine.Create(DoDebug:cardinal);
 begin
   inherited Create;
   FMemSize:=InitialMemSize;
@@ -64,16 +71,18 @@ begin
   FMemIndex:=BaseMemPtr;
   FMemAllocIndex:=FirstAllocMemPtr;
   FDebugCount:=0;
-  if DoDebug then
-    FDebugView:=TfrmDebugView.Create(nil)
-  else
-    FDebugView:=nil;
+  //TODO: restore previous position
+  if (DoDebug and 1)=0 then FDebugView:=nil else
+    FDebugView:=TfrmDebugView.Create(nil);
+  if (DoDebug and 2)=0 then FDebugTrail:=nil else
+    FDebugTrail:=TfrmDebugTrail.Create(nil);
 end;
 
 destructor TStratoMachine.Destroy;
 begin
   SetLength(FMem,0);
   FreeAndNil(FDebugView);
+  FreeAndNil(FDebugTrail);
   inherited;
 end;
 
@@ -81,7 +90,8 @@ procedure TStratoMachine.Run(Sphere: TStratoSphere);
 var
   p:TStratoName;
 begin
-  FDebugView.Show;
+  if FDebugTrail<>nil then FDebugTrail.Show;
+  if FDebugView<>nil then FDebugView.Show;
   AllocateGlobals(Sphere);
   //TODO: halt on unhandled exception?
   p:=Sphere.Header.FirstInitialization;
@@ -328,13 +338,30 @@ var
     vt0:=0;
   end;
 
-  procedure RefreshDebugView;
+  function RefreshDebugView: boolean;
   var
     li,li1:TListItem;
     pp:TStratoIndex;
     ppx:PStratoThing;
     pi:cardinal;
   begin
+    if FDebugTrail<>nil then
+     begin
+      li:=FDebugTrail.ListView1.Items.Add;
+      li.Caption:=IntToStr(FDebugTrail.ListView1.Items.Count);
+      li.SubItems.Add(IntToStr(p));
+      li.SubItems.Add(IntToStr0(p1));
+      li.SubItems.Add(IntToStr0(p2));
+      li.SubItems.Add(IntToStr(mp));
+      li.SubItems.Add(StratoDumpThing(Sphere,p,Sphere[p]));
+      li.SubItems.Add(IntToStr0(vt));
+      li.SubItems.Add(IntToStr0(vp));
+      //timestamp?
+      FDebugTrail.ListView1.ItemFocused:=li;
+      li.MakeVisible(false);
+     end;
+
+    Result:=false;
     if (FDebugView<>nil) and (FDebugView.CheckBreakPoint(p)) then
      begin
       li:=nil;//default;
@@ -429,7 +456,10 @@ var
         FDebugView.Memo2.Text:=#13#10#13#10'?????';
       end;
       if FDebugView.WaitNext then
-        inc(FDebugCount);//Set a breakpoint here
+       begin
+        inc(FDebugCount);
+        Result:=true;
+       end;
      end;
   end;
 
@@ -452,7 +482,8 @@ begin
     if px.SrcPos<>0 then pe:=p;//else look up stack?
     //assert q=0 or ((q.ThingType and str__Typed)<>0)
 
-    RefreshDebugView;
+    if RefreshDebugView then
+      asm int 3 end;//DebugBreak;//forced breakpoint
     
     case px.ThingType of
 
@@ -906,7 +937,7 @@ begin
                 //assert Sphere[i].ThingType=ttClass
                 if TStratoToken(px.Op)=stOpSizeOf then
                  begin
-                  if (i<>0) and (TStratoToken(px.Op)=stOpSizeOf) then i:=Sphere[i].ByteSize;
+                  if i=0 then Sphere.Error(pe,'SizeOf object to construct on empty reference');
                   vtp(TypeDecl_number,np);
                  end
                 else //stQuestionMark://stOpTypeOf:

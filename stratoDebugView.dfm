@@ -42,7 +42,6 @@ object frmDebugView: TfrmDebugView
     Action = actNext
     Anchors = [akLeft, akBottom]
     TabOrder = 2
-    OnClick = btnNextClick
   end
   object Panel1: TPanel
     Left = 8
@@ -213,6 +212,12 @@ object frmDebugView: TfrmDebugView
     object actNext: TAction
       Caption = '&Next'
       ShortCut = 119
+      OnExecute = btnNextClick
+    end
+    object actRunTo: TAction
+      Caption = 'Run to:'
+      ShortCut = 16466
+      OnExecute = btnRunToClick
     end
   end
 end
