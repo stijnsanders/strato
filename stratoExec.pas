@@ -106,6 +106,8 @@ begin
     Perform(Sphere,p);
     p:=Sphere[p].Next;
    end;
+
+  if FDebugView<>nil then FDebugView.Done;
 end;
 
 procedure TStratoMachine.AllocateGlobals(Sphere: TStratoSphere);

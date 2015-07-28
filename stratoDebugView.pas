@@ -42,6 +42,7 @@ type
     function WaitNext:boolean;
     function CheckBreakPoint(p:TStratoIndex):boolean;
     procedure ShowSource(s:TStratoSphere;p:TStratoIndex;Line,Col:cardinal);
+    procedure Done;
   end;
 
 implementation
@@ -206,6 +207,18 @@ end;
 procedure TfrmDebugView.txtBreakPointsExit(Sender: TObject);
 begin
   btnRunTo.Default:=false;
+end;
+
+procedure TfrmDebugView.Done;
+begin
+  if Visible then
+   begin
+    btnNext.Enabled:=false;
+    btnRunTo.Enabled:=false;
+    btnBreak.Enabled:=false;
+    while WindowState=wsNormal do //while not closed
+      Application.ProcessMessages;
+   end;
 end;
 
 end.
