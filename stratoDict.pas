@@ -3,6 +3,7 @@ unit stratoDict;
 interface
 
 {$D-}
+{$L-}
 
 type
   TStringDictionaryNodeData=record

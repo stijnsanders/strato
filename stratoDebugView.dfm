@@ -168,10 +168,9 @@ object frmDebugView: TfrmDebugView
     Top = 496
     Width = 81
     Height = 25
+    Action = actRunTo
     Anchors = [akLeft, akBottom]
-    Caption = 'Run to:'
     TabOrder = 3
-    OnClick = btnRunToClick
   end
   object txtBreakPoints: TEdit
     Left = 184
@@ -216,8 +215,13 @@ object frmDebugView: TfrmDebugView
     end
     object actRunTo: TAction
       Caption = 'Run to:'
-      ShortCut = 16466
+      ShortCut = 120
       OnExecute = btnRunToClick
+    end
+    object actRunToFocus: TAction
+      Caption = 'Run to:'
+      ShortCut = 16466
+      OnExecute = actRunToFocusExecute
     end
   end
 end

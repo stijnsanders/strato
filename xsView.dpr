@@ -4,6 +4,7 @@ uses
   Forms,
   xsViewMain in 'xsViewMain.pas' {frmXsViewMain},
   stratoDecl in 'stratoDecl.pas',
+  stratoDict in 'stratoDict.pas',
   stratoSphere in 'stratoSphere.pas',
   stratoDebug in 'stratoDebug.pas';
 

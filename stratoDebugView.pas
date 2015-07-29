@@ -23,12 +23,14 @@ type
     ActionList1: TActionList;
     actNext: TAction;
     actRunTo: TAction;
+    actRunToFocus: TAction;
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure btnNextClick(Sender: TObject);
     procedure btnRunToClick(Sender: TObject);
     procedure btnBreakClick(Sender: TObject);
     procedure txtBreakPointsEnter(Sender: TObject);
     procedure txtBreakPointsExit(Sender: TObject);
+    procedure actRunToFocusExecute(Sender: TObject);
   private
     FDoNext:integer;
     FBreakAt:array of TStratoIndex;
@@ -219,6 +221,11 @@ begin
     while WindowState=wsNormal do //while not closed
       Application.ProcessMessages;
    end;
+end;
+
+procedure TfrmDebugView.actRunToFocusExecute(Sender: TObject);
+begin
+  txtBreakPoints.SetFocus;
 end;
 
 end.

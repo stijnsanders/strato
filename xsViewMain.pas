@@ -727,11 +727,16 @@ end;
 
 procedure TfrmXsViewMain.txtDictLookupKeyPress(Sender: TObject;
   var Key: Char);
+var
+  i:integer;
 begin
   if Key=#13 then //btnDictLookup.Click;
    begin
     txtDictLookup.SelectAll;
-    lblDictName.Caption:=FSphere.Dict[StrToInt(txtDictLookup.Text)];
+    if TryStrToInt(txtDictLookup.Text,i) then
+      lblDictName.Caption:=FSphere.Dict[i]
+    else
+      lblDictName.Caption:=Format('%d/%d',[FSphere.Dict.StrIdx(txtDictLookup.Text),FSphere.Dict.StrCount]);
    end;
 end;
 
