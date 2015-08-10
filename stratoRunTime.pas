@@ -152,16 +152,16 @@ begin
   TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
   TypeDecl_variant:=A('variant',16);//TODO: OLE compatible variants
   TypeDecl_object:=0;//see StratoParseSource: allow only one object()={}
-  A('int8',1);
-  A('int16',2);
-  A('int32',4);
-  A('int64',8);
-  A('uint8',1);
-  A('uint16',2);
-  A('uint32',4);
-  A('uint64',8);
-  A('float',4);//TODO: floating-point support
-  A('double',8);
+  A('i8',1);
+  A('i16',2);
+  A('i32',4);
+  A('i64',8);
+  A('u8',1);
+  A('u16',2);
+  A('u32',4);
+  A('u64',8);
+  A('f32',4);//TODO: floating-point support
+  A('f64',8);
   TypeDecl_hash:=A('hash',SystemWordSize);//TODO:
   TypeDecl_pointer:=A('pointer',SystemWordSize);
 

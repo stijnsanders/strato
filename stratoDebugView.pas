@@ -8,22 +8,28 @@ uses
 
 type
   TfrmDebugView = class(TForm)
-    btnNext: TButton;
-    lblUpNext: TLabel;
-    Panel1: TPanel;
-    ListView2: TListView;
-    Splitter1: TSplitter;
-    ListView1: TListView;
-    Memo1: TMemo;
-    btnRunTo: TButton;
-    txtBreakPoints: TEdit;
-    Memo2: TMemo;
-    lblFileName: TLabel;
-    btnBreak: TButton;
     ActionList1: TActionList;
     actNext: TAction;
     actRunTo: TAction;
     actRunToFocus: TAction;
+    PageControl1: TPageControl;
+    txContext: TTabSheet;
+    tsTrail: TTabSheet;
+    lblUpNext: TLabel;
+    lblFileName: TLabel;
+    btnNext: TButton;
+    Panel1: TPanel;
+    Splitter1: TSplitter;
+    lvMem: TListView;
+    lvStack: TListView;
+    txtUpNext: TMemo;
+    btnRunTo: TButton;
+    txtBreakPoints: TEdit;
+    txtSourceView: TMemo;
+    btnBreak: TButton;
+    lvTrail: TListView;
+    cbKeepTrail: TCheckBox;
+    actCopy: TAction;
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure btnNextClick(Sender: TObject);
     procedure btnRunToClick(Sender: TObject);
@@ -31,12 +37,14 @@ type
     procedure txtBreakPointsEnter(Sender: TObject);
     procedure txtBreakPointsExit(Sender: TObject);
     procedure actRunToFocusExecute(Sender: TObject);
+    procedure actCopyExecute(Sender: TObject);
   private
     FDoNext:integer;
     FBreakAt:array of TStratoIndex;
     FSrcFile:TStratoIndex;
     FSrcPath:string;
     FSrcData:TStringList;
+    FTrailSuspended:boolean;
   protected
     procedure DoCreate; override;
     procedure DoDestroy; override;
@@ -48,6 +56,8 @@ type
   end;
 
 implementation
+
+uses Clipbrd;
 
 {$R *.dfm}
 
@@ -64,6 +74,11 @@ begin
    begin
     SetLength(FBreakAt,0);//store?
     FDoNext:=0;
+    if FTrailSuspended then
+     begin
+      FTrailSuspended:=false;
+      lvTrail.Items.EndUpdate;
+     end;
     while FDoNext=0 do Application.ProcessMessages;
     Result:=FDoNext<>1;
    end;
@@ -114,7 +129,11 @@ begin
     if j=0 then
       raise Exception.Create('No breakpoints defined')
     else
+     begin
+      FTrailSuspended:=true;
+      lvTrail.Items.BeginUpdate;
       FDoNext:=1;
+     end;
    end;
 end;
 
@@ -139,6 +158,7 @@ begin
   FSrcData:=TStringList.Create;
   FSrcPath:='';
   FSrcFile:=0;
+  FTrailSuspended:=false;
 end;
 
 procedure TfrmDebugView.ShowSource(s: TStratoSphere; p: TStratoIndex; Line,
@@ -151,7 +171,7 @@ begin
     if (p=0) or (Line=0) then
      begin
       lblFileName.Caption:=Format('[%d] %d:%d',[p,Line,Col]);
-      Memo2.Text:=#13#10#13#10'?????';
+      txtSourceView.Text:=#13#10#13#10'?????';
      end
     else
      begin
@@ -161,11 +181,12 @@ begin
         //TODO: resolve relative path
         //TODO: cache several?
         FSrcPath:=s.GetBinaryData(PStratoSourceFile(s[p]).FileName);
+        //TODO: check signature/timestamp
         FSrcData.LoadFromFile(FSrcPath);
         FSrcFile:=p;
        end;
       lblFileName.Caption:=Format('%s %d:%d',[FSrcPath,Line,Col]);
-      while Memo2.Lines.Count<5 do Memo2.Lines.Add('//');
+      while txtSourceView.Lines.Count<5 do txtSourceView.Lines.Add('//');
       i:=Line-2;
       j:=0;
       k:=0;
@@ -173,25 +194,25 @@ begin
        begin
         if (i<1) or (i>=FSrcData.Count) then
          begin
-          Memo2.Lines[j]:='/////';
+          txtSourceView.Lines[j]:='/////';
           if j<2 then inc(k,7);
          end
         else
          begin
           ss:=FSrcData[i-1];
-          Memo2.Lines[j]:=ss;
+          txtSourceView.Lines[j]:=ss;
           if j<2 then inc(k,Length(ss)+2);
          end;
         inc(i);
         inc(j);
        end;
-      Memo2.SelStart:=k+integer(Col)-1;
-      Memo2.SelLength:=1;//?
+      txtSourceView.SelStart:=k+integer(Col)-1;
+      txtSourceView.SelLength:=1;//?
      end;
   except
     //on e:Exception do?
     lblFileName.Caption:=Format('%s %d:%d',[FSrcPath,Line,Col]);
-    Memo2.Text:=#13#10#13#10'!!!!!';
+    txtSourceView.Text:=#13#10#13#10'!!!!!';
   end;
 end;
 
@@ -218,6 +239,11 @@ begin
     btnNext.Enabled:=false;
     btnRunTo.Enabled:=false;
     btnBreak.Enabled:=false;
+    if FTrailSuspended then
+     begin
+      FTrailSuspended:=false;
+      lvTrail.Items.EndUpdate;
+     end;
     while WindowState=wsNormal do //while not closed
       Application.ProcessMessages;
    end;
@@ -226,6 +252,34 @@ end;
 procedure TfrmDebugView.actRunToFocusExecute(Sender: TObject);
 begin
   txtBreakPoints.SetFocus;
+end;
+
+procedure TfrmDebugView.actCopyExecute(Sender: TObject);
+var
+  s:string;
+  i,j:integer;
+  li:TListItem;
+begin
+  if ActiveControl is TCustomEdit then
+    (ActiveControl as TCustomEdit).CopyToClipboard
+  else
+  if ActiveControl=lvTrail then
+   begin
+    s:='';//TODO: headers?
+    for i:=0 to lvTrail.Items.Count-1 do
+     begin
+      li:=lvTrail.Items[i];
+      if li.Selected then
+       begin
+        s:=s+li.Caption;
+        for j:=0 to li.SubItems.Count-1 do
+          s:=s+#9+li.SubItems[j];
+        s:=s+#13#10;
+       end;
+     end;
+    //Clipboard.Clear;//?
+    Clipboard.AsText:=s;
+   end;
 end;
 
 end.

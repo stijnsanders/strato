@@ -17,8 +17,7 @@ uses
   stratoLogic in 'stratoLogic.pas',
   stratoFn in 'stratoFn.pas',
   stratoExec in 'stratoExec.pas',
-  stratoDebugView in 'stratoDebugView.pas' {frmDebugView},
-  stratoDebugTrail in 'stratoDebugTrail.pas' {frmDebugTrail};
+  stratoDebugView in 'stratoDebugView.pas' {frmDebugView};
 
 var
   n:TStratoSphere;
@@ -45,8 +44,7 @@ var
   end;
 
 var
-  DoRun,DoTokenize,DoRunTime,DoInlineErrors:boolean;
-  DoDebug:cardinal;
+  DoRun,DoDebug,DoTokenize,DoRunTime,DoInlineErrors:boolean;
   DoDump,DoDumpHR:string;
 
 begin
@@ -64,7 +62,6 @@ begin
     Writeln('  -I <filename>  import sphere');
     Writeln('  -E             inline errors into sphere as binary entries');
     Writeln('  -D             enable debug viewer');
-    Writeln('  -Q             enable debug trail');
 
     //TODO: export LLVMIR
     //TODO: params from file
@@ -76,7 +73,7 @@ begin
     try
       //defaults
       DoRun:=true;
-      DoDebug:=0;
+      DoDebug:=false;
       DoTokenize:=false;
       DoRunTime:=true;
       DoInlineErrors:=false;
@@ -109,8 +106,7 @@ begin
                   DoRun:=false;
                  end;
                 'C':DoRun:=false;
-                'D':DoDebug:=DoDebug or 1;
-                'Q':DoDebug:=DoDebug or 2;
+                'D':DoDebug:=true;
                 'U':DoDump:=xNext;
                 'H':DoDumpHR:=xNext;
                 'I':

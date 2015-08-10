@@ -70,6 +70,12 @@ begin
          end;
         //TODO: ttAlias?
         //TODO: ttFunction?
+        ttClass:
+         begin
+          Result:=Sphere.Add(ttClassRef,px);
+          px.ByteSize:=SystemWordSize;
+          px.EvaluatesTo:=p;
+         end;
         ttOverload:
           Result:=px.Target;//ttSignature
         //else Result:=0;//see default

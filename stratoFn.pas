@@ -2,6 +2,9 @@ unit stratoFn;
 
 interface
 
+{$D-}
+{$L-}
+
 uses stratoDecl, stratoSphere, stratoSource;
 
 function StratoFnAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
@@ -70,15 +73,14 @@ function StratoFnAddOverload(Sphere:TStratoSphere;Source:TStratoSource;
   Fn,Signature,SourceFile:TStratoIndex):TStratoIndex;
 var
   p,q:TStratoIndex;
-  fx,px:PStratoThing;
+  px:PStratoThing;
 begin
-  fx:=Sphere[Fn];
-  case fx.ThingType of
+  case Sphere[Fn].ThingType of
     ttFunction:
      begin
       p:=0;
       px:=nil;
-      q:=fx.FirstItem;
+      q:=Sphere[Fn].FirstItem;
       while (q<>0) do
         if SameType(Sphere,Sphere[q].Target,Signature) then
          begin
@@ -107,7 +109,7 @@ begin
       if p=0 then
        begin
         p:=Sphere.Add(ttOverload,px);
-        Sphere.Append(fx.FirstItem,p);
+        Sphere.Append(Sphere[Fn].FirstItem,p);
        end
       else
         px:=Sphere[p];
@@ -117,7 +119,7 @@ begin
       //assert Sphere[Signature].EvaluatesTo=0
       Sphere[Signature].EvaluatesTo:=Fn;
       p:=Sphere.Add(ttConstructor,px);
-      Sphere.Append(fx.FirstItem,p);
+      Sphere.Append(Sphere[Fn].FirstItem,p);
      end;
     else
      begin
@@ -136,36 +138,33 @@ end;
 function StratoFnOverloadCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
   Fn,Signature,SourceFile:TStratoIndex):TStratoIndex;
 var
-  p,q:TStratoIndex;
-  fx,px,qx,sx,cx:PStratoThing;
+  p,q,ovl:TStratoIndex;
+  px,qx:PStratoThing;
   bs:cardinal;
   tt:TStratoThingType;
 begin
-  q:=StratoFnAddOverload(Sphere,Source,Fn,Signature,SourceFile);
-  px:=Sphere[Fn];
-  fx:=Sphere[q];
-  sx:=Sphere[Signature];
-  Result:=Sphere.Add(ttCodeBlock,cx);
-  cx.Parent:=q;
-  cx.SrcPos:=Source.SrcPos;
-  fx.Body:=Result;
+  ovl:=StratoFnAddOverload(Sphere,Source,Fn,Signature,SourceFile);
+  Result:=Sphere.Add(ttCodeBlock,qx);
+  qx.Parent:=ovl;
+  qx.SrcPos:=Source.SrcPos;
+  Sphere[ovl].Body:=Result;
   //populate code block
   bs:=0;//bs:=cx.ByteSize;
   //this "@@"
-  if sx.Target<>0 then
+  if Sphere[Signature].Target<>0 then
    begin
     q:=Sphere.Add(ttThis,qx);
     qx.Name:=Sphere.Dict.StrIdx('@@');
     qx.Parent:=Result;//CodeBlock;
     qx.SrcPos:=Source.SrcPos;
     qx.Offset:=bs;
-    qx.EvaluatesTo:=sx.Target;
+    qx.EvaluatesTo:=Sphere[Signature].Target;
     inc(bs,SystemWordSize);
-    Sphere.Append(cx.FirstItem,q);
+    Sphere.Append(Sphere[Result].FirstItem,q);
    end;
   //return value
-  if sx.EvaluatesTo<>0 then
-    if fx.ThingType=ttConstructor then//if px.ThingType=ttClass then
+  if Sphere[Signature].EvaluatesTo<>0 then
+    if Sphere[Fn].ThingType=ttConstructor then//if Sphere[Fn].ThingType=ttClass then
      begin
       //with a constructor, store the effective class type here
       q:=Sphere.Add(ttVar,qx);
@@ -175,27 +174,27 @@ begin
       qx.Offset:=bs;
       qx.EvaluatesTo:=TypeDecl_type;
       inc(bs,SystemWordSize);
-      Sphere.Append(cx.FirstItem,q);
+      Sphere.Append(Sphere[Result].FirstItem,q);
      end
     else
      begin
       q:=Sphere.Add(ttVar,qx);
-      qx.Name:=px.Name;
+      qx.Name:=Sphere[Fn].Name;
       qx.Parent:=Result;//CodeBlock;
       qx.SrcPos:=Source.SrcPos;
       qx.Offset:=bs;
-      qx.EvaluatesTo:=sx.EvaluatesTo;
+      qx.EvaluatesTo:=Sphere[Signature].EvaluatesTo;
       if qx.EvaluatesTo<>0 then
         inc(bs,ByteSize(Sphere,qx.EvaluatesTo));
-      Sphere.Append(cx.FirstItem,q);
+      Sphere.Append(Sphere[Result].FirstItem,q);
      end;
   //arguments
-  p:=sx.FirstArgument;
+  p:=Sphere[Signature].FirstArgument;
   while p<>0 do
    begin
     px:=Sphere[p];
     if px.ThingType=ttArgByRef then tt:=ttVarByRef else tt:=ttVar;
-    q:=Sphere.AddTo(cx.FirstItem,tt,px.Name,qx);
+    q:=Sphere.AddTo(Sphere[Result].FirstItem,tt,px.Name,qx);
     if q=0 then
       Source.Error('duplicate identifier "'+string(Sphere.Dict.Str[px.Name])+'"')
     else
@@ -210,11 +209,11 @@ begin
       if qx.EvaluatesTo<>0 then
         inc(bs,ByteSize(Sphere,qx.EvaluatesTo));
       //store first arg value on function overload index
-      if fx.FirstArgument=0 then fx.FirstArgument:=q;
+      if Sphere[ovl].FirstArgument=0 then Sphere[ovl].FirstArgument:=q;
      end;
     p:=px.Next;
    end;
-  cx.ByteSize:=bs;
+  Sphere[Result].ByteSize:=bs;
 end;
 
 function StratoFnCallAddArgument(Sphere:TStratoSphere;
@@ -231,24 +230,24 @@ end;
 function StratoFnCallFindSignature(Sphere:TStratoSphere;
   FnCall:TStratoIndex):boolean;
 var
-  p,q:TStratoIndex;
-  px,cx,dx:PStratoThing;
+  p,q,p1:TStratoIndex;
+  px,qx,rx:PStratoThing;
 begin
   //assert all Arguments added
-  cx:=Sphere[FnCall];
-  p:=cx.Target;
+  rx:=Sphere[FnCall];
+  p:=rx.Target;
   px:=Sphere[p];
   //TODO: remove use of fnCall.Body
-  //cx.Target:=0;//default
-  cx.Body:=0;//default
+  //rx.Target:=0;//default
+  rx.Body:=0;//default
   if (p<>0) and (px.ThingType=ttVarIndex) and (px.EvaluatesTo=0) then
    begin
-    dx:=px;
+    p1:=p;
     p:=px.Target;
     px:=Sphere[p];
    end
   else
-    dx:=cx;
+    p1:=FnCall;
   if p<>0 then
     case px.ThingType of
       ttVar,ttVarIndex:
@@ -262,13 +261,13 @@ begin
       ttClass:
        begin
         //see also StratoFnCallFindInherited!
-        dx.EvaluatesTo:=p;
+        Sphere[p1].EvaluatesTo:=p;
         q:=p;
         p:=px.FirstItem;
         while (p<>0) and (Sphere[p].ThingType<>ttConstructor) do
           p:=Sphere[p].Next;
         while (q<>0) and (p=0) or not(StratoFnArgListsMatch(Sphere,
-          Sphere[p].FirstArgument,cx.FirstArgument)) do
+          Sphere[p].FirstArgument,Sphere[FnCall].FirstArgument)) do
          begin
           if p=0 then
            begin
@@ -286,13 +285,25 @@ begin
         p:=Sphere[p].Parent;//ttCodeBlock
         if p<>0 then
           p:=StratoFnCallFindInherited(Sphere,
-            Sphere[Sphere[p].Parent],cx.Name);
+            Sphere[Sphere[p].Parent],Sphere[FnCall].Name);
+        if (p<>0) and (Sphere[p].ThingType=ttConstructor) then
+         begin
+          q:=p;
+          qx:=Sphere[q];
+          p:=Sphere.Add(ttVarIndex,px);
+          rx:=Sphere[p1];
+          px.Parent:=Sphere[rx.Parent].FirstItem;//assert ttThis
+          px.SrcPos:=rx.SrcPos;
+          px.Target:=q;
+          rx.EvaluatesTo:=qx.Parent;
+         end;
        end;
       ttFunction:
        begin
         p:=Sphere[p].FirstItem;//ttOverload
         while (p<>0) and not(StratoFnArgListsMatch(Sphere,
-          Sphere[Sphere[p].Target].FirstArgument,cx.FirstArgument)) do
+          Sphere[Sphere[p].Target].FirstArgument,
+          Sphere[FnCall].FirstArgument)) do
           p:=Sphere[p].Next;
        end;
       else
@@ -302,8 +313,11 @@ begin
      begin
       //found! set body from matching overload
       Result:=true;
-      dx.Target:=p;
-      //cx.Body:=Sphere[p].Body;
+      rx:=Sphere[p1];
+      if Sphere[p].ThingType=ttConstructor then
+        rx.EvaluatesTo:=rx.Target;//Sphere[p].Parent;
+      rx.Target:=p;
+      //Sphere[FnCall].Body:=Sphere[p].Body;
      end;
    end;
 end;

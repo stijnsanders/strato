@@ -25,8 +25,8 @@ type
     stBOpen,stBClose,//"[]"
 
     stHRule,//"---"
-    stImport,//"<<<"
-    stDefer,//">>>"
+    stThreeLT,//"<<<"
+    stThreeGT,//">>>"
     stTry,//":::"
     stCatch,//"???"
     stThrow,//"!!!"
@@ -64,6 +64,8 @@ type
     stOpDec,
     stOpShl,
     stOpShr,
+    //stOpRol,//see stThreeLT
+    //stOpRor,//see stThreeGT
 
     stOpSizeOf,//"@?"
     stOpTypeIs,//"?="
@@ -303,7 +305,7 @@ begin
           '>':Add(2,stOpNEQ);
           '<':
             case CodeNext(2) of
-              '<':Add(3,stImport);
+              '<':Add(3,stThreeLT);//decl:import, logic:roll left
               else Add(2,stOpShl);
             end;
           '=':Add(2,stOpLTE);
@@ -313,7 +315,7 @@ begin
         case CodeNext(1) of
           '>':
             case CodeNext(2) of
-              '>':Add(3,stDefer);
+              '>':Add(3,stThreeGT);
               else Add(2,stOpShr);
             end;
           '=':Add(2,stOpGTE);
@@ -321,7 +323,7 @@ begin
         end;
       '=':
         case CodeNext(1) of
-          '?':Add(2,stOpTypeIs);
+          //'?':Add(2,stOpTypeIs);
           '=':Add(2,stOpEq);
           else Add(1,stDefine);
         end;
@@ -332,6 +334,7 @@ begin
               '?':Add(3,stCatch);
               else Add(2,stResult);
             end;
+          '=':Add(2,stOpTypeIs);
           else Add(1,stQuestionMark);//stOpIf
         end;
       '!':

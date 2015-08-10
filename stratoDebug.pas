@@ -179,6 +179,9 @@ begin
     ttProperty:
       Result:=Format('prop %s  t=%d get=%d set=%d',
         [s.FQN(i),p.EvaluatesTo,p.ValueFrom,p.AssignTo]);
+    ttClassRef:
+      Result:=Format('cref %s  t=%d',
+        [s.FQN(i),p.EvaluatesTo]);
     else
       Result:=Format('?    "%s" (%.4x) %d,%d,%d,%d,%d',
         [s.FQN(i),p.ThingType,p.Name,p.FirstItem

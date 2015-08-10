@@ -38,6 +38,7 @@
 00A2 ttArgByRef
 00A3 ttVarByRef
 00C0 ttPointer
+00C1 ttClassRef
 00D0 ttClass
 00D1 ttInterface
 00E0 ttSignature

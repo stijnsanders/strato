@@ -3,7 +3,7 @@ unit stratoExec;
 interface
 
 uses SysUtils, stratoDecl, stratoSphere, stratoDebug,
-  stratoDebugView, stratoDebugTrail;
+  stratoDebugView;
 
 type
   TStratoMachine=class(TObject)
@@ -12,14 +12,13 @@ type
     FMemSize,FMemIndex,FMemAllocIndex:cardinal;
     //FGlobals:array of Sphere:TStratoSphere; Address:cardinal; end;?
     FDebugView:TfrmDebugView;
-    FDebugTrail:TfrmDebugTrail;
     FDebugCount:integer;
     procedure AllocateGlobals(Sphere:TStratoSphere);
     procedure Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
     procedure LiteralToMemory(Sphere:TStratoSphere;p,q:TStratoIndex;addr:cardinal);
     procedure PerformSysCall(Sphere:TStratoSphere;Fn:TStratoIndex;Ptr:cardinal);
   public
-    constructor Create(DoDebug:cardinal=0);
+    constructor Create(DoDebug:boolean=false);
     destructor Destroy; override;
     procedure Run(Sphere:TStratoSphere);
   end;
@@ -63,7 +62,7 @@ end;
 
 { TStratoMachine }
 
-constructor TStratoMachine.Create(DoDebug:cardinal);
+constructor TStratoMachine.Create(DoDebug:boolean);
 begin
   inherited Create;
   FMemSize:=InitialMemSize;
@@ -72,17 +71,16 @@ begin
   FMemAllocIndex:=FirstAllocMemPtr;
   FDebugCount:=0;
   //TODO: restore previous position
-  if (DoDebug and 1)=0 then FDebugView:=nil else
-    FDebugView:=TfrmDebugView.Create(nil);
-  if (DoDebug and 2)=0 then FDebugTrail:=nil else
-    FDebugTrail:=TfrmDebugTrail.Create(nil);
+  if DoDebug then
+    FDebugView:=TfrmDebugView.Create(nil)
+  else
+    FDebugView:=nil;
 end;
 
 destructor TStratoMachine.Destroy;
 begin
   SetLength(FMem,0);
   FreeAndNil(FDebugView);
-  FreeAndNil(FDebugTrail);
   inherited;
 end;
 
@@ -90,7 +88,6 @@ procedure TStratoMachine.Run(Sphere: TStratoSphere);
 var
   p:TStratoName;
 begin
-  if FDebugTrail<>nil then FDebugTrail.Show;
   if FDebugView<>nil then FDebugView.Show;
   AllocateGlobals(Sphere);
   //TODO: halt on unhandled exception?
@@ -330,7 +327,7 @@ var
 var
   p,q,r,vt,p0,p1,p2,vt0,pe:TStratoIndex;
   px,qx,rx:PStratoThing;
-  i,j,k,mp,np,vp,xp:cardinal;
+  i,j,k,mp,np,vp,xp,OpCount:cardinal;
   ii:int64;
 
   procedure vtp(nvt,nvp:cardinal);
@@ -347,10 +344,11 @@ var
     ppx:PStratoThing;
     pi:cardinal;
   begin
-    if FDebugTrail<>nil then
+    inc(OpCount);
+    if (FDebugView<>nil) and (FDebugView.cbKeepTrail.Checked) then
      begin
-      li:=FDebugTrail.ListView1.Items.Add;
-      li.Caption:=IntToStr(FDebugTrail.ListView1.Items.Count);
+      li:=FDebugView.lvTrail.Items.Add;
+      li.Caption:=IntToStr(OpCount);
       li.SubItems.Add(IntToStr(p));
       li.SubItems.Add(IntToStr0(p1));
       li.SubItems.Add(IntToStr0(p2));
@@ -358,8 +356,19 @@ var
       li.SubItems.Add(StratoDumpThing(Sphere,p,Sphere[p]));
       li.SubItems.Add(IntToStr0(vt));
       li.SubItems.Add(IntToStr0(vp));
+      if (vt=0) or (vp=0) then
+       begin
+        li.SubItems.Add('');
+        li.SubItems.Add('');
+       end
+      else
+       begin
+        Move(FMem[vp],i,SystemWordSize);
+        li.SubItems.Add(Format('%.8x',[i]));
+        li.SubItems.Add(IntToStr(i));
+       end;
       //timestamp?
-      FDebugTrail.ListView1.ItemFocused:=li;
+      FDebugView.lvTrail.ItemFocused:=li;
       li.MakeVisible(false);
      end;
 
@@ -367,13 +376,13 @@ var
     if (FDebugView<>nil) and (FDebugView.CheckBreakPoint(p)) then
      begin
       li:=nil;//default;
-      FDebugView.ListView1.Items.BeginUpdate;
+      FDebugView.lvStack.Items.BeginUpdate;
       try
-        FDebugView.ListView1.Items.Clear;
+        FDebugView.lvStack.Items.Clear;
         i:=0;
         while i<stackIndex do
          begin
-          li:=FDebugView.ListView1.Items.Add;
+          li:=FDebugView.lvStack.Items.Add;
           li.Caption:=IntToStr(i);
           li.SubItems.Add(IntToStr(stack[i].p));
           li.SubItems.Add(IntToStr(stack[i].p1));
@@ -386,76 +395,83 @@ var
           inc(i);
          end;
       finally
-        FDebugView.ListView1.Items.EndUpdate;
+        FDebugView.lvStack.Items.EndUpdate;
       end;
       if li<>nil then li.MakeVisible(false);
-      FDebugView.ListView1.Selected:=li;
+      FDebugView.lvStack.Selected:=li;
       li1:=nil;//default
-      FDebugView.ListView2.Items.BeginUpdate;
+      FDebugView.lvMem.Items.BeginUpdate;
       try
-        FDebugView.ListView2.Items.Clear;
+        FDebugView.lvMem.Items.Clear;
         i:=BaseMemPtr;
         while (i<FMemIndex) or (i<np) do
          begin
           Move(FMem[i],j,4);
-          li1:=FDebugView.ListView2.Items.Add;
+          li1:=FDebugView.lvMem.Items.Add;
           li1.Caption:=IntToStr(i);
           li1.SubItems.Add(Format('%.8x',[j]));
           li1.SubItems.Add(IntToStr(j));
           inc(i,4);
          end;
         i:=FirstAllocMemPtr;
+        if i<FMemAllocIndex then
+         begin
+          li:=FDebugView.lvMem.Items.Add;
+          li.Caption:='';
+          li.SubItems.Add('');
+          li.SubItems.Add('');
+         end;
         while i<FMemAllocIndex do
          begin
           Move(FMem[i],j,4);
-          li:=FDebugView.ListView2.Items.Add;
+          li:=FDebugView.lvMem.Items.Add;
           li.Caption:=IntToStr(i);
           li.SubItems.Add(Format('%.8x',[j]));
           li.SubItems.Add(IntToStr(j));
           inc(i,4);
          end;
       finally
-        FDebugView.ListView2.Items.EndUpdate;
+        FDebugView.lvMem.Items.EndUpdate;
       end;
       if li1<>nil then li1.MakeVisible(false);
-      FDebugView.ListView1.Selected:=li1;
-      FDebugView.Memo1.Lines.BeginUpdate;
+      FDebugView.lvMem.Selected:=li1;
+      FDebugView.txtUpNext.Lines.BeginUpdate;
       try
-        FDebugView.Memo1.Lines.Clear;
-        FDebugView.Memo1.Lines.Add(Format('p : %d: %s',
+        FDebugView.txtUpNext.Lines.Clear;
+        FDebugView.txtUpNext.Lines.Add(Format('p : %d: %s',
           [p,StratoDumpThing(Sphere,p,Sphere[p])]));
         if p1=0 then
-          FDebugView.Memo1.Lines.Add('p1')
+          FDebugView.txtUpNext.Lines.Add('p1')
         else if p1>=IndexStep1 then
-          FDebugView.Memo1.Lines.Add('p1: '+IntToStr(p1))
+          FDebugView.txtUpNext.Lines.Add('p1: '+IntToStr(p1))
         else
-          FDebugView.Memo1.Lines.Add(Format('p1: %d: %s',
+          FDebugView.txtUpNext.Lines.Add(Format('p1: %d: %s',
             [p1,StratoDumpThing(Sphere,p1,Sphere[p1])]));
         if p2=0 then
-          FDebugView.Memo1.Lines.Add('p2')
+          FDebugView.txtUpNext.Lines.Add('p2')
         else if p2>=IndexStep1 then
-          FDebugView.Memo1.Lines.Add('p2: '+IntToStr(p2))
+          FDebugView.txtUpNext.Lines.Add('p2: '+IntToStr(p2))
         else
-          FDebugView.Memo1.Lines.Add(Format('p2: %d: %s',
+          FDebugView.txtUpNext.Lines.Add(Format('p2: %d: %s',
             [p2,StratoDumpThing(Sphere,p2,Sphere[p2])]));
         if vt<>0 then
          begin
-          FDebugView.Memo1.Lines.Add(Format('vt: %d: %s',
+          FDebugView.txtUpNext.Lines.Add(Format('vt: %d: %s',
             [vt,StratoDumpThing(Sphere,vt,Sphere[vt])]));
           Move(FMem[vp],j,4);//TODO: ByteSize(Sphere,vt);
-          FDebugView.Memo1.Lines.Add(Format('vp: @=%d x=%.8x v=%d',[vp,j,j]));
+          FDebugView.txtUpNext.Lines.Add(Format('vp: @=%d x=%.8x v=%d',[vp,j,j]));
          end;
       finally
-        FDebugView.Memo1.Lines.EndUpdate;
+        FDebugView.txtUpNext.Lines.EndUpdate;
       end;
       try
         ppx:=Sphere[pe];
         if (pe<>0) and StratoGetSourceFile(Sphere,pe,pp,pi) then
           FDebugView.ShowSource(Sphere,pp,ppx.SrcPos div pi,ppx.SrcPos mod pi)
         else
-          FDebugView.Memo2.Clear;
+          FDebugView.txtSourceView.Clear;
       except
-        FDebugView.Memo2.Text:=#13#10#13#10'?????';
+        FDebugView.txtSourceView.Text:=#13#10#13#10'?????';
       end;
       if FDebugView.WaitNext then
        begin
@@ -475,6 +491,7 @@ begin
   np:=mp;
   vt:=0;//below: set vt:=0 when value at vp used for something
   vp:=0;
+  OpCount:=0;
   while (p<>0) or (stackIndex<>0) do
    begin
     //pop from stack: see end of loop below
@@ -939,7 +956,10 @@ begin
                 //assert Sphere[i].ThingType=ttClass
                 if TStratoToken(px.Op)=stOpSizeOf then
                  begin
-                  if i=0 then Sphere.Error(pe,'SizeOf object to construct on empty reference');
+                  if i=0 then
+                    Sphere.Error(pe,'SizeOf object to construct on empty reference')
+                  else
+                    i:=ByteSize(Sphere,i);
                   vtp(TypeDecl_number,np);
                  end
                 else //stQuestionMark://stOpTypeOf:
@@ -1004,13 +1024,26 @@ begin
               inc(np,SystemWordSize);
               Move(i,FMem[vp],SystemWordSize);
              end;
-            stQuestionMark://stTypeOf
-             begin
-              i:=vt;
-              vtp(TypeDecl_type,np);
-              inc(np,SystemWordSize);
-              Move(i,FMem[vp],SystemWordSize);
-             end;
+            stQuestionMark://stOpTypeOf
+              if (vt<>0) and (Sphere[vt].ThingType=ttClass) then
+               begin
+                //and TypeDecl_object<>0?
+                Move(FMem[vp],i,SystemWordSize);
+                if i=0 then
+                  //hmm, type of null pointer, pass base type?
+                  i:=vt
+                else
+                  //assert _basetype@-SystemWordSize
+                  Move(FMem[i-SystemWordSize],i,SystemWordSize);
+                Sphere.Add(ttClassRef,)
+               end
+              else
+               begin
+                i:=vt;
+                vtp(TypeDecl_type,np);
+                inc(np,SystemWordSize);
+                Move(i,FMem[vp],SystemWordSize);
+               end;
             //TODO: more!
             else
               Sphere.Error(pe,'unsupported unary operator');
@@ -1090,7 +1123,7 @@ begin
                 else
                   Sphere.Error(pe,'//TODO: more operator stuff');
                end;
-              stOpSub,stOpMul,stOpDiv,stOpMod,stOpShl,stOpShr:
+              stOpSub,stOpMul,stOpDiv,stOpMod,stOpShl,stOpShr,stThreeLT,stThreeGT:
                begin
                 //assert SameType(q.EvaluatesTo,pp.EvaluatesTo)
                 if (q=TypeDecl_number) and (vt=TypeDecl_number) then
@@ -1107,6 +1140,8 @@ begin
                     //stOpDec:
                     stOpShl:k:=i shl j;
                     stOpShr:k:=i shr j;
+                    stThreeLT:k:=(i shl j) or (i shr (SystemWordSize*8-j));//roll left
+                    stThreeGT:k:=(i shr j) or (i shl (SystemWordSize*8-j));//roll right
                   end;
                   vtp(TypeDecl_number,np);
                   inc(np,SystemWordSize);
@@ -1707,6 +1742,9 @@ begin
       Move(FMem[Ptr+SystemWordSize],i,SystemWordSize);
       j:=FMemAllocIndex;
       inc(FMemAllocIndex,i);
+      //alignment?
+      if (FMemAllocIndex mod SystemWordSize)<>0 then
+        inc(FMemAllocIndex,SystemWordSize-(FMemAllocIndex mod SystemWordSize));
       while FMemAllocIndex>FMemSize do
        begin
         inc(FMemSize,InitialMemSize);//grow

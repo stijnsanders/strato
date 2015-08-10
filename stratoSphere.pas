@@ -166,18 +166,17 @@ begin
       else
         q:=0;//raise?
     end;
+  //TODO: raise?
   px:=Node[p];
   if (p=0) or (q=0) then
     Writeln(ErrOutput,Msg)
   else
-   begin
     Writeln(ErrOutput,Format('%s(%d:%d): %s',
       [GetBinaryData(PStratoSourceFile(Node[q]).FileName)
       ,px.SrcPos div PStratoSourceFile(Node[q]).SrcPosLineIndex
       ,px.SrcPos mod PStratoSourceFile(Node[q]).SrcPosLineIndex
       ,Msg
       ]));
-   end;
   ExitCode:=1;
 end;
 
@@ -361,7 +360,8 @@ begin
     //TODO: tt__Named
     if Node[p].ThingType in [ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration,
       ttVar,ttConstant,ttImport,ttSignature,ttFunction,ttArgument,
-      ttPointer,ttVarByRef,ttArgByRef,ttClass,ttInterface,ttProperty] then
+      ttPointer,ttVarByRef,ttArgByRef,ttClass,ttInterface,ttProperty,
+      ttClassRef] then
       if Node[p].Name=0 then
         Result:=UTF8String(IntToStr(p))+'.'+Result
       else

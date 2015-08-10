@@ -474,8 +474,6 @@ var
                   '%':v:=UTF8String(IntToStr(i mod j));
                   '+':v:=UTF8String(IntToStr(i+j));
                   '-':v:=UTF8String(IntToStr(i-j));
-                  'L':v:=UTF8String(IntToStr(i shl j));
-                  'R':v:=UTF8String(IntToStr(i shr j));
                   '&':v:=UTF8String(IntToStr(i and j));
                   '|':v:=UTF8String(IntToStr(i or j));
                   'X':v:=UTF8String(IntToStr(i xor j));
@@ -504,6 +502,16 @@ var
                     vt:=TypeDecl_bool;
                     if i>=j then v:='1' else v:='0';
                    end;
+                  's':
+                    if v0='shl' then
+                      v:=UTF8String(IntToStr(i shl j))
+                    else
+                      v:=UTF8String(IntToStr(i shr j));
+                  'r':
+                    if v0='rol' then
+                      v:=UTF8String(IntToStr((i shl j) or (i shr (SystemWordSize*8-j))))
+                    else
+                      v:=UTF8String(IntToStr((i shr j) or (i shl (SystemWordSize*8-j))));
                   else
                     Source.Error('unknown operator');
                 end
@@ -635,8 +643,10 @@ begin
           stOpMul:Push(pMulDiv,'*');
           stOpDiv:Push(pMulDiv,'/');
           stOpMod:Push(pMulDiv,'%');
-          stOpShl:Push(pShift,'L');
-          stOpShr:Push(pShift,'R');
+          stOpShl:Push(pShift,'shl');
+          stOpShr:Push(pShift,'shr');
+          stThreeLT:Push(pShift,'rol');
+          stThreeGT:Push(pShift,'ror');
           stOpAnd:Push(pAnd,'&');
           stOpOr:Push(pOr,'|');
           stOpNot:Push(pUnary,'!');
@@ -1300,9 +1310,25 @@ begin
               Source.Error('assignment type mismatch');
             //TODO: auto-cast?
             //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
+
+            //assigning an object reference? reference counting!
+            if Sphere[r].ThingType=ttClass then
+             begin
+              if px.Op<>cardinal(stOpAssign) then
+                Source.Error('invalid assignment type for object reference');
+              if TypeDecl_object=0 then
+                Source.Error('base class for reference counting not defined')
+              else
+               begin
+                //TODO: check not zero then release
+                //TODO: call _addref (with StratoFnCallFindSignature ?)
+                //TODO: defer release refcount
+               end;
+             end;
+
            end;
          end;
-           
+
         pUnTypedVar:
          begin
           //see also pAssignment above and stColon below
@@ -1494,7 +1520,7 @@ begin
   while (cb=0) and (rd=0) and Source.NextToken(st) do
   case st of
 
-    stImport: //import a namespace
+    stThreeLT: //import a namespace
       ParseImport;
 
     stIdentifier: //declaration
@@ -1757,6 +1783,28 @@ begin
                   px.SrcPos:=Source.SrcPos;
                  end;
                 q:=Sphere.AddTo(Sphere[ns].FirstItem,ttPointer,n,qx);
+                if q=0 then
+                  Source.Error('duplicate identifier "'+nn+'"')
+                else
+                 begin
+                  qx.Parent:=ns;
+                  qx.SrcPos:=Source.SrcPos;
+                  qx.ByteSize:=SystemWordSize;
+                  qx.EvaluatesTo:=p;
+                 end;
+               end;
+              stQuestionMark:
+               begin
+                p:=LookUpType('class reference type');
+                if p=0 then
+                  Source.Error('unknown class reference type')
+                else
+                  if Sphere[p].ThingType<>ttClass then
+                   begin
+                    Source.Error('invalid class reference subject');
+                    p:=0;
+                   end;
+                q:=Sphere.AddTo(Sphere[ns].FirstItem,ttClassRef,n,qx);
                 if q=0 then
                   Source.Error('duplicate identifier "'+nn+'"')
                 else
@@ -2102,7 +2150,13 @@ begin
       else
         Source.Error('Already in private visibility');
 
-    stSemiColon:;//stray semicolon? ignore
+    stSemiColon://;//stray semicolon? ignore
+      if Source.IsNext([stSemiColon,stSemiColon]) then
+       begin
+        asm int 3 end;//for debugging the parser
+        Source.Skip(stSemiColon);
+        Source.Skip(stSemiColon);
+       end;
 
     //stPOpen?
 
@@ -2473,7 +2527,7 @@ begin
         if (px.ThingType=ttFunction)
           or (px.ThingType=ttVarIndex) //and px.Target.ThingType=ttFunction
           or (px.ThingType=ttClass) //constructor?
-          or (px.ThingType=ttInherited) 
+          or (px.ThingType=ttInherited)
           or ((px.ThingType=ttVar) and (px.EvaluatesTo<>0)
             and (Sphere[px.EvaluatesTo].ThingType=ttPointer)
             and (Sphere[Sphere[px.EvaluatesTo].EvaluatesTo].ThingType=ttSignature)
@@ -2481,6 +2535,7 @@ begin
           or (px.ThingType=ttThis) //constructor/destructor call
           then //TODO: dedicated function GivesSignature
          begin
+          if px.ThingType=ttInherited then cbInhCalled:=true;
           q:=Sphere.Add(ttFnCall,qx);
           qx.Name:=n;//TODO: from px?
           qx.Parent:=cb;
@@ -2803,6 +2858,8 @@ begin
     stOpLT,stOpLTE,stOpGT,stOpGTE:
       PushBinary(pComparative,st,p);
     stOpAdd,stOpSub:
+     begin
+      Combine(pAddSub,p);
       if p=0 then //unaryOperator
        begin
         q:=Sphere.Add(ttUnaryOp,qx);
@@ -2813,9 +2870,10 @@ begin
        end
       else
         PushBinary(pAddSub,st,p);
+     end;
     stOpMul,stOpDiv,stOpMod:
       PushBinary(pMulDiv,st,p);
-    stOpShl,stOpShr:
+    stOpShl,stOpShr,stThreeLT://stThreeGT: see below
       PushBinary(pShift,st,p);
     stOpAnd:
       PushBinary(pAnd,st,p);
@@ -2949,13 +3007,19 @@ begin
       qx.Parent:=cb;
       qx.SrcPos:=Source.SrcPos;
      end;
-    stDefer://">>>"
+    stThreeGT://">>>"
      begin
-      Combine(p_Statement,p);
-      q:=Sphere.Add(ttDeferred,qx);
-      qx.Parent:=cb;
-      qx.SrcPos:=Source.SrcPos;
-      Push(pDefer,q);
+      Combine(pShift,p);
+      if p=0 then //defer
+       begin
+        Combine(p_Statement,p);
+        q:=Sphere.Add(ttDeferred,qx);
+        qx.Parent:=cb;
+        qx.SrcPos:=Source.SrcPos;
+        Push(pDefer,q);
+       end
+      else
+        PushBinary(pShift,st,p);//roll right
      end;
     stCatch://"???"
      begin
@@ -3092,9 +3156,6 @@ begin
       else
         if p=0 then Source.Error('"@@@" undefined');
      end;
-
-    //TODO:
-    stImport,//"<<<"
 
     stOpTypeIs://"?="
 

@@ -232,6 +232,10 @@ const
     //ValueFrom (ttOverload)
     //AssignTo (ttOverload)
 
+  ttClassRef     = $00C1;
+    //ByteSize: SystemWordSize
+    //EvaluatesTo (ttClass)
+
 type
   TStratoThing=record
     ThingType:TStratoThingType;

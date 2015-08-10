@@ -348,6 +348,7 @@ const
   iiConstant=36;
   iiConstructor=37;
   iiDestructor=38;
+  iiClassRef=39;
 
 procedure TXsTreeNode.AfterConstruction;
 begin
@@ -610,6 +611,7 @@ begin
       ttDestructor:k:=iiDestructor;
       ttInterface:k:=iiInterface;
       ttProperty:k:=iiProperty;
+      ttClassRef:k:=iiClassRef;
     end;
     n.ImageIndex:=k;
     n.SelectedIndex:=k;
@@ -801,6 +803,7 @@ begin
             //TODO: resolve relative path
             //TODO: cache several?
             FSrcPath:=FSphere.GetBinaryData(PStratoSourceFile(FSphere[p]).FileName);
+            //TODO: check signature/timestamp
             txtSourceView.Lines.LoadFromFile(FSrcPath);
             FSrcFile:=p;
            end;
