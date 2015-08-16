@@ -81,7 +81,7 @@ destructor TStratoMachine.Destroy;
 begin
   SetLength(FMem,0);
   FreeAndNil(FDebugView);
-  inherited;
+  inherited                                     ;
 end;
 
 procedure TStratoMachine.Run(Sphere: TStratoSphere);
@@ -344,6 +344,7 @@ var
     ppx:PStratoThing;
     pi:cardinal;
   begin
+    //TODO: move this to other unit
     inc(OpCount);
     if (FDebugView<>nil) and (FDebugView.cbKeepTrail.Checked) then
      begin
@@ -353,6 +354,7 @@ var
       li.SubItems.Add(IntToStr0(p1));
       li.SubItems.Add(IntToStr0(p2));
       li.SubItems.Add(IntToStr(mp));
+      li.SubItems.Add(IntToStr(np));
       li.SubItems.Add(StratoDumpThing(Sphere,p,Sphere[p]));
       li.SubItems.Add(IntToStr0(vt));
       li.SubItems.Add(IntToStr0(vp));
@@ -404,6 +406,10 @@ var
       try
         FDebugView.lvMem.Items.Clear;
         i:=BaseMemPtr;
+        pi:=BaseMemPtr;
+        k:=0;
+        if Sphere.Header.GlobalByteSize=0 then pp:=0 else
+          pp:=Sphere.Header.FirstGlobalVar;
         while (i<FMemIndex) or (i<np) do
          begin
           Move(FMem[i],j,4);
@@ -411,6 +417,41 @@ var
           li1.Caption:=IntToStr(i);
           li1.SubItems.Add(Format('%.8x',[j]));
           li1.SubItems.Add(IntToStr(j));
+          if pp=0 then
+           begin
+            while (k<stackIndex) and not((stack[k].p<>0) and
+              (Sphere[stack[k].p].ThingType=ttCodeBlock) and
+              (Sphere[stack[k].p].ByteSize<>0) and
+              (stack[k].bp>=i)) do inc(k);
+            if k=stackIndex then
+              pp:=0
+            else
+             begin
+              pp:=Sphere[stack[k].p].FirstItem;
+              pi:=stack[k].bp;
+             end;
+           end;
+          if (pp=0) or (pi>i) then
+            li1.SubItems.Add('')
+          else
+           begin
+            ppx:=Sphere[pp];
+            //TODO: accurately keep pi+.Offset equal to i !!!
+            if ppx.ThingType=ttGlobal then
+             begin
+              li1.SubItems.Add(Format('%d: %s',[pp,
+                StratoDumpThing(Sphere,ppx.Target,Sphere[ppx.Target])]));
+              while (pp<>0) and (pi+Sphere[Sphere[pp].Target].Offset<=i) do
+                pp:=ppx.Next;
+             end
+            else
+             begin
+              li1.SubItems.Add(Format('%d:%d: %s',[ppx.Parent,pp,
+                StratoDumpThing(Sphere,pp,ppx)]));
+              while (pp<>0) and (pi+Sphere[pp].Offset<=i) do
+                pp:=ppx.Next;
+             end;
+           end;
           inc(i,4);
          end;
         i:=FirstAllocMemPtr;
@@ -418,6 +459,7 @@ var
          begin
           li:=FDebugView.lvMem.Items.Add;
           li.Caption:='';
+          li.SubItems.Add('');
           li.SubItems.Add('');
           li.SubItems.Add('');
          end;
@@ -428,6 +470,7 @@ var
           li.Caption:=IntToStr(i);
           li.SubItems.Add(Format('%.8x',[j]));
           li.SubItems.Add(IntToStr(j));
+          li.SubItems.Add('');//TODO: listen to constructors? malloc?
           inc(i,4);
          end;
       finally
@@ -438,8 +481,8 @@ var
       FDebugView.txtUpNext.Lines.BeginUpdate;
       try
         FDebugView.txtUpNext.Lines.Clear;
-        FDebugView.txtUpNext.Lines.Add(Format('p : %d: %s',
-          [p,StratoDumpThing(Sphere,p,Sphere[p])]));
+        FDebugView.txtUpNext.Lines.Add(Format('p : %d: %s [mp:%d,np:%d]',
+          [p,StratoDumpThing(Sphere,p,Sphere[p]),mp,np]));
         if p1=0 then
           FDebugView.txtUpNext.Lines.Add('p1')
         else if p1>=IndexStep1 then
@@ -503,7 +546,7 @@ begin
 
     if RefreshDebugView then
       asm int 3 end;//DebugBreak;//forced breakpoint
-    
+
     case px.ThingType of
 
       ttAlias:p:=px.Target;
@@ -535,12 +578,31 @@ begin
              end;
             ttConstructor:
              begin
-              //store default nil pointer, base class
-              //see also StratoFnAddOverload
-              i:=0;
-              Move(i,FMem[np],SystemWordSize);
-              i:=px.EvaluatesTo;//assert ttClass
-              Move(i,FMem[np+SystemWordSize],SystemWordSize);
+              if px.Name<>0 then
+               begin
+                //store default nil pointer, base class
+                //see also StratoFnAddOverload
+                i:=0;
+                Move(i,FMem[np],SystemWordSize);
+                i:=px.EvaluatesTo;//assert ttClass
+                Move(i,FMem[np+SystemWordSize],SystemWordSize);
+               end
+              else
+               begin
+                //constructor calling constructor: copy this and original class
+                //see also StratoFnAddOverload
+                i:=stackIndex;
+                while (i<>0) and (Sphere[stack[i-1].p].ThingType<>ttFnCall) do
+                  dec(i);
+                if i=0 then
+                  Sphere.Error(pe,'Unable to obtain parent constructor base pointer')//TODO:throw
+                else
+                 begin
+                  //assert stack[i-1].p].Target.ThingType=ttConstructor
+                  Move(FMem[stack[i-1].bp],FMem[np],SystemWordSize*2);
+                 end;
+                //assert vp=0
+               end;
               r:=qx.Body;
              end;
             ttDestructor:
@@ -576,29 +638,22 @@ begin
                   q:=qx.Target;
                  end
                 else
-                  q:=StratoFnCallFindVirtual(Sphere,Sphere[i],Sphere[qx.Target]);//!
+                  q:=StratoFnCallFindVirtual(Sphere,i,qx.Target);//!
               if q=0 then r:=0 else r:=Sphere[q].Body;
               if r=0 then
                 Sphere.Error(p,'dynamic implementation not found')
-              else
-              if Sphere[q].ThingType=ttConstructor then
-               begin
-                //constructor calling constructor: copy this and original class
-                //see also StratoFnAddOverload
-                Move(FMem[mp],FMem[np],SystemWordSize*2);
-                //assert vp=0
-               end
               else
                begin
                 //get address for 'this' ("@@")
                 //q:=Sphere.Lookup(Sphere[r].FirstItem,Sphere.Dict.StrIdx('@@'));
                 q:=Sphere[r].FirstItem;
-                while (q<>0) and (Sphere[q].ThingType<>ttThis) do q:=Sphere[q].Next;
+                while (q<>0) and (Sphere[q].ThingType<>ttThis) do
+                  q:=Sphere[q].Next;
                 if q=0 then
                   Sphere.Error(pe,'Could not find "@@"')
                 else
                   //TODO: SameType? vt px.Target.Target
-                  Move(vp,FMem[np+Sphere[q].Offset],SystemWordSize);//see ttThis
+                  Move(vp,FMem[mp+Sphere[q].Offset],SystemWordSize);//see ttThis
                end;
               vt:=0;
              end;
@@ -625,8 +680,6 @@ begin
                begin
                 //no arguments!
                 p:=r;
-                mp:=np;
-                inc(np,rx.ByteSize);
                end
               else
                begin
@@ -666,7 +719,7 @@ begin
             //next argument
             p1:=Sphere[p1].Next;
             p2:=Sphere[p2].Next;//assert sequence of arguments correctly added as vars to codeblock
-            np:=mp+rx.ByteSize;
+            np:=mp;
             if p1<>0 then
              begin
               qx:=Sphere[p1];
@@ -682,11 +735,13 @@ begin
           if Sphere[rx.Parent].ThingType=ttConstructor then
            begin
             //called by constructor? cascade 'this'
-            if Sphere[Sphere[px.Parent].Parent].ThingType=ttConstructor then
+            if px.Name=0 then
              begin
               i:=stackIndex;
-              while (i<>0) and (stack[i-1].p<>px.Parent) do dec(i);
-              if i=0 then
+              if i<>0 then dec(i);
+              while (i<>0) and not((stack[i-1].p<>0) and
+                (Sphere[stack[i-1].p].ThingType=ttFnCall)) do dec(i);
+              if (i=0) or (Sphere[Sphere[stack[i-1].p].Target].ThingType<>ttConstructor) then
                begin
                 xp:=mp;//?
                 Sphere.Error(pe,'Could not find current code block for call');
@@ -698,11 +753,8 @@ begin
                end;
              end
             else
-             begin
-              //q:=Sphere[px.Body].FirstItem;
               xp:=mp;//+Sphere[q].Offset;//assert 0 (see StratoFnAddOverload)
-             end;
-            vtp(Sphere[px.Target].Parent,xp);
+            vtp(Sphere[rx.Parent].Parent,xp);
            end
           else
           //output result value
@@ -724,6 +776,7 @@ begin
        begin
         if p1=0 then //begin block
          begin
+          mp:=np;
           if px.FirstStatement<>0 then
            begin
             Push(p,px.FirstStatement,0,mp);
@@ -948,7 +1001,9 @@ begin
             if i=0 then q:=0 else
              begin
               q:=stack[i-1].p;
-              if Sphere[Sphere[q].Parent].ThingType=ttConstructor then
+              while (q<>0) and (Sphere[q].ThingType=ttCodeBlock) do
+                q:=Sphere[q].Parent;
+              if Sphere[q].ThingType=ttConstructor then
                begin
                 //original constructor class type stored right after 'this'
                 //see also StratoFnAddOverload
@@ -1035,7 +1090,12 @@ begin
                 else
                   //assert _basetype@-SystemWordSize
                   Move(FMem[i-SystemWordSize],i,SystemWordSize);
-                Sphere.Add(ttClassRef,)
+                q:=Sphere.Add(ttClassRef,qx);
+                qx.ByteSize:=SystemWordSize;
+                qx.EvaluatesTo:=i;
+                vtp(q,np);
+                inc(np,SystemWordSize);
+                Move(i,FMem[vp],SystemWordSize);
                end
               else
                begin
@@ -1764,3 +1824,4 @@ begin
 end;
 
 end.
+

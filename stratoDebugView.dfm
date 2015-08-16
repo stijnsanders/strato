@@ -95,6 +95,12 @@ object frmDebugView: TfrmDebugView
               Width = -1
               WidthType = (
                 -1)
+            end
+            item
+              Caption = 'What'
+              Width = -1
+              WidthType = (
+                -1)
             end>
           HideSelection = False
           ReadOnly = True
@@ -265,7 +271,14 @@ object frmDebugView: TfrmDebugView
           end
           item
             Alignment = taRightJustify
-            Caption = 'bp'
+            Caption = 'mp'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Alignment = taRightJustify
+            Caption = 'np'
             Width = -1
             WidthType = (
               -1)

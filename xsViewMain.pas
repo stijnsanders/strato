@@ -5,7 +5,7 @@ interface
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, ComCtrls, Menus, stratoSphere, ExtCtrls, StdCtrls, ImgList,
-  stratoDecl;
+  stratoDecl, AppEvnts;
 
 type
   TXsTreeNode=class(TTreeNode)
@@ -64,7 +64,7 @@ type
   private
     FSphere:TStratoSphere;
     FSrcFile:TStratoIndex;
-    FSrcPath:string;
+    FSrcPath,FFilePath,FSignature:string;
     w1,w2:integer;
     procedure LoadFile(const FilePath:string);
     function JumpNode(n: TTreeNode; const prefix: string;
@@ -77,6 +77,7 @@ type
     procedure DoCreate; override;
     procedure DoShow; override;
     procedure DoDestroy; override;
+    procedure WMActivateApp(var Msg: TWMActivateApp); message WM_ACTIVATEAPP;
   end;
 
 var
@@ -89,6 +90,76 @@ uses
 
 {$R *.dfm}
 
+function FileSignature(const FilePath:string):string;
+var
+  fh:THandle;
+  fd:TWin32FindData;
+begin
+  fh:=FindFirstFile(PChar(FilePath),fd);
+  if fh=INVALID_HANDLE_VALUE then Result:='' else
+   begin
+    Result:=Format('%.8x%.8x_%d',[
+      fd.ftLastWriteTime.dwHighDateTime,
+      fd.ftLastWriteTime.dwLowDateTime,
+      fd.nFileSizeLow]);//CRC?
+    Windows.FindClose(fh);
+   end;
+end;
+
+{ TXsTreeNode }
+
+const
+  iiDefault=0;
+  iiList=1;
+  iiItem=2;
+  iiNameSpace=3;
+  iiTypeDecl=4;
+  iiEnum=5;
+  iiRecord=6;
+  iiClass=7;
+  iiInterface=8;
+  iiArray=9;
+  iiSignature=10;
+  iiProperty=11;
+  iiFunction=12;
+  iiOverload=13;
+  iiVar=14;
+  iiThis=15;
+  iiLiteral=16;
+  iiLitVal=17;
+  iiCall=18;
+  iiBlock=19;
+  iiAssign=20;
+  iiArg=21;
+  iiArgByRef=22;
+  iiImport=23;
+  iiBinOp=24;
+  iiUnOp=25;
+  iiCast=26;
+  iiSelection=27;
+  iiIteration=28;
+  iiThrow=29;
+  iiSysCall=30;
+  iiVarIndex=31;
+  iiInherited=32;
+  iiPointer=33;
+  iiAddressOf=34;
+  iiDereference=35;
+  iiConstant=36;
+  iiConstructor=37;
+  iiDestructor=38;
+  iiClassRef=39;
+
+procedure TXsTreeNode.AfterConstruction;
+begin
+  inherited;
+  //defaults
+  Index:=0;
+  ExpandIndex:=0;
+  JumpIndex:=0;
+  JumpedTo:=nil;
+end;
+
 { TfrmXsViewMain }
 
 procedure TfrmXsViewMain.DoCreate;
@@ -98,6 +169,8 @@ begin
   Application.OnActivate:=AppActivate;
   FSrcPath:='';
   FSrcFile:=0;
+  FFilePath:='';
+  FSignature:='';
 end;
 
 procedure TfrmXsViewMain.DoDestroy;
@@ -120,6 +193,8 @@ begin
   FSphere:=TStratoSphere.Create;
   FSphere.LoadFromFile(FilePath);
 
+  FFilePath:=FilePath;
+  FSignature:=FileSignature(FilePath);
   Caption:='xsView - '+FilePath;
   Application.Title:=Caption;
   panHeader.Visible:=false;
@@ -306,58 +381,21 @@ begin
   //TODO: check file modified? reload?
 end;
 
-{ TXsTreeNode }
-
-const
-  iiDefault=0;
-  iiList=1;
-  iiItem=2;
-  iiNameSpace=3;
-  iiTypeDecl=4;
-  iiEnum=5;
-  iiRecord=6;
-  iiClass=7;
-  iiInterface=8;
-  iiArray=9;
-  iiSignature=10;
-  iiProperty=11;
-  iiFunction=12;
-  iiOverload=13;
-  iiVar=14;
-  iiThis=15;
-  iiLiteral=16;
-  iiLitVal=17;
-  iiCall=18;
-  iiBlock=19;
-  iiAssign=20;
-  iiArg=21;
-  iiArgByRef=22;
-  iiImport=23;
-  iiBinOp=24;
-  iiUnOp=25;
-  iiCast=26;
-  iiSelection=27;
-  iiIteration=28;
-  iiThrow=29;
-  iiSysCall=30;
-  iiVarIndex=31;
-  iiInherited=32;
-  iiPointer=33;
-  iiAddressOf=34;
-  iiDereference=35;
-  iiConstant=36;
-  iiConstructor=37;
-  iiDestructor=38;
-  iiClassRef=39;
-
-procedure TXsTreeNode.AfterConstruction;
+procedure TfrmXsViewMain.WMActivateApp(var Msg: TWMActivateApp);
+var
+  s:string;
 begin
-  inherited;
-  //defaults
-  Index:=0;
-  ExpandIndex:=0;
-  JumpIndex:=0;
-  JumpedTo:=nil;
+  if Msg.Active then
+    if FFilePath<>'' then
+     begin
+      s:=FileSignature(FFilePath);
+      if s<>FSignature then
+       begin
+        //TODO: MessageBox?
+        //TODO: attempt to restore expanded nodes state, selected/focused
+        LoadFile(FFilePath);
+       end;
+     end;
 end;
 
 function TfrmXsViewMain.JumpNode(n:TTreeNode;const prefix:string;
@@ -480,7 +518,7 @@ begin
         JumpNode(n,':dft=',p.InitialValue);
         JumpNode(n,':val=',p.Target);
        end;
-      ttThis,ttInherited:
+      ttThis://,ttInherited:
         n.JumpIndex:=p.EvaluatesTo;
       ttVarIndex:
        begin
@@ -592,7 +630,7 @@ begin
       ttFnCall:k:=iiCall;
       ttArgument:k:=iiArg;
       ttThis:k:=iiThis;
-      ttInherited:k:=iiInherited;
+      //ttInherited:k:=iiInherited;
       ttVarIndex:k:=iiVarIndex;
       ttCodeBlock:k:=iiBlock;
       ttAssign:k:=iiAssign;

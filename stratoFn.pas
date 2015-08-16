@@ -16,9 +16,10 @@ function StratoFnCallAddArgument(Sphere:TStratoSphere;
 function StratoFnCallFindSignature(Sphere:TStratoSphere;
   FnCall:TStratoIndex):boolean;
 function StratoFnCallFindInherited(Sphere:TStratoSphere;
-  Method:PStratoThing;Name:TStratoName):TStratoIndex;
+  MethodType:TStratoThingType;MethodParent,FirstArg:TStratoIndex;
+  Name:TStratoName):TStratoIndex;
 function StratoFnCallFindVirtual(Sphere:TStratoSphere;
-  ImplClass,Target:PStratoThing):TStratoIndex;
+  ImplClass,Target:TStratoIndex):TStratoIndex;
 function StratoFnCodeBlock(Sphere:TStratoSphere;
   Parent,ThisType,ValueType:TStratoIndex;
   ValueName:TStratoName;SrcPos:cardinal):TStratoIndex;
@@ -164,7 +165,7 @@ begin
    end;
   //return value
   if Sphere[Signature].EvaluatesTo<>0 then
-    if Sphere[Fn].ThingType=ttConstructor then//if Sphere[Fn].ThingType=ttClass then
+    if Sphere[ovl].ThingType=ttConstructor then//if Sphere[Fn].ThingType=ttClass then
      begin
       //with a constructor, store the effective class type here
       q:=Sphere.Add(ttVar,qx);
@@ -172,7 +173,7 @@ begin
       qx.Parent:=Result;//CodeBlock;
       qx.SrcPos:=Source.SrcPos;
       qx.Offset:=bs;
-      qx.EvaluatesTo:=TypeDecl_type;
+      qx.EvaluatesTo:=TypeDecl_type;//TODO:TypeDecl_ClassRef to TypeDecl_obj
       inc(bs,SystemWordSize);
       Sphere.Append(Sphere[Result].FirstItem,q);
      end
@@ -230,16 +231,14 @@ end;
 function StratoFnCallFindSignature(Sphere:TStratoSphere;
   FnCall:TStratoIndex):boolean;
 var
-  p,q,p1:TStratoIndex;
-  px,qx,rx:PStratoThing;
+  p,q,r,p1:TStratoIndex;
+  px,rx:PStratoThing;
 begin
+  //see also TStratoParser.Combine, pArgList
   //assert all Arguments added
   rx:=Sphere[FnCall];
   p:=rx.Target;
   px:=Sphere[p];
-  //TODO: remove use of fnCall.Body
-  //rx.Target:=0;//default
-  rx.Body:=0;//default
   if (p<>0) and (px.ThingType=ttVarIndex) and (px.EvaluatesTo=0) then
    begin
     p1:=p;
@@ -280,24 +279,6 @@ begin
             p:=Sphere[p].Next;
          end;
        end;
-      ttInherited:
-       begin
-        p:=Sphere[p].Parent;//ttCodeBlock
-        if p<>0 then
-          p:=StratoFnCallFindInherited(Sphere,
-            Sphere[Sphere[p].Parent],Sphere[FnCall].Name);
-        if (p<>0) and (Sphere[p].ThingType=ttConstructor) then
-         begin
-          q:=p;
-          qx:=Sphere[q];
-          p:=Sphere.Add(ttVarIndex,px);
-          rx:=Sphere[p1];
-          px.Parent:=Sphere[rx.Parent].FirstItem;//assert ttThis
-          px.SrcPos:=rx.SrcPos;
-          px.Target:=q;
-          rx.EvaluatesTo:=qx.Parent;
-         end;
-       end;
       ttFunction:
        begin
         p:=Sphere[p].FirstItem;//ttOverload
@@ -305,6 +286,30 @@ begin
           Sphere[Sphere[p].Target].FirstArgument,
           Sphere[FnCall].FirstArgument)) do
           p:=Sphere[p].Next;
+       end;
+      ttConstructor:
+       begin
+        p:=StratoFnCallFindInherited(Sphere,ttConstructor,Sphere[p].Parent,
+          Sphere[FnCall].FirstArgument,0);
+        if p<>0 then
+         begin
+          r:=Sphere[FnCall].Parent;
+          while (r<>0) and (Sphere[r].ThingType=ttCodeBlock) do
+            r:=Sphere[r].Parent;
+          rx:=Sphere[p1];
+          rx.EvaluatesTo:=r;
+          //rx.Target see below
+         end;
+       end;
+      ttDestructor:
+       begin
+        p:=StratoFnCallFindInherited(Sphere,ttDestructor,Sphere[p].Parent,0,0);
+       end;
+      ttOverload:
+       begin
+        p:=StratoFnCallFindInherited(Sphere,ttOverload,Sphere[p].Parent,
+          Sphere[FnCall].FirstArgument,Sphere[Sphere[p].Parent].Name);
+        //TODO:
        end;
       else
         p:=0;//error?
@@ -317,25 +322,25 @@ begin
       if Sphere[p].ThingType=ttConstructor then
         rx.EvaluatesTo:=rx.Target;//Sphere[p].Parent;
       rx.Target:=p;
-      //Sphere[FnCall].Body:=Sphere[p].Body;
      end;
    end;
 end;
 
 function StratoFnCallFindInherited(Sphere:TStratoSphere;
-  Method:PStratoThing;Name:TStratoName):TStratoIndex;
+  MethodType:TStratoThingType;MethodParent,FirstArg:TStratoIndex;
+  Name:TStratoName):TStratoIndex;
 var
   p,q:TStratoIndex;
   px:PStratoThing;
 begin
-  if (Method=nil) or (Method.Parent=0) then Result:=0 else
+  if MethodParent=0 then Result:=0 else
    begin
-    case Method.ThingType of
+    case MethodType of
       ttConstructor,ttDestructor,ttProperty:
-        px:=Sphere[Method.Parent];
+        px:=Sphere[MethodParent];
       ttOverload:
        begin
-        px:=Sphere[Sphere[Method.Parent].Parent];
+        px:=Sphere[Sphere[MethodParent].Parent];
         if px.ThingType<>ttClass then px:=nil;
        end;
       else px:=nil;//error?
@@ -344,7 +349,7 @@ begin
     if px=nil then q:=0 else q:=px.InheritsFrom;
     while (p=0) and (q<>0) do
      begin
-      case Method.ThingType of
+      case MethodType of
         ttConstructor:
          begin
           p:=Sphere[q].FirstItem;
@@ -373,38 +378,24 @@ begin
          end;
         else p:=0;//error?
       end;
-      if Method.ThingType<>ttProperty then
+      if MethodType<>ttProperty then
         while (p<>0) and not(StratoFnArgListsMatch(Sphere,
-          Method.FirstArgument,Sphere[p].FirstArgument)) do
+          FirstArg,Sphere[p].FirstArgument)) do
          begin
           p:=Sphere[p].Next;
-          if Method.ThingType=ttConstructor then
+          if MethodType=ttConstructor then
             while (p<>0) and (Sphere[p].ThingType<>ttConstructor) do
               p:=Sphere[p].Next;
          end;
       if (p=0) and (q<>0) then
         q:=Sphere[q].InheritsFrom;
      end;
-    //default to the constructor without arguments
-    if (p=0) and (Method.ThingType=ttConstructor) then
-     begin
-      q:=px.InheritsFrom;
-      while (p=0) and (q<>0) do
-       begin
-        p:=Sphere[q].FirstItem;
-        while (p<>0) and not(
-          (Sphere[p].ThingType=ttConstructor) and (Sphere[p].FirstArgument=0)) do
-          p:=Sphere[p].Next;
-        if (p=0) and (q<>0) then
-          q:=Sphere[q].InheritsFrom;
-       end;
-     end;
     Result:=p;
    end;
 end;
 
 function StratoFnCallFindVirtual(Sphere:TStratoSphere;
-  ImplClass,Target:PStratoThing):TStratoIndex;
+  ImplClass,Target:TStratoIndex):TStratoIndex;
 var
   n:TStratoName;
   p:TStratoIndex;
@@ -412,13 +403,13 @@ var
 begin
   //assert ImplClass<>nil and ImplClass.ThingType=ttClass
   //assert Target.ThingType=ttOverload
-  qx:=Target;
+  qx:=Sphere[Target];
   while (qx<>nil) and (qx.ThingType<>ttFunction) do //TODO: in [] like Sphere.FQN?
     qx:=Sphere[qx.Parent];
   if qx=nil then Result:=0 else
    begin
     n:=qx.Name;
-    qx:=ImplClass;
+    qx:=Sphere[ImplClass];
     p:=0;
     while (p=0) and (qx<>nil) do
      begin
@@ -428,7 +419,7 @@ begin
       else
         p:=0;//error?
       while (p<>0) and not(StratoFnArgListsMatch(Sphere,
-        Target.FirstArgument,Sphere[p].FirstArgument)) do
+        Sphere[Target].FirstArgument,Sphere[p].FirstArgument)) do
         p:=Sphere[p].Next;
       if p=0 then qx:=Sphere[qx.InheritsFrom];
      end;

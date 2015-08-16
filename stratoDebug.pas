@@ -147,8 +147,6 @@ begin
         [p.Parent,p.Target,p.FirstArgument,p.EvaluatesTo]);
     ttThis:
       Result:=Format('this @%d t=%d',[p.Offset,p.EvaluatesTo]);
-    ttInherited:
-      Result:=Format('inh  t=%d',[p.EvaluatesTo]);
     ttPointer:
       Result:=Format('ptr  %s  t=%d',
         [s.FQN(i),p.EvaluatesTo]);

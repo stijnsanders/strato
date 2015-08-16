@@ -20,7 +20,6 @@ TODO
 * virtual methods (as it currently stands, inheriters but pointer to base class don't jump to overriden overload)
 * data hiding (no access to values of class from 'outside' of class? doc!)
 * getters, setters (with parameters [])
-* inherited (@@@) on property getters/setters
 * protected, private (-, -- prefix?)
 * abstract methods (just with missing implementation?)
 * interfaces
@@ -30,6 +29,7 @@ TODO
 * accept "0" as null reference
 * foreach like &(item=collection) Enumerable interface
 * calling conventions?
+* replace syscall with genuine interrupt calls
 * something to avoid pre-processors (function versions like in D?)
 * disallow adding to namespaces from 'outside'
 * call-stack on exception
@@ -44,8 +44,6 @@ TODO
 * proper docs/guide/specs/tutorials
 * conditional compilation
 * xsView: status-bar with 'path' of node (build from parents with an index)
-* xsView: right-pane with source-file line:pos highlighted
-* xsView: look-up, global and local(=relative)
 
 IDEA'S
 ======

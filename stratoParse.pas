@@ -71,7 +71,7 @@ type
 
   TStratoParser=class(TStratoParserBase)
   private
-    stackSize,stackIndex:integer;
+    stackSize,stackIndex:cardinal;
     stack:array of record
       p:TPrecedence;
       t:TStratoIndex;
@@ -92,6 +92,7 @@ type
     procedure ParseLogic;
 
     procedure CheckPassed(p:TStratoIndex);
+    function CbStart(pp: TStratoIndex): TStratoIndex;
     procedure CbAdd(p:TStratoIndex);
   public
     constructor Create(ASphere: TStratoSphere; ASource: TStratoSource);
@@ -997,7 +998,7 @@ begin
   stackSize:=stackGrowSize;
   SetLength(stack,stackSize);
   cb:=0;
-  cbInhCalled:=false;
+  cbInhCalled:=false;//see also CbStart
   rd:=0;
   while not Source.Done do
     if cb=0 then
@@ -1425,6 +1426,17 @@ begin
    end;
 end;
 
+
+function TStratoParser.CbStart(pp: TStratoIndex): TStratoIndex;
+begin
+  //switch to ParseLogic
+  //assert cb=0
+  cb:=pp;
+  cbInhCalled:=false;
+  //more?
+  Result:=pp;
+end;
+
 procedure TStratoParser.CbAdd(p:TStratoIndex);
 var
   q:TStratoIndex;
@@ -1587,11 +1599,8 @@ begin
                   //TODO: check declared somewhere later
                  end
                 else
-                 begin
-                  cb:=StratoFnCodeBlock(Sphere,p,ns,q,n,Source.SrcPos);
-                  px.ValueFrom:=cb;
-                  cbInhCalled:=false;
-                 end;
+                  px.ValueFrom:=CbStart(
+                    StratoFnCodeBlock(Sphere,p,ns,q,n,Source.SrcPos));
                 p:=0;
                end
               else
@@ -1942,8 +1951,7 @@ begin
                     qx.SrcPos:=Source.SrcPos;
                    end;
                 end;
-              cb:=StratoFnOverloadCodeBlock(Sphere,Source,q,p,src);
-              cbInhCalled:=false;
+              CbStart(StratoFnOverloadCodeBlock(Sphere,Source,q,p,src));
               p:=0;
              end;
             else Source.Error('unsupported signature syntax');
@@ -2096,9 +2104,7 @@ begin
         px.Target:=q;
         rx.Target:=p;
         //start code block
-        cb:=StratoFnCodeBlock(Sphere,r,q,0,0,Source.SrcPos);
-        rx.Body:=cb;
-        cbInhCalled:=false;
+        rx.Body:=CbStart(StratoFnCodeBlock(Sphere,r,q,0,0,Source.SrcPos));
         p:=0;
        end
       else
@@ -2317,11 +2323,8 @@ begin
           //TODO: check declared somewhere later
          end
         else
-         begin
-          cb:=StratoFnCodeBlock(Sphere,r,rd,p,n,Source.SrcPos);
-          px.ValueFrom:=cb;
-          cbInhCalled:=false;
-         end;
+          px.ValueFrom:=CbStart(
+            StratoFnCodeBlock(Sphere,r,rd,p,n,Source.SrcPos));
        end;
 
      end;
@@ -2527,7 +2530,6 @@ begin
         if (px.ThingType=ttFunction)
           or (px.ThingType=ttVarIndex) //and px.Target.ThingType=ttFunction
           or (px.ThingType=ttClass) //constructor?
-          or (px.ThingType=ttInherited)
           or ((px.ThingType=ttVar) and (px.EvaluatesTo<>0)
             and (Sphere[px.EvaluatesTo].ThingType=ttPointer)
             and (Sphere[Sphere[px.EvaluatesTo].EvaluatesTo].ThingType=ttSignature)
@@ -2535,7 +2537,6 @@ begin
           or (px.ThingType=ttThis) //constructor/destructor call
           then //TODO: dedicated function GivesSignature
          begin
-          if px.ThingType=ttInherited then cbInhCalled:=true;
           q:=Sphere.Add(ttFnCall,qx);
           qx.Name:=n;//TODO: from px?
           qx.Parent:=cb;
@@ -2673,13 +2674,9 @@ begin
            begin
             //TODO: if not(cbInhCalled)
             if (rx.ValueFrom=p) and Source.IsNext([stAOpen]) then
-             begin
               //TODO: check code block's EvaluatesTo with property's?
-              cb:=StratoFnCodeBlock(Sphere,r,
-                rx.Parent,rx.EvaluatesTo,rx.Name,Source.SrcPos);
-              rx.AssignTo:=cb;
-              cbInhCalled:=false;
-             end
+              rx.AssignTo:=CbStart(StratoFnCodeBlock(Sphere,r,
+                rx.Parent,rx.EvaluatesTo,rx.Name,Source.SrcPos))
             else
               Source.Skip(stSemiColon);//closing property declaration
            end;
@@ -2688,7 +2685,14 @@ begin
           if (rx.ThingType=ttConstructor) and not(cbInhCalled)
             and (rx.Parent<>TypeDecl_object) and (rx.Parent<>0) then
            begin
-            r:=StratoFnCallFindInherited(Sphere,rx,0);
+            r:=StratoFnCallFindInherited(Sphere,ttConstructor,
+              rx.Parent,rx.FirstArgument,0);
+            if (r=0) and (rx.FirstArgument<>0) then
+             begin
+              //default to inherited constructor without arguments
+              rx.FirstArgument:=0;
+              r:=StratoFnCallFindInherited(Sphere,ttConstructor,rx.Parent,0,0);
+             end;
             if r=0 then
               Source.Error('unable to find base constructor')
             else
@@ -2697,18 +2701,15 @@ begin
               qx.Name:=Sphere[Sphere[r].Parent].Name;//?
               qx.Parent:=p;
               qx.SrcPos:=Source.SrcPos;
-              qx.Body:=Sphere[r].Body;
-              qx.Target:=Sphere.Add(ttVarIndex,rx);
-              rx.Parent:=Sphere[p].FirstItem;//assert ttThis
-              rx.SrcPos:=Source.SrcPos;
-              rx.Target:=r;
+              //qx.EvaluatesTo:=
+              qx.Target:=r;
+              //arguments
               StratoFnArgByValues(Sphere,q,
                 Sphere[r].FirstArgument,
                 Sphere[Sphere[p].Parent].FirstArgument);
               //insert first into code block
               qx.Next:=Sphere[p].FirstStatement;
               Sphere[p].FirstStatement:=q;
-              //arguments
               //restore rx for below!
               rx:=Sphere[Sphere[p].Parent];
              end;
@@ -2736,7 +2737,6 @@ begin
               qx.Name:=Sphere[Sphere[r].Parent].Name;//?
               qx.Parent:=p;
               qx.SrcPos:=Source.SrcPos;
-              qx.Body:=Sphere[r].Body;
               qx.Target:=Sphere.Add(ttVarIndex,rx);
               rx.Parent:=Sphere[p].FirstItem;//assert ttThis
               rx.SrcPos:=Source.SrcPos;
@@ -3114,47 +3114,26 @@ begin
 
     stInherited://"@@@"
      begin
-      p:=0;
-      q:=Sphere[cb].Parent;
-      if q<>0 then
+      Juxta(p);
+      if Source.IsNext([stPOpen]) then
        begin
-        qx:=Sphere[q];
-        case qx.ThingType of
-          ttConstructor,ttDestructor:
-            q:=qx.Parent;
-          ttOverload:
-            q:=Sphere[qx.Parent].Parent;
-          ttProperty:
-           begin
-            q:=qx.Parent;
-            //assert Sphere[q].ThingType=ttClass
-            if q<>0 then
-              repeat
-                q:=Sphere[q].InheritsFrom;
-                p:=Sphere.Lookup(Sphere[q].FirstItem,qx.Name);
-              until (p<>0) or (q=0);
-            if (p<>0) and (Sphere[p].ThingType<>ttProperty) then p:=0;
-            q:=0;
-           end;
-          else q:=0;
-        end;
-       end;
-      if (q<>0) and (Sphere[q].ThingType=ttClass) then
-       begin
-        q:=Sphere[q].InheritsFrom;
-        if q=0 then
-          Source.Error('"@@@" undefined')
-        else
-         begin
-          p:=Sphere.Add(ttInherited,px);
-          px.Parent:=cb;
-          px.SrcPos:=Source.SrcPos;
-          px.EvaluatesTo:=q;
-          cbInhCalled:=false;
-         end;
+        //inherited from what?
+        i:=0;
+        while (i<stackIndex) and (stack[i].p<>pCodeBlock) do inc(i);
+        if i=stackIndex then p:=cb else p:=stack[i].t;
+        p:=Sphere[p].Parent;
+        //start FnCall, see Combine: pArgList
+        q:=Sphere.Add(ttFnCall,qx);
+        qx.Name:=0;//Sphere[p].Name;?
+        qx.Parent:=cb;
+        qx.SrcPos:=Source.SrcPos;
+        qx.Target:=p;//see Combine pArgList
+        Push(pArgList,q);
+        cbInhCalled:=true;
+        p:=0;
        end
       else
-        if p=0 then Source.Error('"@@@" undefined');
+        Source.Error('manipulating inherited pointer not allowed');
      end;
 
     stOpTypeIs://"?="

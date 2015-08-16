@@ -113,7 +113,9 @@ const
   ttFnCall       = $0084;
     //FirstArgument (0,ttArgument)
     //Target (ttVarIndex,ttOverload,ttConstructor,ttDestructor):
-    //EvaluatesTo (ttClass): only with ttConstructor, in case of class without own constructor 
+    //EvaluatesTo (ttClass): only with Target: ttConstructor,
+    //  in case of class without own constructor
+    //Name=0 when Target:ttConstructor and calling inherited constructor 
 
   ttArgument     = $00A0;
     //InitialValue (ttLiteral): default value (signature only)
@@ -185,7 +187,7 @@ const
     //Offset
     //EvaluatesTo (ttTypeDecl)
 
-  ttInherited    = $0029;
+//  ttInherited    = $0029;
     //EvaluatesTo (ttTypeDecl)
 
   ttPointer      = $00C0;
