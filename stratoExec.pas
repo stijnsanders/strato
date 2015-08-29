@@ -552,215 +552,215 @@ begin
       ttAlias:p:=px.Target;
 
       ttFnCall:
-       begin
-        q:=px.Target;
-        qx:=Sphere[q];
-        r:=p2;
-        if q=0 then
+        if px.Target=0 then
           Sphere.Error(pe,'call without function overload')
         else
-        if p1=0 then //determine call target
          begin
-          r:=0;//default
-          case qx.ThingType of
-            ttOverload:
-              r:=qx.Body;
-            ttVarIndex:
-             begin
-              //assert qx.FirstArgument=0
-              Push(p,IndexStep1,0,mp);
-              p:=qx.Parent;
-             end;
-            ttVar:
-             begin
-              Push(p,IndexStep1,0,mp);
-              p:=q;
-             end;
-            ttConstructor:
-             begin
-              if px.Name<>0 then
-               begin
-                //store default nil pointer, base class
-                //see also StratoFnAddOverload
-                i:=0;
-                Move(i,FMem[np],SystemWordSize);
-                i:=px.EvaluatesTo;//assert ttClass
-                Move(i,FMem[np+SystemWordSize],SystemWordSize);
-               end
-              else
-               begin
-                //constructor calling constructor: copy this and original class
-                //see also StratoFnAddOverload
-                i:=stackIndex;
-                while (i<>0) and (Sphere[stack[i-1].p].ThingType<>ttFnCall) do
-                  dec(i);
-                if i=0 then
-                  Sphere.Error(pe,'Unable to obtain parent constructor base pointer')//TODO:throw
-                else
-                 begin
-                  //assert stack[i-1].p].Target.ThingType=ttConstructor
-                  Move(FMem[stack[i-1].bp],FMem[np],SystemWordSize*2);
-                 end;
-                //assert vp=0
-               end;
-              r:=qx.Body;
-             end;
-            ttDestructor:
-              r:=qx.Body;
-            //TODO: ttInterface? ttClass?
-            else
-              Sphere.Error(p,'Unexpected call target');
-          end;
-         end
-        else
-        if (p2=0) and (p1=IndexStep1) then
-          case qx.ThingType of
-            ttVarIndex:
-             begin
-              //px.Target.ThingType=ttVarIndex see above
-              if vp=0 then
-                i:=vt //this null? assert in constructor
-              else
-                if Sphere[vt].ThingType=ttClass then
-                 begin
-                  Move(FMem[vp],vp,SystemWordSize);//dereference first
-                  //assert object._baseclass @-SystemWordSize
-                  Move(FMem[vp-SystemWordSize],i,SystemWordSize);
-                 end
-                else
-                  i:=vt;//more checks?
-              if i=vt then
-                q:=qx.Target
-              else
-                if TypeDecl_object=0 then
-                 begin
-                  Sphere.Error(p,'base class for dynamic calls not defined');
-                  q:=qx.Target;
-                 end
-                else
-                  q:=StratoFnCallFindVirtual(Sphere,i,qx.Target);//!
-              if q=0 then r:=0 else r:=Sphere[q].Body;
-              if r=0 then
-                Sphere.Error(p,'dynamic implementation not found')
-              else
-               begin
-                //get address for 'this' ("@@")
-                //q:=Sphere.Lookup(Sphere[r].FirstItem,Sphere.Dict.StrIdx('@@'));
-                q:=Sphere[r].FirstItem;
-                while (q<>0) and (Sphere[q].ThingType<>ttThis) do
-                  q:=Sphere[q].Next;
-                if q=0 then
-                  Sphere.Error(pe,'Could not find "@@"')
-                else
-                  //TODO: SameType? vt px.Target.Target
-                  Move(vp,FMem[mp+Sphere[q].Offset],SystemWordSize);//see ttThis
-               end;
-              vt:=0;
-             end;
-            //ttVar://TODO
-            else
-              raise Exception.Create('//TODO');
-          end;
-        //attention: no else here, in case r was set above
-        if r<>0 then
-         begin
-          rx:=Sphere[r];
-          if (rx.ThingType=ttCodeBlock) and (p<>p1) then
+          qx:=Sphere[px.Target];
+          //step 0: determine call target
+          if p1=0 then
            begin
-            //start evaluating arguments
-            p1:=px.FirstArgument;
-            p2:=Sphere[rx.Parent].FirstArgument;
-            if (p1<>0) and (p2=0) then
-              Sphere.Error(pe,'overload without argument values in code block')
-            else
-             begin
-              //push self (see ttThrow with Target=0 for break/abort)
-              Push(p,p,r,np);
-              if p1=0 then
+            r:=0;
+            case qx.ThingType of
+              ttOverload:
+                r:=qx.Body;
+              ttVarIndex:
                begin
-                //no arguments!
-                p:=r;
-               end
-              else
-               begin
-                //push function's code block (to address variables)
-                Push(r,0,0,np);
-
-                //start getting the first argument
-                qx:=Sphere[p1];
-                //if qx.ThingType<>ttArgByRef then
-                if qx.InitialValue<>0 then LiteralToMemory(Sphere,
-                  qx.InitialValue,qx.EvaluatesTo,np+Sphere[p2].Offset);
-                Push(p,p1,p2,np);
-                inc(np,rx.ByteSize);
-                p:=qx.Target;
+                //assert qx.FirstArgument=0
+                Push(p,IndexStep1,0,mp);
+                p:=qx.Parent;
                end;
-             end;
+              ttVar:
+               begin
+                Push(p,IndexStep1,0,mp);
+                p:=q;
+               end;
+              ttConstructor:
+               begin
+                r:=qx.Body;
+                if px.Name<>0 then
+                 begin
+                  //store default nil pointer, base class
+                  //see also StratoFnAddOverload
+                  i:=0;
+                  Move(i,FMem[np],SystemWordSize);
+                  i:=px.EvaluatesTo;//assert ttClass
+                  Move(i,FMem[np+SystemWordSize],SystemWordSize);
+                 end
+                else
+                 begin
+                  //constructor calling constructor: copy this and original class
+                  //see also StratoFnAddOverload
+                  i:=stackIndex;
+                  while (i<>0) and (Sphere[stack[i-1].p].ThingType<>ttFnCall) do
+                    dec(i);
+                  if i=0 then
+                    Sphere.Error(pe,'Unable to obtain parent constructor base pointer')//TODO:throw
+                  else
+                   begin
+                    //assert stack[i-1].p].Target.ThingType=ttConstructor
+                    Move(FMem[stack[i-1].bp],FMem[np],SystemWordSize*2);
+                   end;
+                  //assert vp=0
+                 end;
+               end;
+              ttDestructor:
+                r:=qx.Body;
+              //TODO: ttInterface? ttClass?
+              else
+                Sphere.Error(pe,'Unexpected call target');
+            end;
            end
           else
-          if p<>p1 then
-           begin
-            //store argument value
-            if vt=0 then
-              Sphere.Error(pe,'no value for argument "'+
-                string(Sphere.Dict.Str[Sphere[p1].Name])+'"')
-            else
-             begin
-              if Sphere[p2].ThingType=ttVarByRef then
-                Move(vp,FMem[mp+Sphere[p2].Offset],SystemWordSize)
-              else
+            r:=p2;
+          //step 1: target evaluated (see above: ttVar,ttVarIndex) store ttThis
+          if p1=IndexStep1 then
+            case qx.ThingType of
+              ttVarIndex:
                begin
-                //assert p2.ThingType=ttArgument
-                i:=ByteSize(Sphere,vt);
-                if i<>0 then Move(FMem[vp],FMem[mp+Sphere[p2].Offset],i);
+                if vp=0 then
+                  i:=vt //this null? assert in constructor
+                else
+                  if Sphere[vt].ThingType=ttClass then
+                   begin
+                    Move(FMem[vp],vp,SystemWordSize);//dereference first
+                    //assert object._baseclass @-SystemWordSize
+                    Move(FMem[vp-SystemWordSize],i,SystemWordSize);
+                   end
+                  else
+                    i:=vt;//more checks?
+                if i=vt then
+                  q:=qx.Target
+                else
+                  if TypeDecl_object=0 then
+                   begin
+                    Sphere.Error(p,'base class for dynamic calls not defined');
+                    q:=qx.Target;
+                   end
+                  else
+                    q:=StratoFnCallFindVirtual(Sphere,i,qx.Target);//!
+                if q=0 then r:=0 else r:=Sphere[q].Body;
+                if r=0 then
+                  Sphere.Error(p,'dynamic implementation not found')
+                else
+                 begin
+                  //get address for 'this' ("@@")
+                  q:=Sphere[r].Body;
+                  if q<>0 then q:=Sphere[q].FirstItem;
+                  while (q<>0) and (Sphere[q].ThingType<>ttThis) do
+                    q:=Sphere[q].Next;
+                  if q=0 then
+                    Sphere.Error(pe,'Could not find "@@"')
+                  else
+                    //TODO: SameType? vt px.Target.Target
+                    Move(vp,FMem[mp+Sphere[q].Offset],SystemWordSize);
+                 end;
+                vt:=0;
                end;
-              vt:=0;
-             end;
-            //next argument
-            p1:=Sphere[p1].Next;
-            p2:=Sphere[p2].Next;//assert sequence of arguments correctly added as vars to codeblock
-            np:=mp;
-            if p1<>0 then
-             begin
-              qx:=Sphere[p1];
-              if qx.InitialValue<>0 then LiteralToMemory(Sphere,
-                qx.InitialValue,qx.EvaluatesTo,mp+Sphere[p2].Offset);
-              Push(p,p1,p2,mp);
-              p:=qx.Target;
-             end;
-            //else p:=... code block pushed onto stack already
-           end
-          else //assert rx.ThingType=ttCodeBlock, see Push(p,p,r,np) above
-          //constructor
-          if Sphere[rx.Parent].ThingType=ttConstructor then
+              //ttVar://TODO
+              else
+                raise Exception.Create('//TODO');
+            end;
+          //found a body, or enumerating arguments?
+          if r<>0 then
            begin
-            //called by constructor? cascade 'this'
-            if px.Name=0 then
+            rx:=Sphere[r];
+            //step 2: evaluate arguments
+            if p1<>p then
              begin
-              i:=stackIndex;
-              if i<>0 then dec(i);
-              while (i<>0) and not((stack[i-1].p<>0) and
-                (Sphere[stack[i-1].p].ThingType=ttFnCall)) do dec(i);
-              if (i=0) or (Sphere[Sphere[stack[i-1].p].Target].ThingType<>ttConstructor) then
+              //step 2a: start evaluating arguments
+              if rx.ThingType=ttCodeBlock then
                begin
-                xp:=mp;//?
-                Sphere.Error(pe,'Could not find current code block for call');
+                p1:=px.FirstArgument;
+                p2:=Sphere[rx.Parent].FirstArgument;
+                if (p1<>0) and (p2=0) then
+                  Sphere.Error(pe,'overload without argument values in code block')
+                else
+                  if p1<>0 then
+                   begin
+                    //push function's code block (to address variables)
+                    Push(r,0,0,np);
+                    //start getting the first argument
+                    qx:=Sphere[p1];
+                    //TODO: //if qx.ThingType<>ttArgByRef then
+                    if qx.InitialValue<>0 then LiteralToMemory(Sphere,
+                      qx.InitialValue,qx.EvaluatesTo,np+Sphere[p2].Offset);
+                    Push(p,p1,p2,np);
+                    inc(np,rx.ByteSize);
+                    p:=qx.Target;
+                   end;
                end
               else
+              //step 2b: store argument value, next argument?
                begin
-                xp:=stack[i-1].bp;
-                Move(FMem[mp],FMem[xp],SystemWordSize);
+                //store argument value
+                if vt=0 then
+                  Sphere.Error(pe,'no value for argument "'+
+                    string(Sphere.Dict.Str[Sphere[p1].Name])+'"')
+                else
+                 begin
+                  if Sphere[p2].ThingType=ttVarByRef then
+                    Move(vp,FMem[mp+Sphere[p2].Offset],SystemWordSize)
+                  else
+                   begin
+                    //assert p2.ThingType=ttArgument
+                    i:=ByteSize(Sphere,vt);
+                    if i<>0 then Move(FMem[vp],FMem[mp+Sphere[p2].Offset],i);
+                   end;
+                  vt:=0;
+                 end;
+                //next argument
+                p1:=Sphere[p1].Next;
+                p2:=Sphere[p2].Next;//assert sequence of arguments correctly added as vars to codeblock
+                np:=mp;
+                if p1=0 then
+                  Pop(r,p1,p2,xp)
+                else
+                 begin
+                  qx:=Sphere[p1];
+                  if qx.InitialValue<>0 then LiteralToMemory(Sphere,
+                    qx.InitialValue,qx.EvaluatesTo,mp+Sphere[p2].Offset);
+                  Push(p,p1,p2,mp);
+                  p:=qx.Target;
+                 end;
+               end;
+              //step 3: jump to target body
+              if (p1<>p) and (p=p0) then
+               begin
+                //push self (see ttThrow with Target=0 for break/abort)
+                Push(p,p,r,np);
+                p:=r;//ttCodeBlock
                end;
              end
             else
-              xp:=mp;//+Sphere[q].Offset;//assert 0 (see StratoFnAddOverload)
-            vtp(Sphere[rx.Parent].Parent,xp);
-           end
-          else
-          //output result value
-           begin
-            qx:=FnSignature(Sphere,px);
-            if qx.EvaluatesTo<>0 then
+            //step 4: output result value
+            if Sphere[rx.Parent].ThingType=ttConstructor then
+             begin
+              //called by constructor? cascade 'this'
+              if px.Name=0 then
+               begin
+                i:=stackIndex;
+                if i<>0 then dec(i);
+                while (i<>0) and not((stack[i-1].p<>0) and
+                  (Sphere[stack[i-1].p].ThingType=ttFnCall)) do dec(i);
+                if (i=0) or (Sphere[Sphere[stack[i-1].p].
+                  Target].ThingType<>ttConstructor) then
+                 begin
+                  xp:=mp;//?
+                  Sphere.Error(pe,'Could not find current code block for call');
+                 end
+                else
+                 begin
+                  xp:=stack[i-1].bp;
+                  Move(FMem[mp],FMem[xp],SystemWordSize);
+                 end;
+               end
+              else
+                xp:=mp;//+Sphere[q].Offset;//assert 0 (see StratoFnAddOverload)
+              vtp(px.EvaluatesTo,xp);
+             end
+            else
+            if FnCallEvaluatesTo(Sphere,px)<>0 then
              begin
               //assert first value in code block is return value (after this)
               q:=rx.FirstItem;
@@ -770,7 +770,6 @@ begin
              end;
            end;
          end;
-       end;
 
       ttCodeBlock:
        begin
@@ -903,7 +902,6 @@ begin
                 if rx<>nil then
                   case rx.ThingType of
                     ttVar,ttVarByRef,ttThis:inc(vp,rx.Offset);
-                    ttFunction,ttConstructor,ttDestructor:;
                     ttProperty:
                      begin
                       //property getter, locate object first
@@ -1143,7 +1141,7 @@ begin
               stOpEQ:
                begin
                 i:=0;
-                if SameType(Sphere,q,vt) then
+                if SameType(Sphere,vt,q) then
                  begin
                   //TODO: .ByteSize
                   Move(FMem[xp],i,SystemWordSize);
@@ -1220,9 +1218,9 @@ begin
                   k:=0;
                   case TStratoToken(px.Op) of
                     stOpNEQ:if i<>j then k:=1;
-                    stOpLT:if i<j then k:=1;
+                    stOpLT: if i<j  then k:=1;
                     stOpLTE:if i<=j then k:=1;
-                    stOpGT:if i>j then k:=1;
+                    stOpGT: if i>j  then k:=1;
                     stOpGTE:if i>=j then k:=1;
                   end;
                   vtp(TypeDecl_bool,np);
@@ -1240,7 +1238,7 @@ begin
                   k:=0;
                   case TStratoToken(px.Op) of
                     stOpAnd:if (i<>0) and (j<>0) then k:=1 else k:=0;
-                    stOpOr:if (i<>0) or (j<>0) then k:=1 else k:=0;
+                    stOpOr: if (i<>0) or  (j<>0) then k:=1 else k:=0;
                     stOpXor:if (i<>0) xor (j<>0) then k:=1 else k:=0;
                   end;
                   vtp(TypeDecl_bool,np);

@@ -1,7 +1,7 @@
 oo @ 8000
 
 object:={
-	_basetype:type@-@?0;//class
+	_basetype:?object@-@?0;//class
 	_refcount:number@-@?0*2;
 	//implemented interfaces?
 }

@@ -10,6 +10,7 @@ const
 function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
+function IsCallable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 function IsAddressable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
@@ -54,20 +55,7 @@ begin
     else
       case px.ThingType of
         ttFnCall:
-         begin
-          if (px.Target<>0) and (Sphere[px.Target].ThingType=ttConstructor)
-            and (px.EvaluatesTo<>0) then
-           begin
-            //constructor called may be of base class when class doesn't
-            //have a constructor of its own that matches
-            Result:=px.EvaluatesTo;
-           end
-          else
-           begin
-            px:=FnSignature(Sphere,px);
-            if px=nil then Result:=0 else Result:=px.EvaluatesTo;
-           end;
-         end;
+          Result:=FnCallEvaluatesTo(Sphere,px);
         //TODO: ttAlias?
         //TODO: ttFunction?
         ttClass:
@@ -76,7 +64,7 @@ begin
           px.ByteSize:=SystemWordSize;
           px.EvaluatesTo:=p;
          end;
-        ttOverload:
+        ttOverload,ttConstructor:
           Result:=px.Target;//ttSignature
         //else Result:=0;//see default
       end;
@@ -90,7 +78,8 @@ begin
     raise Exception.Create('request for byte size of nothing')//Result:=0
   else
     case Sphere[p].ThingType of
-      ttEnumeration,ttSignature,ttPointer,ttClass,ttInterface:
+      ttEnumeration,ttSignature,ttPointer,
+      ttClass,ttInterface,ttClassRef:
         Result:=SystemWordSize;
       ttTypeDecl,ttRecord,ttArray:
         Result:=Sphere[p].ByteSize;
@@ -136,10 +125,18 @@ begin
           while (s1<>0) and (s1<>s2) do s1:=Sphere[s1].InheritsFrom;
           Result:=(s1=s2) and (ptr1=ptr2);
          end;
+        ttClassRef:
+         begin
+          s1:=Sphere[s1].EvaluatesTo;
+          s2:=Sphere[s2].EvaluatesTo;
+          while (s1<>0) and (s1<>s2) do s1:=Sphere[s1].InheritsFrom;
+          Result:=(s1=s2) and (ptr1=ptr2);
+         end;
         ttSignature:
          begin
           x1:=Sphere[s1];
           x2:=Sphere[s2];
+          //TODO: local stack array
           if SameType(Sphere,x1.EvaluatesTo,x2.EvaluatesTo) and
             SameType(Sphere,x1.Target,x2.Target) then
            begin
@@ -164,8 +161,49 @@ begin
         else Result:=false;
       end
     else
+    //if (tt=ttClassRef) and (s2=TypeDecl_type) then
+    if (tt=ttTypeDecl) and (s1=TypeDecl_type) and (Sphere[s2].ThingType=ttClassRef) then
+      Result:=true
+    else
       Result:=false;
    end;
+end;
+
+function IsCallable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
+var
+  px:PStratoThing;
+begin
+  //see also StratoFnCallFindSignature
+  Result:=false;//default
+  px:=Sphere[p];
+  if px.ThingType=ttCast then
+   begin
+    p:=px.EvaluatesTo;
+    px:=Sphere[p];
+   end;
+  case px.ThingType of
+    ttFunction:
+      Result:=true;
+    ttClass://constructor
+      Result:=true;
+    ttVar:
+      if px.EvaluatesTo<>0 then
+       begin
+        px:=Sphere[px.EvaluatesTo];
+        case px.ThingType of
+          ttPointer:
+            Result:=Sphere[px.EvaluatesTo].ThingType=ttSignature;//more?
+          ttClassRef:
+            Result:=true;
+        end;
+       end;
+    ttVarIndex:
+      //if px.Target.ThingType=ttFunction
+      Result:=true;//TODO
+    //TODO: ttThis?
+    //TODO: ttClassRef: only class methods
+    //TODO: dedicated function GivesSignature
+  end;
 end;
 
 function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;

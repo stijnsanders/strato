@@ -57,7 +57,7 @@ const
   StratoSphereDataBlockSize=100;//$1000;
   StratoSphereDataGrowSize=50;//$100;
 
-  StratoSphereFileVersion=$00000102;//0.1.2
+  StratoSphereFileVersion=$00000103;//0.1.3
 
 { TStratoSphere }
 

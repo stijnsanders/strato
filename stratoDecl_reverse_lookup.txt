@@ -6,8 +6,9 @@
 0006 ttCatch
 0007 ttSysCall
 0008 ttThrow
-000A ttConstructor
-000B ttDestructor
+000A ttConstructors
+000B ttConstructor
+000C ttDestructor
 0010 tt__Resolvable
 0011 ttNameSpace
 0020 tt__Typed
@@ -18,10 +19,9 @@
 0026 ttBinaryOp
 0027 ttVarIndex
 0028 ttThis
-0029 //ttInherited
+0029 ttProperty
 002A ttAddressOf
 002B ttDereference
-002C ttProperty
 0040 tt__IsType
 0041 ttArray
 0050 ttTypeDecl

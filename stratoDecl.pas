@@ -113,9 +113,9 @@ const
   ttFnCall       = $0084;
     //FirstArgument (0,ttArgument)
     //Target (ttVarIndex,ttOverload,ttConstructor,ttDestructor):
-    //EvaluatesTo (ttClass): only with Target: ttConstructor,
+    //EvaluatesTo (ttClass): only with constructor,
     //  in case of class without own constructor
-    //Name=0 when Target:ttConstructor and calling inherited constructor 
+    //Name=0 when constructor and calling inherited constructor 
 
   ttArgument     = $00A0;
     //InitialValue (ttLiteral): default value (signature only)
@@ -187,9 +187,6 @@ const
     //Offset
     //EvaluatesTo (ttTypeDecl)
 
-//  ttInherited    = $0029;
-    //EvaluatesTo (ttTypeDecl)
-
   ttPointer      = $00C0;
     //ByteSize: SystemWordSize
     //EvaluatesTo (ttTypeDecl)
@@ -210,17 +207,23 @@ const
     //EvaluatesTo (ttTypeDecl)
 
   ttClass        = $00D0;
-    //FirstItem (0, ttVar, ttFunction, ttProperty, ttConstructor)
+    //FirstItem (0, ttVar, ttFunction, ttProperty, ttConstructors)
     //ByteSize: size of data, not value since that's a pointer
     //InheritsFrom (0, ttClass)
     //Target (ttClassInfo)
 
-  ttConstructor  = $000A;
-    //FirstArgument (*): first argument value in overload body
-    //Target (ttSignature)
-    //Body (ttCodeBlock): first overload body
+  ttConstructors = $000A;
+    // (like ttFunction)
+    //FirstItem (0,ttConstructor): first constructor
 
-  ttDestructor   = $000B;
+  ttConstructor  = $000B;
+    // (like ttOverload)
+    //SourceFile (ttSourceFile)
+    //FirstArgument (*): first argument value in overload body
+    //Target (ttSignature): call signature
+    //Body (ttCodeBlock): overload body
+
+  ttDestructor   = $000C;
     //Target (ttSignature)
     //Body (ttCodeBlock)
 
@@ -229,7 +232,7 @@ const
     //FirstItem (ttVar, ttFunction, ttProperty)
     //InheritsFrom (ttRecord)
 
-  ttProperty     = $002C;
+  ttProperty     = $0029;
     //EvaluatesTo (ttTypeDecl)
     //ValueFrom (ttOverload)
     //AssignTo (ttOverload)
@@ -266,7 +269,7 @@ type
         AssignTo:TStratoIndex;
       );
       ttBinaryOp:(
-        SourceFile:TStratoIndex;//ttOverload only!
+        SourceFile:TStratoIndex;//ttOverload,ttConstructor only!
         Left,
         Right:TStratoIndex;
       );

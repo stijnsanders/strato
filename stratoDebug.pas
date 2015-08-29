@@ -17,7 +17,8 @@ uses SysUtils, Classes;
 const
   TokenName:array[TStratoToken] of string=(
     'id','string','numeric','',
-    ';',',','.',':','=','@','^','?','&','(',')','{','}','[',']',
+    ';',',','.',':','=','@','^','?','&','~',
+    '(',')','{','}','[',']',
     '---','<<<','>>>',':::','???','!!!','@@','@@@','??',
     ':=','+=','-=','*=','/=','%=','||=','&&=',
     '=','<>','<','<=','>','>=','&&','||','!','|!',
@@ -146,7 +147,8 @@ begin
       Result:=Format('.[]  %d.%d[%d]  t=%d',
         [p.Parent,p.Target,p.FirstArgument,p.EvaluatesTo]);
     ttThis:
-      Result:=Format('this @%d t=%d',[p.Offset,p.EvaluatesTo]);
+      Result:=Format('this @%d t=%d',
+        [p.Offset,p.EvaluatesTo]);
     ttPointer:
       Result:=Format('ptr  %s  t=%d',
         [s.FQN(i),p.EvaluatesTo]);
@@ -159,9 +161,12 @@ begin
     ttClass:
       Result:=Format('cls  %s  #%d ->%d <-%d',
         [s.FQN(i),p.ByteSize,p.FirstItem,p.InheritsFrom]);
+    ttConstructors:
+      Result:=Format('ctor ->%d',
+        [p.FirstItem]);
     ttConstructor:
-      Result:=Format('ctor %d: %d(%d){%d}',
-        [p.Parent,p.Target,p.FirstArgument,p.Body]);
+      Result:=Format('ctor %d(%d){%d}',
+        [p.Target,p.FirstArgument,p.Body]);
     ttDestructor:
       Result:=Format('dtor %d: %d(){%d}',
         [p.Parent,p.Target,p.Body]);

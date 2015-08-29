@@ -19,6 +19,7 @@ type
     stCaret,//"^"
     stQuestionMark,//"?"
     stAmpersand,//"&"
+    stTilde,//'~'
 
     stPOpen,stPClose,//"()"
     stAOpen,stAClose,//"{}"
@@ -361,6 +362,7 @@ begin
           else Add(1,stColon);
         end;
       'A'..'Z','_','a'..'z':GetIdentifier;
+      '~':Add(1,stTilde);
       else Add(1,st_Unknown);//raise?
     end;
     SkipWhiteSpace;

@@ -146,9 +146,10 @@ const
   iiAddressOf=34;
   iiDereference=35;
   iiConstant=36;
-  iiConstructor=37;
-  iiDestructor=38;
-  iiClassRef=39;
+  iiConstructors=37;
+  iiConstructor=38;
+  iiDestructor=39;
+  iiClassRef=40;
 
 procedure TXsTreeNode.AfterConstruction;
 begin
@@ -486,7 +487,7 @@ begin
         n.JumpIndex:=p.Target;
       ttArray:
         n.JumpIndex:=p.ElementType;
-      ttFunction:
+      ttFunction,ttConstructors:
         j:=p.FirstItem;
       ttVar,ttConstant,ttLiteral:
        begin
@@ -585,7 +586,7 @@ begin
         JumpNode(n,':v=',p.FirstItem);
         BuildNode(n,p.Body);
        end;
-      ttPointer,ttArgByRef,ttVarByRef:
+      ttPointer,ttArgByRef,ttVarByRef,ttClassRef:
         n.JumpIndex:=p.EvaluatesTo;
       ttAddressOf,ttDereference:
        begin
@@ -626,6 +627,7 @@ begin
       ttBinaryData:k:=iiLitVal;
       ttSignature:k:=iiSignature;
       ttOverload:k:=iiOverload;
+      ttConstructors:k:=iiConstructors;
       ttConstructor:k:=iiConstructor;
       ttFnCall:k:=iiCall;
       ttArgument:k:=iiArg;
