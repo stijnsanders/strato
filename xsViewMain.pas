@@ -395,6 +395,8 @@ begin
         //TODO: MessageBox?
         //TODO: attempt to restore expanded nodes state, selected/focused
         LoadFile(FFilePath);
+        FSrcPath:='';//case reload
+        FSrcFile:=0;
        end;
      end;
 end;

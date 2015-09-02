@@ -113,8 +113,7 @@ const
   ttFnCall       = $0084;
     //FirstArgument (0,ttArgument)
     //Target (ttVarIndex,ttOverload,ttConstructor,ttDestructor):
-    //EvaluatesTo (ttClass): only with constructor,
-    //  in case of class without own constructor
+    //EvaluatesTo (0,*): return value type
     //Name=0 when constructor and calling inherited constructor 
 
   ttArgument     = $00A0;
@@ -178,10 +177,10 @@ const
     //ElementType (ttTypeDecl)
 
   ttVarIndex     = $0027;
-    //Parent (ttVar)
-    //Target
-    //EvaluateTo
-    //FirstArgument: index value
+    //Parent (ttVar): x in x[y].z
+    //Target: z in x[y].z
+    //FirstArgument: y in x[y].z
+    //EvaluateTo (0,ttTypeDecl)
 
   ttThis         = $0028;
     //Offset

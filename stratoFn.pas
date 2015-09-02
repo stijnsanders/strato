@@ -25,7 +25,6 @@ function StratoFnCodeBlock(Sphere:TStratoSphere;
   ValueName:TStratoName;SrcPos:cardinal):TStratoIndex;
 procedure StratoFnArgByValues(Sphere:TStratoSphere;
   FnCall,FirstArg,FirstValue:TStratoIndex);
-function FnCallEvaluatesTo(Sphere:TStratoSphere;Fn:PStratoThing):TStratoIndex;
 
 implementation
 
@@ -243,8 +242,8 @@ end;
 function StratoFnCallFindSignature(Sphere:TStratoSphere;
   FnCall:TStratoIndex):boolean;
 var
-  p,q,p1:TStratoIndex;
-  px:PStratoThing;
+  p,p1,q,r,rt:TStratoIndex;
+  px,qx:PStratoThing;
 begin
   //see also TStratoParser.Combine, pArgList
   //assert all Arguments added
@@ -257,87 +256,103 @@ begin
    end
   else
     p1:=FnCall;
-  Result:=false;//default
-  while (p<>0) and not(Result) do
+  r:=0;//default
+  rt:=0;//default
+  while (r=0) and (p<>0) do
    begin
     px:=Sphere[p];
     case px.ThingType of
 
-      ttVar,ttVarIndex,ttCast,ttClassRef:
+      ttVar,ttCast:
        begin
+        q:=Sphere.Add(ttVarIndex,qx);
+        qx.Parent:=p;
+        qx.SrcPos:=Sphere[FnCall].SrcPos;
+        //px.Target:=//see p1:= below
+        //qx.EvaluatesTo:=?
+        Sphere[p1].Target:=q;
+        p1:=q;
         p:=px.EvaluatesTo;
-        p1:=0;//leave target for run-time evaluation
        end;
+
+      ttVarIndex,ttClassRef:
+        p:=px.EvaluatesTo;
+
+      ttFunction:
+       begin
+        r:=Sphere[p].FirstItem;//ttOverload
+        while (r<>0) and not(StratoFnArgListsMatch(Sphere,
+          Sphere[Sphere[r].Target].FirstArgument,
+          Sphere[FnCall].FirstArgument)) do
+          r:=Sphere[r].Next;
+        if r<>0 then rt:=Sphere[Sphere[r].Target].EvaluatesTo;
+        p:=0;
+       end;
+
+      ttOverload:
+       begin
+        r:=StratoFnCallFindInherited(Sphere,ttOverload,Sphere[p].Parent,
+          Sphere[FnCall].FirstArgument,Sphere[Sphere[p].Parent].Name);
+        if r<>0 then rt:=Sphere[Sphere[r].Target].EvaluatesTo;
+        p:=0;
+       end;
+
       //ttInterface? //TODO:
 
       ttClass:
        begin
         //see also StratoFnCallFindInherited!
-        Sphere[FnCall].EvaluatesTo:=p;
-        q:=p;
-        p:=0;
+        rt:=p;
+        r:=0;
         repeat
-          if p=0 then
+          if r=0 then
            begin
-            p:=Sphere[q].FirstItem;
-            while (p<>0) and (Sphere[p].ThingType<>ttConstructors) do
-              p:=Sphere[p].Next;
-            if p<>0 then p:=Sphere[p].FirstItem;//ttConstructor
+            r:=Sphere[p].FirstItem;
+            while (r<>0) and (Sphere[r].ThingType<>ttConstructors) do
+              r:=Sphere[r].Next;
+            if r<>0 then r:=Sphere[r].FirstItem;//ttConstructor
            end
           else
            begin
-            p:=Sphere[p].Next;
-            if p=0 then q:=Sphere[q].InheritsFrom;
+            r:=Sphere[r].Next;
+            if r=0 then p:=Sphere[p].InheritsFrom;
            end;
-        until (q=0) or ((p<>0) and StratoFnArgListsMatch(Sphere,
-            Sphere[Sphere[p].Target].FirstArgument,
+        until (p=0) or ((r<>0) and StratoFnArgListsMatch(Sphere,
+            Sphere[Sphere[r].Target].FirstArgument,
             Sphere[FnCall].FirstArgument));
-        Result:=p<>0;
-       end;
-
-      ttFunction:
-       begin
-        p:=Sphere[p].FirstItem;//ttOverload
-        while (p<>0) and not(StratoFnArgListsMatch(Sphere,
-          Sphere[Sphere[p].Target].FirstArgument,
-          Sphere[FnCall].FirstArgument)) do
-          p:=Sphere[p].Next;
-        Result:=p<>0;
-       end;
-
-      ttOverload:
-       begin
-        p:=StratoFnCallFindInherited(Sphere,ttOverload,Sphere[p].Parent,
-          Sphere[FnCall].FirstArgument,Sphere[Sphere[p].Parent].Name);
-        Result:=p<>0;
+        p:=0;
        end;
 
       ttConstructor:
        begin
         //constructor calling inherited constructor
-        p:=StratoFnCallFindInherited(Sphere,ttConstructor,Sphere[p].Parent,
+        r:=StratoFnCallFindInherited(Sphere,ttConstructor,Sphere[p].Parent,
           Sphere[FnCall].FirstArgument,0);
-        if p<>0 then
+        if r<>0 then
          begin
-          Result:=true;
-          q:=Sphere[FnCall].Parent;
-          while (q<>0) and (Sphere[q].ThingType=ttCodeBlock) do
-            q:=Sphere[q].Parent;
-          Sphere[FnCall].EvaluatesTo:=q;
-          //.Target see below
+          p:=Sphere[FnCall].Parent;
+          while (p<>0) and (Sphere[p].ThingType=ttCodeBlock) do
+            p:=Sphere[p].Parent;
+          rt:=p;
          end;
+        p:=0;
        end;
 
       ttDestructor:
        begin
-        p:=StratoFnCallFindInherited(Sphere,ttDestructor,Sphere[p].Parent,0,0);
-        Result:=p<>0;
+        r:=StratoFnCallFindInherited(Sphere,ttDestructor,Sphere[p].Parent,0,0);
+        p:=0;
        end;
 
       else
         p:=0;//error?
     end;
-    if Result and (p1<>0) then Sphere[p1].Target:=p;
+   end;
+  if r=0 then Result:=false else
+   begin
+    Sphere[p1].Target:=r;
+    Sphere[FnCall].EvaluatesTo:=rt;
+    Result:=true;
    end;
 end;
 
@@ -412,33 +427,50 @@ function StratoFnCallFindVirtual(Sphere:TStratoSphere;
   ImplClass,Target:TStratoIndex):TStratoIndex;
 var
   n:TStratoName;
-  p:TStratoIndex;
-  qx:PStratoThing;
+  p,q:TStratoIndex;
 begin
   //assert ImplClass<>nil and ImplClass.ThingType=ttClass
-  //assert Target.ThingType in [ttOverload,ttConstructor]
-  qx:=Sphere[Target];
-  while (qx<>nil) and (qx.ThingType<>ttFunction) do //TODO: in [] like Sphere.FQN?
-    qx:=Sphere[qx.Parent];
-  if qx=nil then Result:=0 else
-   begin
-    n:=qx.Name;
-    qx:=Sphere[ImplClass];
-    p:=0;
-    while (p=0) and (qx<>nil) do
-     begin
-      p:=Sphere.Lookup(qx.FirstItem,n);
-      if (p<>0) and (Sphere[p].ThingType=ttFunction) then
-        p:=Sphere[p].FirstItem
+  if Target=0 then Result:=0 else
+    case Sphere[Target].ThingType of
+      ttOverload:
+       begin
+        n:=Sphere[Sphere[Target].Parent].Name;//ttFunction
+        p:=0;
+        q:=ImplClass;
+        while (p=0) and (q<>0) do
+         begin
+          p:=Sphere.Lookup(Sphere[q].FirstItem,n);
+          if (p<>0) and (Sphere[p].ThingType=ttFunction) then
+            p:=Sphere[p].FirstItem
+          else
+            p:=0;//error?
+          while (p<>0) and not(StratoFnArgListsMatch(Sphere,
+            Sphere[Target].FirstArgument,Sphere[p].FirstArgument)) do
+            p:=Sphere[p].Next;
+          if p=0 then q:=Sphere[q].InheritsFrom;
+         end;
+        Result:=p;
+       end;
+      ttConstructor:
+       begin
+        q:=ImplClass;
+        p:=0;
+        while (p=0) and (q<>0) do
+         begin
+          p:=Sphere[q].FirstItem;
+          while (p<>0) and (Sphere[p].ThingType<>ttConstructors) do
+            p:=Sphere[p].Next;
+          if p<>0 then p:=Sphere[p].FirstItem;
+          while (p<>0) and not(StratoFnArgListsMatch(Sphere,
+            Sphere[Target].FirstArgument,Sphere[p].FirstArgument)) do
+            p:=Sphere[p].Next;
+          if p=0 then q:=Sphere[q].InheritsFrom;
+         end;
+        Result:=p;
+       end;
       else
-        p:=0;//error?
-      while (p<>0) and not(StratoFnArgListsMatch(Sphere,
-        Sphere[Target].FirstArgument,Sphere[p].FirstArgument)) do
-        p:=Sphere[p].Next;
-      if p=0 then qx:=Sphere[qx.InheritsFrom];
-     end;
-    Result:=p;
-   end;
+        Result:=0;//raise?
+    end;
 end;
 
 function StratoFnCodeBlock(Sphere:TStratoSphere;
@@ -499,33 +531,6 @@ begin
     q:=qx.Next; //else error?
    end;
   //if (q=0) and (p<>0) then raise?error?
-end;
-
-function FnCallEvaluatesTo(Sphere:TStratoSphere;Fn:PStratoThing):TStratoIndex;
-var
-  p:TStratoIndex;
-  px:PStratoThing;
-begin
-  p:=Fn.Target;
-  Result:=0;
-  while (p<>0) and (Result=0) do
-   begin
-    px:=Sphere[p];
-    case px.ThingType of
-      ttVar,ttVarIndex,ttCast,ttClassRef:
-        p:=px.EvaluatesTo;
-      ttClass:
-        Result:=p;
-      ttOverload:
-        Result:=Sphere[px.Target].EvaluatesTo;//ttSignature
-      ttConstructor:
-        Result:=Sphere[px.Parent].Parent;//ttConstructors<ttClass
-      ttDestructor:
-        p:=0;//Result:=0;
-      else
-        p:=0;//error?
-    end;
-   end;
 end;
 
 end.

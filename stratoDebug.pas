@@ -97,14 +97,14 @@ begin
       Result:=Format('fn   %s  %d(%d){%d}',
         [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
     ttFnCall:
-      if p.EvaluatesTo<>0 then //if Sphere[p.Target].ThingType=ttConstructor
+      if p.EvaluatesTo<>0 then
         Result:=Format('call %s  %d(%d):%d',
           [s.Dict[p.Name]
           ,p.Target,p.FirstArgument,p.EvaluatesTo])
       else
-        Result:=Format('call %s  %d(%d)',//{%d}',
+        Result:=Format('call %s  %d(%d)',
           [s.Dict[p.Name]//s.FQN(i)
-          ,p.Target,p.FirstArgument]);//,p.Body]);
+          ,p.Target,p.FirstArgument]);
     ttArgument:
       Result:=Format('arg  %s  t=%d d=%d v=%d',
         [s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Target]);//not ValueFrom!

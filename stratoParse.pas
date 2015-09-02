@@ -54,7 +54,7 @@ type
     procedure ID(var n:TStratoName;var nn:UTF8String);
     function LookUpNameSpace(var ns:TStratoIndex;var n:TStratoName):boolean;
     procedure ParseImport;
-    function LookUp:TStratoIndex;
+    function LookUp(StopAtType:boolean=false):TStratoIndex;
     procedure LookUpNext(n:TStratoName;const nn:UTF8String;
       var p,ns:TStratoIndex;var AddedNew:boolean);
     function ParseLiteral(st0:TStratoToken):TStratoIndex;
@@ -284,7 +284,7 @@ begin
      end;
 end;
 
-function TStratoParserBase.LookUp:TStratoIndex;
+function TStratoParserBase.LookUp(StopAtType:boolean):TStratoIndex;
 var
   i,j,l:integer;
   n:TStratoName;
@@ -292,6 +292,18 @@ var
   nsx:array of TStratoIndex;
   p,q:TStratoIndex;//absolute nsx?
   px:PStratoNameSpaceData;
+  function CheckType:boolean;
+  var
+    k:integer;
+  begin
+    if j=1 then
+     begin
+      k:=0;
+      while (k<>l) and (nsx[k]=0) do inc(k);
+      Result:=(Sphere[nsx[k]].ThingType and tt__IsType)<>0;
+     end
+    else Result:=false;
+  end;
 begin
   //assert Source.IsNext([stIdentifier]);
   Result:=0;//default
@@ -315,7 +327,8 @@ begin
           if Sphere[nsx[i]].ThingType=ttImport then
             nsx[i]:=Sphere[nsx[i]].Target;
        end;
-  until (j=0) or not(Source.IsNext([stPeriod,stIdentifier]));
+  until (j=0) or (StopAtType and CheckType) or
+    not(Source.IsNext([stPeriod,stIdentifier]));
   //assert Source.Token=stIdentifier
   case j of
     0://none found, try namespaces
@@ -724,7 +737,7 @@ var
 begin
   if Source.IsNext([stQuestionMark,stIdentifier]) then
    begin
-    p:=Lookup;
+    p:=Lookup(true);
     Result:=Sphere.Add(ttClassRef,qx);
     px:=Sphere[p];
     qx.Parent:=px.Parent;
@@ -741,7 +754,7 @@ begin
     ptr:=0;
     while Source.IsNext([stCaret]) do inc(ptr);
     //TODO: case Source.Token of?
-    if Source.IsNext([stIdentifier]) then Result:=LookUp else Result:=0;
+    if Source.IsNext([stIdentifier]) then Result:=LookUp(true) else Result:=0;
     if Result=0 then Source.Error('undefined '+tname) else
      begin
       case Sphere[Result].ThingType of
@@ -1312,6 +1325,8 @@ begin
         pEqual,pComparative:
          begin
           px.Right:=q;
+          if not StratoComparativeCheckType(Sphere,p) then
+            Source.Error('binary operator operand type mismatch');
           px.EvaluatesTo:=TypeDecl_bool;
          end;
         //ttAssign
@@ -2376,6 +2391,8 @@ begin
       if Sphere[p].ThingType=ttRecord then rd:=p else rd:=0;
      end;
 
+    stPOpen:Source.Error('unsupported record field syntax, declare methods outside of data section');
+
     else Source.Error('unsupported record field syntax');
   end;
 end;
@@ -2668,9 +2685,16 @@ begin
       if p<>0 then
        begin
         r:=ResType(Sphere,p);
-        Sphere[cb].EvaluatesTo:=r;
+        qx:=Sphere[cb];
+        qx.EvaluatesTo:=r;
         //TODO: if parent is overload with return value, assign
-        CheckPassed(p);
+        if (Sphere[qx.Parent].ThingType=ttProperty) and (Sphere[qx.Parent].ValueFrom=cb) then
+         begin
+          if not SameType(Sphere,r,Sphere[p].EvaluatesTo) then
+            Source.Error('property getter result value mismatch');
+         end
+        else
+          CheckPassed(p);
         CbAdd(p);
        end;
       while (stackIndex<>0) and (stack[stackIndex-1].p<>pCodeBlock) do
@@ -2719,7 +2743,6 @@ begin
             if (r=0) and (rx.FirstArgument<>0) then
              begin
               //default to inherited constructor without arguments
-              rx.FirstArgument:=0;
               r:=StratoFnCallFindInherited(Sphere,ttConstructor,rx.Parent,0,0);
              end;
             if r=0 then
@@ -2727,10 +2750,8 @@ begin
             else
              begin
               q:=Sphere.Add(ttFnCall,qx);
-              qx.Name:=Sphere[Sphere[r].Parent].Name;//?
               qx.Parent:=p;
               qx.SrcPos:=Source.SrcPos;
-              //qx.EvaluatesTo:=
               qx.Target:=r;
               //arguments
               StratoFnArgByValues(Sphere,q,
@@ -2763,7 +2784,6 @@ begin
             else
              begin
               q:=Sphere.Add(ttFnCall,qx);
-              qx.Name:=Sphere[Sphere[r].Parent].Name;//?
               qx.Parent:=p;
               qx.SrcPos:=Source.SrcPos;
               qx.Target:=Sphere.Add(ttVarIndex,rx);
@@ -2944,7 +2964,7 @@ begin
       else
         Source.Error('sizeof operator only allowed as prefix');
 
-    stThis://"@@"
+    stAtAt://"@@": this
      begin
       Juxta(p);
       //see also StratoFnAddOverload
@@ -3141,7 +3161,7 @@ begin
           Source.Error('dereference expected on pointer');
        end;
 
-    stInherited://"@@@"
+    stAtAtAt://"@@@": inherited
      begin
       Juxta(p);
       if Source.IsNext([stPOpen]) then

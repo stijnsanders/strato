@@ -32,8 +32,8 @@ type
     stCatch,//"???"
     stThrow,//"!!!"
 
-    stThis,//"@@"
-    stInherited,//"@@@"
+    stAtAt,//"@@": this/self
+    stAtAtAt,//"@@@": inherited/base
     stResult,//"??"
 
     stOpAssign, //":="
@@ -214,7 +214,7 @@ begin
               '=':Add(3,stOpAssignOr);
               else Add(2,stOpOr);
             end;
-          else Add(1,st_Unknown);//raise?
+          else Add(1,st_Unknown);//stPipe
         end;
       ''''://string
        begin
@@ -293,8 +293,8 @@ begin
         case CodeNext(1) of
           '@':
             case CodeNext(2) of
-              '@':Add(3,stInherited);
-              else Add(2,stThis);
+              '@':Add(3,stAtAtAt);
+              else Add(2,stAtAt);
             end;
           '?':Add(2,stOpSizeOf);
           else Add(1,stAt);
@@ -344,11 +344,25 @@ begin
           '!':
             case CodeNext(2) of
               '!':Add(3,stThrow);
-              else Add(2,st_Unknown);//raise? Add(1,stOpNot)?
+              else
+               begin
+                Add(1,stOpNot);
+                Add(1,stOpNot);
+               end;
             end;
           else Add(1,stOpNot);
         end;
       '.':Add(1,stPeriod);
+      {
+        case CodeNext(1) of
+          '.':
+            case CodeNext(2) of
+              '.':Add(3,stEllipsis);
+              else Add(2,stRange);
+            end;
+          else Add(1,stPeriod);
+        end;
+      }
       ',':Add(1,stComma);
       ';':Add(1,stSemiColon);
       ':':
@@ -356,14 +370,14 @@ begin
           ':':
             case CodeNext(2) of
               ':':Add(3,stTry);
-              else Add(2,st_Unknown);//raise?
+              else Add(2,st_Unknown);//stNameSpace?
             end;
           '=':Add(2,stOpAssign);
           else Add(1,stColon);
         end;
       'A'..'Z','_','a'..'z':GetIdentifier;
       '~':Add(1,stTilde);
-      else Add(1,st_Unknown);//raise?
+      else Add(1,st_Unknown);
     end;
     SkipWhiteSpace;
    end;
@@ -371,3 +385,4 @@ begin
 end;
 
 end.
+

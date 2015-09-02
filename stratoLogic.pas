@@ -15,6 +15,7 @@ function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 function IsAddressable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 function StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
+function StratoComparativeCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
 
 procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
   MergeOnto:TStratoIndex);
@@ -55,7 +56,7 @@ begin
     else
       case px.ThingType of
         ttFnCall:
-          Result:=FnCallEvaluatesTo(Sphere,px);
+          Result:=px.EvaluatesTo;
         //TODO: ttAlias?
         //TODO: ttFunction?
         ttClass:
@@ -313,6 +314,23 @@ begin
     //TODO: auto-expand on numerics?
    end;
   Result:=p.EvaluatesTo<>0;
+end;
+
+function StratoComparativeCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
+var
+  p:PStratoThing;
+  p1,p2:TStratoIndex;
+begin
+  p:=Sphere[pp];
+  Result:=false;//default
+  if (p.Left<>0) and (p.Right<>0) then
+   begin
+    p1:=ResType(Sphere,p.Left);
+    p2:=ResType(Sphere,p.Right);
+    if (p1=p2) or (SameType(Sphere,p1,p2)) or (SameType(Sphere,p2,p1)) then
+      Result:=true;
+    //TODO: if p1=TypeDecl_bool then support 'x<y<z'
+   end;
 end;
 
 procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
