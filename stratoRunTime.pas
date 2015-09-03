@@ -20,6 +20,7 @@ var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
   TypeDecl_number,TypeDecl_variant,TypeDecl_pointer,
   TypeDecl_hash,TypeDecl_object:TStratoIndex;
+  Name_Inherited:TStratoName;
 
 implementation
 

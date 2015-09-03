@@ -436,7 +436,7 @@ begin
           '0'..'9':
             Result:=(Result shl 4) or (byte(lit[i]) and $F);
           'A'..'F','a'..'f':
-            Result:=(Result shl 4)+9+(byte(lit[i]) and $7);
+            Result:=(Result shl 4) or (9+(byte(lit[i]) and $7));
         end;
         inc(i);
        end;
@@ -470,7 +470,7 @@ begin
       Result:=0;
       while i<=l do
        begin
-        Result:=Result*10 or (byte(lit[i]) and $F);
+        Result:=(Result*10)+(byte(lit[i]) and $F);
         inc(i);
        end;
 	  //TODO: scientific, floating point 

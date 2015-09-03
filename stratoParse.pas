@@ -1276,15 +1276,17 @@ begin
         pTypeOf:
          begin
           r:=ResType(sphere,q);
+          px.Right:=q;
           if (r<>0) and (Sphere[r].ThingType=ttClass) then
            begin
-            px.EvaluatesTo:=Sphere.Add(ttClassRef,qx);
+            q:=Sphere.Add(ttClassRef,qx);
             qx.ByteSize:=SystemWordSize;
             qx.EvaluatesTo:=r;
+            px:=Sphere[p];
+            px.EvaluatesTo:=q;
            end
           else
             px.EvaluatesTo:=TypeDecl_type;
-          px.Right:=q;
          end;
         pAddressOf:
          begin
@@ -2020,7 +2022,10 @@ begin
             px.Parent:=ns;
             px.SrcPos:=Source.SrcPos;
             if TypeDecl_object=0 then
-              TypeDecl_object:=p
+             begin
+              TypeDecl_object:=p;
+              Name_Inherited:=Sphere.Dict.StrIdx('@@@');
+             end
             else
               Source.Error('only one master base class allowed');
             rd:=p;//switch to ParseRecord
@@ -2756,6 +2761,7 @@ begin
             else
              begin
               q:=Sphere.Add(ttFnCall,qx);
+              qx.Name:=Name_Inherited;
               qx.Parent:=p;
               qx.SrcPos:=Source.SrcPos;
               qx.Target:=r;
@@ -2790,6 +2796,7 @@ begin
             else
              begin
               q:=Sphere.Add(ttFnCall,qx);
+              qx.Name:=Name_Inherited;
               qx.Parent:=p;
               qx.SrcPos:=Source.SrcPos;
               qx.Target:=Sphere.Add(ttVarIndex,rx);
@@ -2798,7 +2805,7 @@ begin
               rx.Target:=r;//Sphere[r].Signature;
               //qx.FirstArgument:=?
               //append to code block
-              Sphere.Append(Sphere[p].FirstStatement,r);
+              Sphere.Append(Sphere[p].FirstStatement,q);
              end;
            end;
 
@@ -3176,13 +3183,25 @@ begin
         i:=0;
         while (i<stackIndex) and (stack[i].p<>pCodeBlock) do inc(i);
         if i=stackIndex then p:=cb else p:=stack[i].t;
-        p:=Sphere[p].Parent;
+        px:=Sphere[p];
         //start FnCall, see Combine: pArgList
         q:=Sphere.Add(ttFnCall,qx);
-        qx.Name:=0;//Sphere[p].Name;?
+        qx.Name:=Name_Inherited;
         qx.Parent:=cb;
         qx.SrcPos:=Source.SrcPos;
-        qx.Target:=p;//see Combine pArgList
+        if Sphere[px.Parent].ThingType=ttConstructor then
+         begin
+          //inherited constructor not relative to this (since null at time of call)
+          qx.Target:=px.Parent;
+         end
+        else
+         begin
+          //relative to this
+          qx.Target:=Sphere.Add(ttVarIndex,rx);
+          rx.Parent:=Sphere[p].FirstItem;//assert ttThis
+          rx.SrcPos:=Source.SrcPos;
+          rx.Target:=Sphere[p].Parent;//Sphere[].Signature;
+         end;
         Push(pArgList,q);
         cbInhCalled:=true;
         p:=0;

@@ -474,6 +474,19 @@ begin
          end;
         Result:=p;
        end;
+      ttDestructor:
+       begin
+        q:=ImplClass;
+        p:=0;
+        while (p=0) and (q<>0) do
+         begin
+          p:=Sphere[q].FirstItem;
+          while (p<>0) and (Sphere[p].ThingType<>ttDestructor) do
+            p:=Sphere[p].Next;
+          if p=0 then q:=Sphere[q].InheritsFrom;
+         end;
+        Result:=p;
+       end;
       else
         Result:=0;//raise?
     end;

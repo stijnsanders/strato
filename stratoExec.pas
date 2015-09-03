@@ -582,7 +582,7 @@ begin
               ttConstructor:
                begin
                 r:=qx.Body;
-                if px.Name<>0 then
+                if px.Name<>Name_Inherited then
                  begin
                   //store default nil pointer, base class
                   //see also StratoFnAddOverload
@@ -610,7 +610,8 @@ begin
                  end;
                end;
               ttDestructor:
-                r:=qx.Body;
+                //r:=qx.Body;
+                Sphere.Error(pe,'Unexpected direct call of destructor');
               //TODO: ttInterface? ttClass?
               else
                 Sphere.Error(pe,'Unexpected call target');
@@ -640,7 +641,7 @@ begin
                     else
                       p2:=vt;//more checks? error?
                   end;
-                if p2=vt then
+                if (p2=vt) or (px.Name=Name_Inherited) then
                   q:=qx.Target
                 else
                   if TypeDecl_object=0 then
@@ -676,7 +677,7 @@ begin
               Sphere.Error(p,'dynamic implementation not found')
             else
               case Sphere[q].ThingType of
-                ttOverload:
+                ttOverload,ttDestructor:
                  begin
                   //get address for 'this' ("@@")
                   q:=Sphere[r].FirstItem;
@@ -777,27 +778,23 @@ begin
             //step 4: output result value
             if Sphere[rx.Parent].ThingType=ttConstructor then
              begin
+              xp:=mp;//+Sphere[q].Offset;//assert 0 (see StratoFnAddOverload)
               //called by constructor? cascade 'this'
-              if px.Name=0 then
+              if px.Name=Name_Inherited then
                begin
                 i:=stackIndex;
                 if i<>0 then dec(i);
                 while (i<>0) and not((stack[i-1].p<>0) and
                   (Sphere[stack[i-1].p].ThingType=ttFnCall)) do dec(i);
                 if i=0 then
-                 begin
-                  xp:=mp;//?
-                  Sphere.Error(pe,'Could not find current code block for call');
-                 end
+                  Sphere.Error(pe,'Could not find current code block for call')
                 else
                  begin
                   //assert stack[i-1].p's eventual target is a ttConstructor
                   xp:=stack[i-1].bp;
                   Move(FMem[mp],FMem[xp],SystemWordSize);
                  end;
-               end
-              else
-                xp:=mp;//+Sphere[q].Offset;//assert 0 (see StratoFnAddOverload)
+               end;
               vtp(px.EvaluatesTo,xp);
              end
             else
@@ -860,6 +857,7 @@ begin
              begin
               Push(0,0,vt,vp);//keep result value
               vt:=0;
+              Push(p,IndexStep1,0,mp);
               Push(q,q,p2,mp);
               p:=Sphere[q].Target;
              end;
@@ -876,16 +874,17 @@ begin
           q:=Sphere[p1].Next;
           while (q<>0) and (Sphere[q].ThingType<>ttDeferred) do
             q:=Sphere[q].Next;
-          if q=0 then
-           begin
-            //done
-            Pop(q,r,vt,vp);//restore result value
-           end
-          else
+          if q<>0 then
            begin
             Push(q,q,p2,mp);
             p:=Sphere[q].Target;
             vt:=0;
+           end
+          else
+           begin
+            //done
+            Pop(q,q,q,xp);//pop pushed ttCodeBlock for base pointer
+            Pop(q,r,vt,vp);//restore result value
            end;
          end;
 
@@ -1814,7 +1813,7 @@ begin
 
       else
        begin
-        Sphere.Error(pe,'unknown logic item '+IntToHex(px.ThingType,4));
+        Sphere.Error(pe,Format('unknown logic item %d:%.4x',[p,px.ThingType]));
         p:=0;
        end;
     end;
