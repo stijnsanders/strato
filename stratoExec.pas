@@ -2,8 +2,7 @@ unit stratoExec;
 
 interface
 
-uses SysUtils, stratoDecl, stratoSphere, stratoDebug,
-  stratoDebugView;
+uses SysUtils, stratoDecl, stratoSphere, stratoDebug, stratoDebugView;
 
 type
   TStratoMachine=class(TObject)
@@ -1850,13 +1849,13 @@ begin
   else
     //assert q=0 or Sphere[q].ThingType=ttTypeDecl
     if px.EvaluatesTo=TypeDecl_number then
-      if TryStrToInt64(string(Sphere.GetBinaryData(px.InitialValue)),i) then
-        if (q=0) or (Sphere[q].ByteSize=SystemWordSize) then
-          Move(i,FMem[addr],SystemWordSize)
-        else
-          Move(i,FMem[addr],Sphere[q].ByteSize)
+     begin
+      i:=ParseInteger(string(Sphere.GetBinaryData(px.InitialValue)));
+      if (q=0) or (Sphere[q].ByteSize=SystemWordSize) then
+        Move(i,FMem[addr],SystemWordSize)
       else
-        Sphere.Error(p,'error evaluating global var initial value')
+        Move(i,FMem[addr],Sphere[q].ByteSize);
+     end
     else
     if px.EvaluatesTo=TypeDecl_string then
      begin

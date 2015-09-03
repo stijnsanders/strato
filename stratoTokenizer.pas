@@ -84,6 +84,8 @@ type
 function StratoTokenize(const Code: UTF8String;
   LineIndex: cardinal): TStratoSourceTokenList;
 
+function ParseInteger(const lit: string): Int64;
+
 implementation
 
 function StratoTokenize(const Code: UTF8String;
@@ -252,10 +254,33 @@ begin
          end;
       '0'..'9'://digits
        begin
-        i:=CodeIndex+1;
-        //TODO: sci,hex,oct,bin...
-        while (i<=CodeLength) and (Code[i] in ['0'..'9']) do inc(i);
+        i:=CodeIndex;
+        if Code[CodeIndex]='0' then
+          case CodeNext(1) of //see also ParseInteger
+            'x','X'://hex
+             begin
+              inc(i,2);
+              while (i<=CodeLength) and (Code[i] in ['0'..'9','A'..'F','a'..'f']) do inc(i);
+             end;
+            'b','B'://binary
+             begin
+              inc(i,2);
+              while (i<=CodeLength) and (Code[i] in ['0','1','_']) do inc(i);
+             end;
+            'o','O'://octal
+             begin
+              inc(i,2);
+              while (i<=CodeLength) and (Code[i] in ['0'..'7']) do inc(i);
+             end;
+            //TODO more?
+          end;
+        if i=CodeIndex then
+         begin
+          inc(i);
+          while (i<=CodeLength) and (Code[i] in ['0'..'9']) do inc(i);
+         end;
         Add(i-CodeIndex,stNumericLiteral);
+        //TODO: scientific, floating point
        end;
       '+':
         case CodeNext(1) of
@@ -382,6 +407,77 @@ begin
     SkipWhiteSpace;
    end;
   SetLength(Result,ri);
+end;
+
+function ParseInteger(const lit: string): Int64;
+var
+  neg:boolean;
+  i,l:integer;
+  c:char;
+begin
+  i:=1;
+  l:=Length(lit);
+  //negative values support for ParseLiteral
+  if (l<>0) and (lit[1]='-') then
+   begin
+    neg:=true;
+    inc(i);
+   end
+  else
+    neg:=false;
+  if (l>i+1) and (lit[i]='0') then c:=lit[i+1] else c:=' ';
+  case c of
+    'x','X'://hex
+     begin
+      Result:=0;
+      inc(i,2);
+      while i<=l do
+       begin
+        case lit[i] of
+          '0'..'9':
+            Result:=(Result shl 4) or (byte(lit[i]) and $F);
+          'A'..'F','a'..'f':
+            Result:=(Result shl 4)+9+(byte(lit[i]) and $7);
+        end;
+        inc(i);
+       end;
+     end;
+    'b','B'://binary
+     begin
+      Result:=0;
+      inc(i,2);
+      while i<=l do
+       begin
+        case lit[i] of
+          '0':Result:=Result shl 1;
+          '1':Result:=(Result shl 1) or 1;
+        end;
+        inc(i);
+       end;
+     end;
+    'o','O'://octal
+     begin
+      Result:=0;
+      inc(i,2);
+      while i<=l do
+       begin
+        Result:=(Result shl 3) or (byte(lit[i]) and $7);
+        inc(i);
+       end;
+     end;
+    //TODO more?
+    else
+     begin
+      Result:=0;
+      while i<=l do
+       begin
+        Result:=Result*10 or (byte(lit[i]) and $F);
+        inc(i);
+       end;
+	  //TODO: scientific, floating point 
+     end;
+  end;
+  if neg then Result:=-Result;
 end;
 
 end.

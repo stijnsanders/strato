@@ -57,9 +57,7 @@ type
     function LookUp(StopAtType:boolean=false):TStratoIndex;
     procedure LookUpNext(n:TStratoName;const nn:UTF8String;
       var p,ns:TStratoIndex;var AddedNew:boolean);
-    function ParseLiteral(st0:TStratoToken):TStratoIndex;
-    function ParseInteger:cardinal;
-    function ParseIntegerRaw:cardinal;
+    function ParseLiteral(st0:TStratoToken;OutputIntVal:boolean=false):TStratoIndex;
     function LookUpType(const tname:string):TStratoIndex;
     function ParseSignature(ns:TStratoIndex;const name:UTF8String):TStratoIndex;
     procedure ParseEnumeration(p:TStratoIndex;px:PStratoThing);
@@ -239,7 +237,7 @@ begin
     else Source.Error('unsupported import subject syntax');
   end;
   if Source.IsNext([stAt,stNumericLiteral]) then
-    i:=ParseIntegerRaw
+    i:=ParseInteger(string(Source.GetID))
   else
     i:=0;
   Source.Skip(stSemiColon);
@@ -422,7 +420,7 @@ begin
   ns:=p;
 end;
 
-function TStratoParserBase.ParseLiteral(st0:TStratoToken):TStratoIndex;
+function TStratoParserBase.ParseLiteral(st0:TStratoToken;OutputIntVal:boolean):TStratoIndex;
 const
   stackGrowSize=$10;
 var
@@ -436,7 +434,7 @@ var
     vt:TStratoIndex;
     v1,v2:UTF8String;
   end;
-    
+
   procedure Combine(pp:TPrecedence);
   var
     p0:TPrecedence;
@@ -467,11 +465,10 @@ var
                   if w='0' then v:='1' else v:='0'
                 else
                 if vt=TypeDecl_number then
-                  //TODO: numerical notations
-                  if TryStrToInt64(string(v),i) then
-                    v:=UTF8String(IntToStr(not(i)))
-                  else
-                    Source.Error('invalid numeric literal')
+                 begin
+                  i:=ParseInteger(string(v));
+                  v:=UTF8String(IntToStr(not(i)));
+                 end
                 else
                   Source.Error('unsupported type for ''not''');
               else
@@ -481,56 +478,57 @@ var
             v:=IntToStr(ByteSize(Sphere,vt));
           pMulDiv,pAddSub,pShift,pAnd,pOr,pEqual,pComparative:
             if vt=TypeDecl_number then
-              if TryStrToInt64(string(v),i) and TryStrToInt64(string(w),j) then
-                case v0[1] of
-                  '*':v:=UTF8String(IntToStr(i*j));
-                  '/':v:=UTF8String(IntToStr(i div j));
-                  '%':v:=UTF8String(IntToStr(i mod j));
-                  '+':v:=UTF8String(IntToStr(i+j));
-                  '-':v:=UTF8String(IntToStr(i-j));
-                  '&':v:=UTF8String(IntToStr(i and j));
-                  '|':v:=UTF8String(IntToStr(i or j));
-                  'X':v:=UTF8String(IntToStr(i xor j));
-                  '=':
-                   begin
-                    vt:=TypeDecl_bool;
-                    if i=j then v:='1' else v:='0';
-                   end;
-                  '<':
-                   begin
-                    vt:=TypeDecl_bool;
-                    if i<j then v:='1' else v:='0';
-                   end;
-                  'l':
-                   begin
-                    vt:=TypeDecl_bool;
-                    if i<=j then v:='1' else v:='0';
-                   end;
-                  '>':
-                   begin
-                    vt:=TypeDecl_bool;
-                    if i>j then v:='1' else v:='0';
-                   end;
-                  'g':
-                   begin
-                    vt:=TypeDecl_bool;
-                    if i>=j then v:='1' else v:='0';
-                   end;
-                  's':
-                    if v0='shl' then
-                      v:=UTF8String(IntToStr(i shl j))
-                    else
-                      v:=UTF8String(IntToStr(i shr j));
-                  'r':
-                    if v0='rol' then
-                      v:=UTF8String(IntToStr((i shl j) or (i shr (SystemWordSize*8-j))))
-                    else
-                      v:=UTF8String(IntToStr((i shr j) or (i shl (SystemWordSize*8-j))));
+             begin
+              i:=ParseInteger(string(v));
+              j:=ParseInteger(string(w));
+              case v0[1] of
+                '*':v:=UTF8String(IntToStr(i*j));
+                '/':v:=UTF8String(IntToStr(i div j));
+                '%':v:=UTF8String(IntToStr(i mod j));
+                '+':v:=UTF8String(IntToStr(i+j));
+                '-':v:=UTF8String(IntToStr(i-j));
+                '&':v:=UTF8String(IntToStr(i and j));
+                '|':v:=UTF8String(IntToStr(i or j));
+                'X':v:=UTF8String(IntToStr(i xor j));
+                '=':
+                 begin
+                  vt:=TypeDecl_bool;
+                  if i=j then v:='1' else v:='0';
+                 end;
+                '<':
+                 begin
+                  vt:=TypeDecl_bool;
+                  if i<j then v:='1' else v:='0';
+                 end;
+                'l':
+                 begin
+                  vt:=TypeDecl_bool;
+                  if i<=j then v:='1' else v:='0';
+                 end;
+                '>':
+                 begin
+                  vt:=TypeDecl_bool;
+                  if i>j then v:='1' else v:='0';
+                 end;
+                'g':
+                 begin
+                  vt:=TypeDecl_bool;
+                  if i>=j then v:='1' else v:='0';
+                 end;
+                's':
+                  if v0='shl' then
+                    v:=UTF8String(IntToStr(i shl j))
                   else
-                    Source.Error('unknown operator');
-                end
-              else
-                Source.Error('invalid numeric literal')
+                    v:=UTF8String(IntToStr(i shr j));
+                'r':
+                  if v0='rol' then
+                    v:=UTF8String(IntToStr((i shl j) or (i shr (SystemWordSize*8-j))))
+                  else
+                    v:=UTF8String(IntToStr((i shr j) or (i shl (SystemWordSize*8-j))));
+                else
+                  Source.Error('unknown operator');
+              end;
+             end
             else
               case v0[1] of
                 '+':v:=w+v;
@@ -677,56 +675,31 @@ begin
        begin
         Combine(p_ArgList_Item);//something between pParentheses and the operators
         if stackIndex=0 then
-         begin
-          if vt=0 then
-           begin
-            Result:=Sphere.Add(ttLiteral,px);
-            Source.Error('literal of undetermined type');
-           end
+          if OutputIntVal then
+            if vt=TypeDecl_number then
+              Result:=ParseInteger(string(v))
+            else
+             begin
+              Source.Error('integer constant expected');
+              Result:=0;
+             end
           else
-            Result:=Sphere.Add(ttLiteral,px);
-          px.SrcPos:=Source.SrcPos;
-          px.EvaluatesTo:=vt;
-          px.InitialValue:=Sphere.AddBinaryData(v);
-         end;
+           begin
+            if vt=0 then
+             begin
+              Result:=Sphere.Add(ttLiteral,px);
+              Source.Error('literal of undetermined type');
+             end
+            else
+              Result:=Sphere.Add(ttLiteral,px);
+            px.SrcPos:=Source.SrcPos;
+            px.EvaluatesTo:=vt;
+            px.InitialValue:=Sphere.AddBinaryData(v);
+           end;
        end;
    end;
-end;
-
-function TStratoParserBase.ParseInteger:cardinal;//integer?
-var
-  p:TStratoIndex;
-  px:PStratoThing;
-begin
-  p:=ParseLiteral(Source.Token);
-  px:=Sphere[p];
-  if p=0 then
-    Source.Error('missing integer value')
-  else
-    case px.ThingType of
-      ttLiteral:
-        if px.EvaluatesTo=TypeDecl_number then
-         begin
-          //TODO: more numeric notations?
-          if not TryStrToInt(string(Sphere.GetBinaryData(px.InitialValue)),integer(Result)) then
-            Source.Error('invalid integer literal');
-         end
-        else
-          Source.Error('integer literal expected')
-      else
-        Source.Error('invalid integer value');
-    end;
-end;
-
-function TStratoParserBase.ParseIntegerRaw: cardinal;
-begin
-  //TODO: support constants?
-  //TODO: into ParseInteger(Store:boolean)?
-  if not TryStrToInt(string(Source.GetID),integer(Result)) then
-   begin
-    Source.Error('invalid integer constant');
-    Result:=0;
-   end;
+  if OutputIntVal and (vt=0) then
+    Source.Error('missing integer constant');
 end;
 
 function TStratoParserBase.LookUpType(const tname:string):TStratoIndex;
@@ -783,7 +756,7 @@ begin
           Source.Error('//TODO: dyn array')
         else
          begin
-          i:=ParseInteger;
+          i:=cardinal(ParseLiteral(Source.Token,true));
           Source.Skip(stBClose);//TODO: force
           p:=Result;
           Result:=Sphere.Add(ttArray,qx);
@@ -837,7 +810,7 @@ var
       rx.Parent:=Signature;
       rx.SrcPos:=Source.SrcPos;
       rx.EvaluatesTo:=p;
-      //rx.InitialValue:=//TODO
+      //rx.InitialValue:= //see caller
      end;
     Result:=r<>0;
   end;
@@ -927,7 +900,7 @@ begin
       stIdentifier:
        begin
         ID(n,nn);
-        if Source.IsNext([stDefine]) then e:=ParseInteger;
+        if Source.IsNext([stDefine]) then e:=cardinal(ParseLiteral(Source.Token,true));
         q:=Sphere.AddTo(px.FirstItem,ttConstant,n,qx);
         if q=0 then
           Source.Error('duplicate enumeration entry "'+nn+'"')
@@ -940,7 +913,7 @@ begin
           inc(e);
          end;
        end;
-      stComma:;//ignore
+      stComma,stSemiColon:;//ignore
       stPClose:;//done
       else Source.Error('unsupported enumeration syntax');
     end;
@@ -1512,7 +1485,7 @@ begin
     if LookUpNameSpace(ns,n) then px:=Sphere[ns] else px:=nil;
     if Source.IsNext([stAt,stNumericLiteral]) then
      begin
-      mark1:=ParseIntegerRaw;
+      mark1:=ParseInteger(string(Source.GetID));
       mark2:=Sphere.MarkIndex(mark1);
      end;
     if px=nil then
@@ -1763,7 +1736,7 @@ begin
                          end
                         else
                          begin
-                          i:=ParseInteger;
+                          i:=cardinal(ParseLiteral(Source.Token,true));
                           //TODO: multidimensional arrays, array of array
                           Source.Skip(stBClose);//TODO: force
                           q:=Sphere.AddTo(Sphere[ns].FirstItem,ttArray,n,qx);
@@ -2190,11 +2163,12 @@ begin
     stHRule:
       if Locals[1]=0 then
        begin
+        ns:=Locals[0];
         Locals[1]:=Sphere.AddTo(Sphere[ns].FirstItem,ttPrivate,0,px);
         px.Parent:=ns;
         px.SourceFile:=src;
         //px.FirstItem:=//see Lookup
-        px.Target:=0;
+        px.Target:=ns;
        end
       else
         Source.Error('Already in private visibility');
@@ -2263,7 +2237,7 @@ begin
       if Source.IsNext([stAt]) then
        begin
         offset:=0;
-        //TODO: absorb following into ParseInteger?
+        //TODO: replace following with ParseLiteral?
         neg:=false;
         b:=true;
         while b and Source.NextToken(st) do
