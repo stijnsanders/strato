@@ -14,7 +14,7 @@ function StratoFnOverloadCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
 function StratoFnCallAddArgument(Sphere:TStratoSphere;
   FnCall,Value:TStratoIndex;var Info:PStratoThing):TStratoIndex;
 function StratoFnCallFindSignature(Sphere:TStratoSphere;
-  FnCall:TStratoIndex):boolean;
+  FnCall,SubType:TStratoIndex):boolean;
 function StratoFnCallFindInherited(Sphere:TStratoSphere;
   MethodType:TStratoThingType;MethodParent,FirstArg:TStratoIndex;
   Name:TStratoName):TStratoIndex;
@@ -240,7 +240,7 @@ begin
 end;
 
 function StratoFnCallFindSignature(Sphere:TStratoSphere;
-  FnCall:TStratoIndex):boolean;
+  FnCall,SubType:TStratoIndex):boolean;
 var
   p,p1,q,r,rt:TStratoIndex;
   px,qx:PStratoThing;
@@ -308,15 +308,21 @@ begin
           if r=0 then
            begin
             r:=Sphere[p].FirstItem;
-            while (r<>0) and (Sphere[r].ThingType<>ttConstructors) do
-              r:=Sphere[r].Next;
-            if r<>0 then r:=Sphere[r].FirstItem;//ttConstructor
+            if SubType=0 then
+             begin
+              while (r<>0) and (Sphere[r].ThingType<>ttConstructors) do
+                r:=Sphere[r].Next;
+              if r<>0 then r:=Sphere[r].FirstItem;//ttConstructor
+             end
+            else
+             begin //assert Sphere[SubType].ThingType=ttDestructor
+              while (r<>0) and (Sphere[r].ThingType<>ttDestructor) do
+                r:=Sphere[r].Next;
+             end;
            end
           else
-           begin
-            r:=Sphere[r].Next;
-            if r=0 then p:=Sphere[p].InheritsFrom;
-           end;
+            if SubType=0 then r:=Sphere[r].Next else r:=0;
+          if r=0 then p:=Sphere[p].InheritsFrom;
         until (p=0) or ((r<>0) and StratoFnArgListsMatch(Sphere,
             Sphere[Sphere[r].Target].FirstArgument,
             Sphere[FnCall].FirstArgument));
@@ -351,7 +357,7 @@ begin
   if r=0 then Result:=false else
    begin
     Sphere[p1].Target:=r;
-    Sphere[FnCall].EvaluatesTo:=rt;
+    if SubType=0 then Sphere[FnCall].EvaluatesTo:=rt;
     Result:=true;
    end;
 end;

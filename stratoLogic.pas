@@ -194,7 +194,7 @@ begin
         case px.ThingType of
           ttPointer:
             Result:=Sphere[px.EvaluatesTo].ThingType=ttSignature;//more?
-          ttClassRef:
+          ttClass,ttClassRef:
             Result:=true;
         end;
        end;

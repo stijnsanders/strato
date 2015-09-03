@@ -19,15 +19,12 @@ type
     stCaret,//"^"
     stQuestionMark,//"?"
     stAmpersand,//"&"
-    stTilde,//'~'
 
     stPOpen,stPClose,//"()"
     stAOpen,stAClose,//"{}"
     stBOpen,stBClose,//"[]"
 
     stHRule,//"---"
-    stThreeLT,//"<<<"
-    stThreeGT,//">>>"
     stTry,//":::"
     stCatch,//"???"
     stThrow,//"!!!"
@@ -65,8 +62,10 @@ type
     stOpDec,
     stOpShl,
     stOpShr,
-    //stOpRol,//see stThreeLT
-    //stOpRor,//see stThreeGT
+
+    stTilde,//'~'
+    stThreeLT,//"<<<" stOpRol
+    stThreeGT,//">>>" stOpRor
 
     stOpSizeOf,//"@?"
     stOpTypeIs,//"?="

@@ -1142,7 +1142,7 @@ begin
                end
               else
                 Sphere.Error(pe,'//TODO: more operator stuff');
-            stOpNot:
+            stOpNot,stTilde:
               if vt=TypeDecl_bool then
                begin
                 Move(FMem[vp],i,SystemWordSize);

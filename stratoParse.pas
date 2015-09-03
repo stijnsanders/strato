@@ -460,7 +460,7 @@ var
           pUnary:
             case v0[1] of
               '-':v:='-'+w;//assert vt=TypeDecl_number
-              '!'://not
+              '!','~'://not
                 if vt=TypeDecl_bool then
                   if w='0' then v:='1' else v:='0'
                 else
@@ -630,6 +630,8 @@ begin
         Push(pUnary,'+');
       stOpSub://unary
         Push(pUnary,'-');
+      stTilde:
+        Push(pUnary,'~');
       stOpSizeOf://unary
         Push(pSizeOf,'');
       stPOpen://expression (tuple?)
@@ -662,6 +664,7 @@ begin
           stOpAnd:Push(pAnd,'&');
           stOpOr:Push(pOr,'|');
           stOpNot:Push(pUnary,'!');
+          stTilde:Push(pUnary,'~');
           stOpXor:Push(pXor,'X');
           stOpEQ:Push(pEqual,'=');
           stOpLT:Push(pComparative,'<');
@@ -1166,8 +1169,21 @@ begin
             qx.Parent:=cb;
             qx.SrcPos:=Source.SrcPos;
            end;
+          //calling destructor? (detect prefix '-' or '~')
+          if (stackIndex<>0) and (stack[stackIndex-1].p=pUnary) and
+            (TStratoToken(Sphere[stack[stackIndex-1].t].Op)
+              in [stOpSub,stTilde]) and (TypeDecl_object<>0) then
+           begin
+            r:=Sphere[TypeDecl_object].FirstItem;
+            while (r<>0) and (Sphere[r].ThingType<>ttDestructor) do
+              r:=Sphere[r].Next;
+            dec(stackIndex);
+            //TODO: switch from constructor to destructor;
+           end
+          else
+            r:=0;
           //subject stored in px.Target when Push(pArgList
-          if not StratoFnCallFindSignature(Sphere,p) then
+          if not StratoFnCallFindSignature(Sphere,p,r) then
             Source.Error('no function overload found with these arguments');
           done:=true;//always only one (need to parse ")" correctly)
          end;
@@ -1658,7 +1674,23 @@ begin
                 if Source.IsNext([stDefine]) then
                   px.InitialValue:=ParseLiteral(Source.Token);
                 //TODO: check InitialValue.EvaluatesTo with EvaluatesTo
-                Sphere.AddGlobalVar(p);//sets px.Offset
+                if ns<>0 then
+                 begin
+                  qx:=Sphere[ns];
+                  case qx.ThingType of
+                    ttNameSpace:
+                      Sphere.AddGlobalVar(p);//sets px.Offset
+                    ttClass,ttRecord:
+                     begin
+                      //TODO: support @ offset
+                      i:=qx.ByteSize;
+                      px.Offset:=i;
+                      inc(qx.ByteSize,ByteSize(Sphere,q));
+                     end;
+                    else
+                      Source.Error('unexpected variable parent');
+                  end;
+                 end;
                end;
               if cb=0 then Source.Skip(stSemiColon);
              end;
@@ -2904,7 +2936,7 @@ begin
       PushBinary(pOr,st,p);
     stOpXor:
       PushBinary(pXor,st,p);
-    stOpNot:
+    stOpNot,stTilde:
      begin
       q:=Sphere.Add(ttUnaryOp,qx);
       qx.Parent:=cb;
