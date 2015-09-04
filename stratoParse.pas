@@ -2411,7 +2411,6 @@ var
   st:TStratoToken;
   px,qx,rx:PStratoThing;
   i:cardinal;
-  b:boolean;
 begin
   while (cb<>0) and Source.NextToken(st) do
   case st of
@@ -2419,12 +2418,10 @@ begin
     stIdentifier:
      begin
       Juxta(p);
-      b:=true;
       ID(n,nn);
       fqn:=nn;
       while Source.IsNext([stPeriod,stIdentifier]) do
        begin
-        b:=false;
         CodeLookup(n,p);
         if p=0 then
          begin
@@ -2442,47 +2439,37 @@ begin
       CodeLookup(n,p);
       if (p<>0) and (Sphere[p].ThingType=ttNameSpace) then p:=0;
       if p=0 then
-        if b then
+       begin
+        //check variable object method/field pointer
+        //TODO: this recursive??!! (via stack!)
+        if r<>0 then
          begin
-          if not Sphere.AddTo(Sphere[cb].FirstItem,ttVar,n,p,px) then
-            Source.Error('duplicate identifier "'+string(fqn)+'"');
-          px.Parent:=cb;
-          px.SrcPos:=Source.SrcPos;
-          px.Offset:=Sphere[cb].ByteSize;
-          Push(pUnTypedVar,p);//see stColon below
-         end
-        else
-         begin
-          //check variable object method/field pointer
-          //TODO: this recursive??!! (via stack!)
-          if r<>0 then
+          q:=r;
+          CodeLookup(n,q);
+          while Source.IsNext([stPeriod,stIdentifier]) do
            begin
-            q:=r;
-            CodeLookup(n,q);
-            while Source.IsNext([stPeriod,stIdentifier]) do
-             begin
-              ID(n,nn);
-              fqn:=fqn+'.'+nn;
-              if p<>0 then CodeLookup(n,q);
-             end;
-            if q<>0 then
-             begin
-              p:=Sphere.Add(ttVarIndex,px);
-              px.Name:=n;
-              px.Parent:=r;
-              px.SrcPos:=Source.SrcPos;
-              px.Target:=q;
-              //qx.EvaluatesTo:=ResType(p);
-             end;
+            ID(n,nn);
+            fqn:=fqn+'.'+nn;
+            if p<>0 then CodeLookup(n,q);
            end;
-          //really found nothing?
-          if p=0 then
+          if q<>0 then
            begin
-            Source.Error('undeclared identifier "'+string(fqn)+'"');
-            p:=Sphere.Add(ttVar,px);//silence further errors
+            p:=Sphere.Add(ttVarIndex,px);
             px.Name:=n;
+            px.Parent:=r;
+            px.SrcPos:=Source.SrcPos;
+            px.Target:=q;
+            //qx.EvaluatesTo:=ResType(p);
            end;
          end;
+        //really found nothing?
+        if p=0 then
+         begin
+          Source.Error('undeclared identifier "'+string(fqn)+'"');
+          p:=Sphere.Add(ttVar,px);//silence further errors
+          px.Name:=n;
+         end;
+       end;
      end;
 
     stPeriod://"."
@@ -2537,47 +2524,60 @@ begin
      end;
 
     stColon:
-     begin
-      //Combine(p_ArgList_Item,p);
-      if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then //local declaration(s)?
-       begin
-        p:=0;
-        q:=LookUpType('type');
-        while (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) do
+      if p=0 then
+        if Source.IsNext([stIdentifier]) and
+          not(Source.IsNext([stIdentifier,stPeriod])) then
          begin
-          dec(stackIndex);
-          r:=stack[stackIndex].t;//assert ttVar
-          if p=0 then p:=r;
-          rx:=Sphere[r];
-          rx.EvaluatesTo:=q;//assert was 0
-          if q<>0 then
-           begin
-            rx.Offset:=Sphere[cb].ByteSize;
-            inc(Sphere[cb].ByteSize,ByteSize(Sphere,q));
-           end;
-          {$IFDEF DEBUG}
-          stack[stackIndex].p:=p___;
-          stack[stackIndex].t:=0;
-          {$ENDIF}
-         end;
-        if (p<>0) and Source.IsNext([stSemiColon]) then p:=0;//don't add as statement
-       end
-      else //cast
-       begin
-        Combine(p_Cast,p);//p_juxta?
-        if p=0 then
+          ID(n,nn);
+          if not Sphere.AddTo(Sphere[cb].FirstItem,ttVar,n,p,px) then
+            Source.Error('duplicate identifier "'+string(nn)+'"');
+          px.Parent:=cb;
+          px.SrcPos:=Source.SrcPos;
+          px.Offset:=Sphere[cb].ByteSize;
+          Push(pUnTypedVar,p);//see stColon below
+         end
+        else
           Source.Error('no value to cast')
-        else if ResType(Sphere,p)=0 then
-          Source.Error('can''t cast value "'+Sphere.FQN(p)+'" '+
-            IntToHex(Sphere[p].ThingType,4));
-        q:=Sphere.Add(ttCast,qx);
-        qx.Parent:=cb;
-        qx.SrcPos:=Source.SrcPos;
-        qx.Target:=p;
-        qx.EvaluatesTo:=LookUpType('cast type');
-        p:=q;
+      else
+       begin
+        //Combine(p_ArgList_Item,p);
+        if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then //local declaration(s)?
+         begin
+          p:=0;
+          q:=LookUpType('type');
+          while (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) do
+           begin
+            dec(stackIndex);
+            r:=stack[stackIndex].t;//assert ttVar
+            if p=0 then p:=r;
+            rx:=Sphere[r];
+            rx.EvaluatesTo:=q;//assert was 0
+            if q<>0 then
+             begin
+              rx.Offset:=Sphere[cb].ByteSize;
+              inc(Sphere[cb].ByteSize,ByteSize(Sphere,q));
+             end;
+            {$IFDEF DEBUG}
+            stack[stackIndex].p:=p___;
+            stack[stackIndex].t:=0;
+            {$ENDIF}
+           end;
+          if (p<>0) and Source.IsNext([stSemiColon]) then p:=0;//don't add as statement
+         end
+        else //cast
+         begin
+          Combine(p_Cast,p);//p_juxta?
+          if ResType(Sphere,p)=0 then
+            Source.Error('can''t cast value "'+Sphere.FQN(p)+'" '+
+              IntToHex(Sphere[p].ThingType,4));
+          q:=Sphere.Add(ttCast,qx);
+          qx.Parent:=cb;
+          qx.SrcPos:=Source.SrcPos;
+          qx.Target:=p;
+          qx.EvaluatesTo:=LookUpType('cast type');
+          p:=q;
+         end;
        end;
-     end;
 
     stPOpen:
       if p=0 then
@@ -2912,7 +2912,7 @@ begin
      end;
     stOpEQ,stOpNEQ:
       PushBinary(pEqual,st,p);
-    stOpLT,stOpLTE,stOpGT,stOpGTE:
+    stOpLT,stOpLTE,stOpGT,stOpGTE,stOpTypeIs:
       PushBinary(pComparative,st,p);
     stOpAdd,stOpSub:
      begin
@@ -3204,11 +3204,6 @@ begin
       else
         Source.Error('manipulating inherited pointer not allowed');
      end;
-
-    stOpTypeIs://"?="
-
-      //TODO
-      Source.Error('unsupported syntax');
 
     else Source.Error('unsupported syntax');//'unexpected token');
   end;

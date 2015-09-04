@@ -17,7 +17,7 @@ object(){
 
 -object(){
 	//assert _refcount=0
-	x:pointer:=@ @@:pointer;
+	:x:pointer:=@ @@:pointer;
 	x:number-=object_base_size;
 	__mfree(x);
 }

@@ -41,7 +41,7 @@ const
 
 implementation
 
-uses SysUtils, stratoRunTime, stratoFn;
+uses SysUtils, stratoRunTime, stratoFn, stratoTokenizer;
 
 function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 var
@@ -163,7 +163,8 @@ begin
       end
     else
     //if (tt=ttClassRef) and (s2=TypeDecl_type) then
-    if (tt=ttTypeDecl) and (s1=TypeDecl_type) and (Sphere[s2].ThingType=ttClassRef) then
+    if (tt=ttTypeDecl) and (s1=TypeDecl_type) and
+      (Sphere[s2].ThingType=ttClassRef) then
       Result:=true
     else
       Result:=false;
@@ -327,8 +328,14 @@ begin
    begin
     p1:=ResType(Sphere,p.Left);
     p2:=ResType(Sphere,p.Right);
-    if (p1=p2) or (SameType(Sphere,p1,p2)) or (SameType(Sphere,p2,p1)) then
-      Result:=true;
+    if TStratoToken(p.Op)=stOpTypeIs then
+      Result:=(p1<>0) and (p2<>0)
+        and ((Sphere[p1].ThingType and tt__IsType)<>0)
+        and ((Sphere[p2].ThingType and tt__IsType)<>0)
+    else
+      Result:=(p1=p2)
+        or (SameType(Sphere,p1,p2))
+        or (SameType(Sphere,p2,p1));
     //TODO: if p1=TypeDecl_bool then support 'x<y<z'
    end;
 end;

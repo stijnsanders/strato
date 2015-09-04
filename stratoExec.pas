@@ -1332,7 +1332,21 @@ begin
                   inc(np,SystemWordSize);
                   Move(k,FMem[vp],SystemWordSize);
                  end;
-              //TODO: stTypeIs:
+              stOpTypeIs:
+               begin
+                if (Sphere[q].ThingType=ttClass) and (xp<>0) then
+                 begin
+                  Move(FMem[xp],i,SystemWordSize);//dereference
+                  //assert object._baseclass @-SystemWordSize
+                  Move(FMem[i-SystemWordSize],q,SystemWordSize);
+                 end;
+                if (Sphere[vt].ThingType=ttClassRef) and (vp<>0) then
+                  Move(FMem[vp],vt,SystemWordSize);
+                if SameType(Sphere,vt,q) then i:=1 else i:=0;
+                vtp(TypeDecl_bool,np);
+                inc(np,SystemWordSize);
+                Move(i,FMem[vp],SystemWordSize);
+               end;
               //TODO: more!
               else
                 Sphere.Error(pe,'unsupported binary operator');
