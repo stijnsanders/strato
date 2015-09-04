@@ -234,9 +234,12 @@ begin
     p:=FSphere.Header.FirstGlobalVar;
     while p<>0 do
      begin
+      {
       q:=p;
       if (q<>0) and (FSphere[q].ThingType=ttGlobal) then q:=FSphere[q].Target;
       BuildNode(n,q);
+      }
+      BuildNode(n,p);
       p:=FSphere[p].Next;
      end;
 
@@ -404,7 +407,9 @@ end;
 function TfrmXsViewMain.JumpNode(n:TTreeNode;const prefix:string;
   i:cardinal):TXsTreeNode;
 var
-  p:TStratoIndex;
+  tt:TStratoThingType;
+  b:boolean;
+  p,q:TStratoIndex;
   m:TTreeNode;
 begin
   if i=0 then
@@ -412,21 +417,28 @@ begin
   else
    begin
     Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode;
+    b:=false;
+    tt:=FSphere[i].ThingType;
     if (n<>nil) and (n is TXsTreeNode) then
-     begin
-      m:=n;
-      while (m<>nil) and (m is TXsTreeNode)
-        and (((m as TXsTreeNode).Index=0)
-        or (FSphere[(m as TXsTreeNode).Index].ThingType=ttVarIndex))
-        do m:=m.Parent;
-      if (m as TXsTreeNode).Index=0 then p:=0 else
-        p:=FSphere[(m as TXsTreeNode).Index].Parent;
-     end
-    else p:=0;
-    if (p<>0) and ((FSphere[i].ThingType=ttVarIndex)
-      or ((FSphere[i].Parent=p)
-      and not(FSphere[i].ThingType in [ttVar,ttVarByRef,ttThis])))
-    then
+      if tt=ttVarIndex then
+        b:=true
+      else
+        if not(tt in [ttVar,ttVarByRef,ttThis]) then
+         begin
+          q:=FSphere[i].Parent;
+          m:=n;
+          while not(b) and (m<>nil) do
+           begin
+            if (m<>nil) and (m is TXsTreeNode) then
+             begin
+              p:=(m as TXsTreeNode).Index;
+              if p=i then m:=nil else
+                if p=q then b:=true;
+             end;
+            if m<>nil then m:=m.Parent;
+           end;
+         end;
+    if b then
      begin
       //BuildNode(Result,i)
       Result.HasChildren:=true;
@@ -486,7 +498,11 @@ begin
       ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration:
         j:=p.FirstItem;
       ttAlias,ttGlobal,ttImport,ttTry,ttDeferred,ttThrow:
+       begin
         n.JumpIndex:=p.Target;
+        if (p.Target<>0) and (FSphere[p.Target].ThingType=ttVarIndex) then
+          BuildNode(n,p.Target);
+       end;
       ttArray:
         n.JumpIndex:=p.ElementType;
       ttFunction,ttConstructors:

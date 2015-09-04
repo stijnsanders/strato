@@ -1752,22 +1752,45 @@ begin
         if p1=0 then
           Sphere.Error(pe,'call of uninstantiated property')
         else
-        if p1=px.ValueFrom then //getter
-          if p2=0 then //call getter
-           begin
-            if vt=0 then Sphere.Error(pe,'property getter called without object');
-            //set this value (@@)
-            Move(FMem[vp],FMem[np],SystemWordSize);//assert p.FirstItem.ThingType=ttThis@0
-            if (TypeDecl_object<>0) and (Sphere[vt].ThingType=ttClass) then
-              p:=StratoFnCallFindVirtual(Sphere,vt,p);
-            Push(p,p1,IndexStep1,np);
-            //TODO: property arguments?
-            p:=p1;//assert ttCodeBlock
-            mp:=np;
-            vt:=0;
-           end
-          else //getter called, pass result
-           begin
+          //TODO: array indexes: px.FirstArgument
+          if ((p1=px.ValueFrom) and (p2=0)) or
+             ((p1=px.AssignTo) and (p2<>0)) then
+            if vt=0 then
+              Sphere.Error(pe,'property called without object')
+            else
+             begin
+              //set this value (@@)
+              Move(FMem[vp],FMem[np],SystemWordSize);//assert p1.FirstItem.ThingType=ttThis@0
+              //virtual implementation?
+              if (TypeDecl_object<>0) and (Sphere[vt].ThingType=ttClass) then
+               begin
+                //dereference
+                Move(FMem[vp],i,SystemWordSize);
+                //assert object._baseclass @-SystemWordSize
+                Move(FMem[i-SystemWordSize],q,SystemWordSize);
+                q:=StratoFnCallFindVirtual(Sphere,q,p);
+               end
+              else
+                q:=p;
+              //get or set?
+              if (p1=px.ValueFrom) then
+               begin
+                if p<>q then p1:=Sphere[q].ValueFrom;
+                Push(p,p1,IndexStep1,np);
+                p:=p1;//assert ttCodeBlock
+                mp:=np;
+               end
+              else//p1=px.AssignTo
+               begin
+                if p<>q then p1:=sphere[q].AssignTo;
+                Push(p,p1,0,np);
+                p:=p2;//get value to set
+                inc(np,Sphere[p1].ByteSize);//assert Sphere[p1].ThingType=ttCodeBlock;
+               end;
+              vt:=0;
+             end
+          else
+          if p1=px.ValueFrom then //getter called, pass result
             if vt=0 then
              begin
               //from result var
@@ -1780,34 +1803,20 @@ begin
               //from code block result
               //assert vt=px.EvaluatesTo
               vt0:=0;//silence unused error
-             end;
-           end
-        else
-        if p1=px.AssignTo then //setter
-          if (p2<>0) and (p2<>IndexStep1) then //call setter, got address for this
+             end
+          else
+          if p1=px.AssignTo then //setter called, got value to set
            begin
-            if vt=0 then Sphere.Error(pe,'property setter called without object');
-            if (TypeDecl_object<>0) and (Sphere[vt].ThingType=ttClass) then
-              p:=StratoFnCallFindVirtual(Sphere,vt,p);
-            //set this value (@@)
-            Move(FMem[vp],FMem[np],SystemWordSize);//assert p.FirstItem.ThingType=ttThis@0
-            Push(p,p1,0,np);
-            p:=p2;//get value to set
-            inc(np,Sphere[p1].ByteSize);//assert Sphere[p1].ThingType=ttCodeBlock;
-            vt:=0;
-           end
-          else if p2=0 then //call setter, got value to set
-           begin
-            if vt=0 then Sphere.Error(pe,'property setter called without value to set');
-            //set value
-            Move(FMem[vp],FMem[mp+SystemWordSize],ByteSize(Sphere,vt));
-            //Push(p?
+            if vt=0 then
+              Sphere.Error(pe,'property setter called without value to set')
+            else
+              Move(FMem[vp],FMem[mp+SystemWordSize],ByteSize(Sphere,vt));
             p:=p1;
             np:=mp;
             vt:=0;
            end
-        else
-          Sphere.Error(pe,'unknown property invocation');
+          else
+            Sphere.Error(pe,'unknown property invocation');
 
       //TODO: more
 

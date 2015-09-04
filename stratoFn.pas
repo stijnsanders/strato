@@ -245,7 +245,7 @@ var
   p,p1,q,r,rt:TStratoIndex;
   px,qx:PStratoThing;
 begin
-  //see also TStratoParser.Combine, pArgList
+  //see also TStratoParser.Combine: pArgList
   //assert all Arguments added
   p:=Sphere[FnCall].Target;
   px:=Sphere[p];
@@ -453,6 +453,21 @@ begin
           while (p<>0) and not(StratoFnArgListsMatch(Sphere,
             Sphere[Target].FirstArgument,Sphere[p].FirstArgument)) do
             p:=Sphere[p].Next;
+          if p=0 then q:=Sphere[q].InheritsFrom;
+         end;
+        Result:=p;
+       end;
+      ttProperty:
+       begin
+        n:=Sphere[Target].Name;//ttProperty
+        p:=0;
+        q:=ImplClass;
+        while (p=0) and (q<>0) do
+         begin
+          p:=Sphere.Lookup(Sphere[q].FirstItem,n);
+          if (p<>0) and (Sphere[p].ThingType<>ttProperty) then
+            p:=0;//error?
+          //TODO: array-indexes: StratoFnArgListsMatch
           if p=0 then q:=Sphere[q].InheritsFrom;
          end;
         Result:=p;

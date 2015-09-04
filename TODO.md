@@ -10,14 +10,10 @@ TODO
 * JSON, array literals (requires 'standard' key-value storage solution)
 * syscall loadlibrary, COM/OLE/ActiveX...
 * output LLVMIR? GCC? C?
-* initialization/finalization per unit/module/namespace
 * chained comparison operators (as in 2 < x < 8 )
 * [or] "---" denoting 'implementation': declarations below line not accessible from 'outside'
 * threads (or whichever fancy async thing in vogue by then)
 * thread local vars
-* types, classes! (proper polymorphism)
-* constructors, destructor
-* virtual methods (as it currently stands, inheriters but pointer to base class don't jump to overriden overload)
 * data hiding (no access to values of class from 'outside' of class? doc!)
 * getters, setters (with parameters [])
 * protected, private (-, -- prefix?)
