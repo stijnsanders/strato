@@ -12,11 +12,14 @@ type
   private
     FDict:TStringDictionary;
     FBlock:array of record
-      First,Index,Size:cardinal;
-      Data:array of TStratoThing;
+      First:TStratoIndex;//cardinal
+      Index,Size:cardinal;
+      Data:pointer;//PStratoSphereDataBlock see below
     end;
     FBlockIndex,FBlockCount,FBlockSize:cardinal;
     FBasePath:string;
+    FGetNodeCacheID:TStratoIndex;
+    FGetNodeCacheST:PStratoThing;
     function GetNode(ID: TStratoIndex): PStratoThing;
   public
     constructor Create;
@@ -51,13 +54,30 @@ type
 
 implementation
 
-uses stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
+uses Windows, stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
 
 const
-  StratoSphereDataBlockSize=100;//$1000;
-  StratoSphereDataGrowSize=50;//$100;
-
+  StratoSphereDataBlockSize=$800;//2048
+  StratoSphereBlockGrowSize=8;
   StratoSphereFileVersion=$00000103;//0.1.3
+
+type
+  TStratoSphereDataBlock=array[0..StratoSphereDataBlockSize-1] of TStratoThing;
+  PStratoSphereDataBlock=^TStratoSphereDataBlock;
+
+function BlockAlloc:pointer;
+begin
+  //New(PStratoSphereDataBlock(FBlock[0].Data));
+  //ZeroMemory(FBlock[0].Data,SizeOf(TStratoSphereDataBlock));
+  Result:=VirtualAlloc(nil,SizeOf(TStratoSphereDataBlock),
+    MEM_RESERVE or MEM_COMMIT,PAGE_READWRITE);//MEM_LARGE_PAGES?
+  if Result=nil then RaiseLastOSError;
+end;
+
+procedure BlockFree(x:pointer);
+begin
+  if not VirtualFree(x,0,MEM_RELEASE) then RaiseLastOSError;
+end;
 
 { TStratoSphere }
 
@@ -69,16 +89,17 @@ begin
   FDict:=TStringDictionary.Create;
   FBlockIndex:=0;
   FBlockCount:=1;
-  FBlockSize:=StratoSphereDataGrowSize;
+  FBlockSize:=StratoSphereBlockGrowSize;
   SetLength(FBlock,FBlockSize);
   FBlock[0].First:=0;
   FBlock[0].Index:=1;
   FBlock[0].Size:=StratoSphereDataBlockSize;
-  SetLength(FBlock[0].Data,StratoSphereDataBlockSize);
-  //ZeroMemory?
+  FBlock[0].Data:=BlockAlloc;
+  FGetNodeCacheID:=0;
+  FGetNodeCacheST:=nil;
 
   //header
-  h:=@FBlock[0].Data[0];
+  h:=@(PStratoSphereDataBlock(FBlock[0].Data)[0]);
   h.FileMarker:=ttFileMarker;
   h.ThingCount:=0;//see SaveToFile
   h.Version:=StratoSphereFileVersion;
@@ -92,6 +113,7 @@ end;
 destructor TStratoSphere.Destroy;
 begin
   FDict.Free;
+  //for i:=FBlockCount-1 downto 0 do Dispose(PStratoSphereDataBlock(FBlock[0].Data));
   //hack: avoid expensive dealloc:
   pointer(FBlock):=nil;//SetLength(FData,0);
   inherited Destroy;
@@ -99,34 +121,39 @@ end;
 
 function TStratoSphere.MarkIndex(Index: TStratoIndex): TStratoIndex;
 var
-  i:cardinal;
+  i,j:cardinal;
 begin
   //TODO: push/pop (or cleaner separate branches?)
-  Result:=FBlock[FBlockIndex].First;
+  Result:=FBlock[FBlockIndex].First;//output previous
   {
-  if (Index and (StratoSphereDataGrowSize-1))<>0 then
-    raise Exception.Create('Block start indexes must be a multiple of block growth size');
+  if (Index and (StratoSphereDataBlockSize-1))<>0 then
+    raise Exception.Create('Block start indexes must be a multiple of block size');
   }
   if Index>=IndexStep1-1 then
     raise Exception.Create('Block start index reserved');
-  i:=0;
-  while (i<FBlockCount) and not((Index>=FBlock[i].First)
-    and (Index<FBlock[i].First+FBlock[i].Size)) do inc(i);
-  //TODO: check Index+StratoSphereDataBlockSize outside of current blocks
-  if i=FBlockCount then
+  j:=FBlockCount;
+  for i:=0 to FBlockCount-1 do
+    if Index=FBlock[i].First then
+      j:=i
+    else
+    if (Index>FBlock[i].First) and
+      (Index<FBlock[i].First+FBlock[i].Size) and
+      (Index>=FBlock[i].First+FBlock[i].Index) then
+      FBlock[i].Size:=FBlock[i].First-Index;
+  if j=FBlockCount then
    begin
     if FBlockCount=FBlockSize then
      begin
-      inc(FBlockSize,StratoSphereDataGrowSize);
+      inc(FBlockSize,StratoSphereBlockGrowSize);
       SetLength(FBlock,FBlockSize);
      end;
     inc(FBlockCount);
-    FBlock[i].First:=Index;
-    FBlock[i].Index:=0;
-    FBlock[i].Size:=StratoSphereDataBlockSize;
-    SetLength(FBlock[i].Data,StratoSphereDataBlockSize);
+    FBlock[j].First:=Index;
+    FBlock[j].Index:=0;
+    FBlock[j].Size:=StratoSphereDataBlockSize;
+    FBlock[j].Data:=BlockAlloc;
    end;
-  FBlockIndex:=i;
+  FBlockIndex:=j;
 end;
 
 procedure TStratoSphere.ReadSettings(const IniPath: string);
@@ -183,38 +210,47 @@ end;
 function TStratoSphere.Add(ThingType: cardinal;
   var Info: PStratoThing): TStratoIndex;
 var
+  p:TStratoIndex;
   i,j:cardinal;
 begin
   if FBlock[FBlockIndex].Index=FBlock[FBlockIndex].Size then
    begin
+    //block fill, determine first index for next block
+    p:=FBlock[FBlockIndex].First+FBlock[FBlockIndex].Size;
+    j:=StratoSphereDataBlockSize;
     i:=0;
-    j:=FBlock[FBlockIndex].First+FBlock[FBlockIndex].Size;
-    while (i<FBlockCount) and (FBlock[i].First<>j) do inc(i);
-    if i<>FBlockCount then
-     begin
-      //block full, start a new one at the end
-      j:=0;
-      for i:=0 to FBlockCount-1 do
-        if j<FBlock[i].First+StratoSphereDataBlockSize then
-          j:=FBlock[i].First+StratoSphereDataBlockSize;
-      if FBlockCount=FBlockSize then
+    while i<FBlockCount do
+      if (p>=FBlock[i].First) and (p<FBlock[i].First+FBlock[i].Size) then
        begin
-        inc(FBlockSize,StratoSphereDataGrowSize);
-        SetLength(FBlock,FBlockSize);
-       end;
-      FBlockIndex:=FBlockCount;
-      inc(FBlockCount);
-      FBlock[FBlockIndex].First:=j;
-      FBlock[FBlockIndex].Index:=0;
-      FBlock[FBlockIndex].Size:=0;
+        p:=FBlock[i].First+FBlock[i].Size;
+        j:=StratoSphereDataBlockSize;
+        i:=0;//restart
+       end
+      else
+      if (p+j>=FBlock[i].First) and (p+j<FBlock[i].First+FBlock[i].Size) then
+       begin
+        j:=FBlock[i].First-p;
+        inc(i);
+       end
+      else
+        inc(i);
+    //start a new block
+    if FBlockCount=FBlockSize then
+     begin
+      inc(FBlockSize,StratoSphereBlockGrowSize);
+      SetLength(FBlock,FBlockSize);
      end;
-    inc(FBlock[FBlockIndex].Size,StratoSphereDataBlockSize);
-    SetLength(FBlock[FBlockIndex].Data,FBlock[FBlockIndex].Size);
+    FBlockIndex:=FBlockCount;
+    inc(FBlockCount);
+    FBlock[FBlockIndex].First:=p;
+    FBlock[FBlockIndex].Index:=0;
+    FBlock[FBlockIndex].Size:=j;
+    FBlock[FBlockIndex].Data:=BlockAlloc;
    end;
   i:=FBlock[FBlockIndex].Index;
   inc(FBlock[FBlockIndex].Index);
   Result:=FBlock[FBlockIndex].First+i;
-  Info:=@FBlock[FBlockIndex].Data[i];
+  Info:=@(PStratoSphereDataBlock(FBlock[FBlockIndex].Data)[i]);
   //ZeroMemory(Info^?
   Info.ThingType:=ThingType;
 end;
@@ -330,9 +366,13 @@ begin
   if ID=0 then
     Result:=nil
   else
+  if ID=FGetNodeCacheID then
+    Result:=FGetNodeCacheST //TODO: thread-safe?
+  else
+   begin
     if (ID>=FBlock[FBlockIndex].First)
-      and (ID<FBlock[FBlockIndex].First+FBlock[FBlockIndex].Size) then
-      Result:=@FBlock[FBlockIndex].Data[ID-FBlock[FBlockIndex].First]
+      and (ID<FBlock[FBlockIndex].First+FBlock[FBlockIndex].Index) then
+      Result:=@(PStratoSphereDataBlock(FBlock[FBlockIndex].Data)[ID-FBlock[FBlockIndex].First])
     else
      begin
       i:=0;
@@ -341,8 +381,11 @@ begin
       if i=FBlockCount then
         Result:=nil//raise? ptr to all-zero?
       else
-        Result:=@FBlock[i].Data[ID-FBlock[i].First];
+        Result:=@(PStratoSphereDataBlock(FBlock[i].Data)[ID-FBlock[i].First]);
      end;
+    FGetNodeCacheID:=ID;
+    FGetNodeCacheST:=Result;
+   end;
 end;
 
 function TStratoSphere.Lookup(First:TStratoIndex;Name:TStratoName):TStratoIndex;
@@ -409,7 +452,7 @@ end;
 function TStratoSphere.Header:PStratoHeader;
 begin
   //TODO: header separate in data and file?
-  Result:=@FBlock[0].Data[0];
+  Result:=@(PStratoSphereDataBlock(FBlock[0].Data)[0]);
 end;
 
 procedure TStratoSphere.AddGlobalVar(p: TStratoIndex);
@@ -437,8 +480,8 @@ var
 begin
   f:=TFileStream.Create(FilePath,fmOpenRead or fmShareDenyWrite);
   try
-    f.Read(FBlock[0].Data[0],SizeOf(TStratoThing));
-    hh:=@FBlock[0].Data[0];//h:=Header;
+    hh:=@(PStratoSphereDataBlock(FBlock[0].Data)[0]);
+    f.Read(hh^,SizeOf(TStratoThing));
     if hh.FileMarker<>ttFileMarker then
       raise Exception.Create('File is not a sphere data file');
     //TODO: check?
@@ -446,29 +489,38 @@ begin
       raise Exception.Create('File is of an unsupported version');
 
     FBlock[0].First:=0;//?
-    FBlock[0].Index:=hh.ThingCount;//assert <FBlock[0].Size
-    //SetLength(FBlock[0].Data,
-    FBlockCount:=0;
+    FBlockIndex:=0;
     f.Position:=0;
     h.ThingCount:=hh.ThingCount;
     while h.ThingCount<>0 do
      begin
-      if FBlockCount<>0 then
+      if FBlockIndex=FBlockCount then
        begin
         if FBlockCount=FBlockSize then
          begin
-          inc(FBlockSize,StratoSphereDataGrowSize);
+          inc(FBlockSize,StratoSphereBlockGrowSize);
           SetLength(FBlock,FBlockSize);
          end;
-        FBlock[FBlockCount].First:=h.FirstIndex;
-        FBlock[FBlockCount].Index:=h.ThingCount;
+        FBlock[FBlockIndex].Data:=BlockAlloc;
+        inc(FBlockCount);
        end;
-      FBlock[FBlockCount].Size:=(h.ThingCount+(StratoSphereDataBlockSize-1))
-        and not(StratoSphereDataBlockSize-1);
-      SetLength(FBlock[FBlockCount].Data,FBlock[FBlockCount].Size);
-      f.Read(FBlock[FBlockCount].Data[0],h.ThingCount*SizeOf(TStratoThing));
-      inc(FBlockCount);
+      //TODO: detect overlaps
+      if FBlockIndex<>0 then FBlock[FBlockIndex].First:=h.FirstIndex;
+      FBlock[FBlockIndex].Index:=h.ThingCount;
+      FBlock[FBlockIndex].Size:=h.ThingCount;//close for new additions
+      if h.ThingCount>StratoSphereDataBlockSize then
+        raise Exception.Create('Unexpectedly large data block');
+      f.Read(PStratoSphereDataBlock(FBlock[FBlockIndex].Data)[0],
+        h.ThingCount*SizeOf(TStratoThing));
+      inc(FBlockIndex);
+      //next?
       f.Read(h,SizeOf(TStratoThing));//assert =SizeOf(TStratoBlockHeader)
+     end;
+    while FBlockIndex<FBlockCount do
+     begin
+      //BlockFree??
+      FBlock[FBlockIndex].Index:=0;
+      inc(FBlockIndex);
      end;
 
     //FDict.Clear;
@@ -487,6 +539,9 @@ begin
        end;
   finally
     f.Free;
+    FBlockIndex:=0;//?
+    FGetNodeCacheID:=0;
+    FGetNodeCacheST:=nil;
   end;
 end;
 
@@ -514,7 +569,8 @@ begin
     i:=0;
     while i<FBlockCount do
      begin
-      f.Write(FBlock[i].Data[0],FBlock[i].Index*SizeOf(TStratoThing));
+      f.Write(PStratoSphereDataBlock(FBlock[i].Data)[0],
+        FBlock[i].Index*SizeOf(TStratoThing));
       inc(i);
       if i=FBlockSize then
        begin
