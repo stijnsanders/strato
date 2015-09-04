@@ -54,7 +54,7 @@ type
     procedure ID(var n:TStratoName;var nn:UTF8String);
     function LookUpNameSpace(var ns:TStratoIndex;var n:TStratoName):boolean;
     procedure ParseImport;
-    function LookUp(StopAtType:boolean=false):TStratoIndex;
+    function LookUpID:TStratoIndex;
     procedure LookUpNext(n:TStratoName;const nn:UTF8String;
       var p,ns:TStratoIndex;var AddedNew:boolean);
     function ParseLiteral(st0:TStratoToken;OutputIntVal:boolean=false):TStratoIndex;
@@ -282,7 +282,7 @@ begin
      end;
 end;
 
-function TStratoParserBase.LookUp(StopAtType:boolean):TStratoIndex;
+function TStratoParserBase.LookUpID:TStratoIndex;
 var
   i,j,l:integer;
   n:TStratoName;
@@ -290,18 +290,6 @@ var
   nsx:array of TStratoIndex;
   p,q:TStratoIndex;//absolute nsx?
   px:PStratoNameSpaceData;
-  function CheckType:boolean;
-  var
-    k:integer;
-  begin
-    if j=1 then
-     begin
-      k:=0;
-      while (k<>l) and (nsx[k]=0) do inc(k);
-      Result:=(Sphere[nsx[k]].ThingType and tt__IsType)<>0;
-     end
-    else Result:=false;
-  end;
 begin
   //assert Source.IsNext([stIdentifier]);
   Result:=0;//default
@@ -325,8 +313,7 @@ begin
           if Sphere[nsx[i]].ThingType=ttImport then
             nsx[i]:=Sphere[nsx[i]].Target;
        end;
-  until (j=0) or (StopAtType and CheckType) or
-    not(Source.IsNext([stPeriod,stIdentifier]));
+  until (j=0) or not(Source.IsNext([stPeriod,stIdentifier]));
   //assert Source.Token=stIdentifier
   case j of
     0://none found, try namespaces
@@ -578,7 +565,7 @@ begin
     case st of
       stIdentifier:
        begin
-        Result:=LookUp;
+        Result:=LookUpID;
         if Result=0 then
          begin
           Source.Error('undefined constant value');
@@ -713,16 +700,18 @@ var
 begin
   if Source.IsNext([stQuestionMark,stIdentifier]) then
    begin
-    p:=Lookup(true);
+    p:=LookUpID;
     Result:=Sphere.Add(ttClassRef,qx);
     px:=Sphere[p];
-    qx.Parent:=px.Parent;
-    qx.SrcPos:=px.SrcPos;//Source.SrcPos;
-    qx.ByteSize:=SystemWordSize;
-    if (p=0) or (Sphere[p].ThingType<>ttClass) then
+    if (p=0) or (px.ThingType<>ttClass) then
       Source.Error('class reference allowed to class only')
     else
+     begin
+      qx.Parent:=px.Parent;
+      qx.SrcPos:=px.SrcPos;//Source.SrcPos;
+      qx.ByteSize:=SystemWordSize;
       qx.EvaluatesTo:=p;
+     end;
     //TODO: support ttClassRef?
    end
   else
@@ -730,7 +719,10 @@ begin
     ptr:=0;
     while Source.IsNext([stCaret]) do inc(ptr);
     //TODO: case Source.Token of?
-    if Source.IsNext([stIdentifier]) then Result:=LookUp(true) else Result:=0;
+    if Source.IsNext([stIdentifier]) then
+      Result:=LookUpID
+    else
+      Result:=0;
     if Result=0 then Source.Error('undefined '+tname) else
      begin
       case Sphere[Result].ThingType of
@@ -1727,7 +1719,7 @@ begin
             case st of
               stIdentifier:
                begin
-                p:=Lookup;
+                p:=LookUpID;
                 px:=Sphere[p];
                 if p=0 then
                   Source.Error('unknown type or constant')
@@ -2070,7 +2062,10 @@ begin
           if Source.IsNextID([stPClose,stAOpen]) or
             Source.IsNextID([stPClose,stDefine,stAOpen]) then
            begin //inherit this interface
-            if Source.IsNext([stIdentifier]) then q:=LookUp else q:=0;
+            if Source.IsNext([stIdentifier]) then
+              q:=LookUpID
+            else
+              q:=0;
             if q=0 then
               Source.Error('undeclared base interface');
             Source.Skip(stPClose);
