@@ -18,7 +18,7 @@ procedure DefaultTypes(Sphere:TStratoSphere);
 
 var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
-  TypeDecl_number,TypeDecl_variant,TypeDecl_pointer,
+  TypeDecl_number,TypeDecl_intLast,TypeDecl_variant,TypeDecl_pointer,
   TypeDecl_hash,TypeDecl_object:TStratoIndex;
   Name_Inherited:TStratoName;
 
@@ -150,9 +150,8 @@ begin
   TypeDecl_type:=A('type',SystemWordSize);
   TypeDecl_bool:=A('bool',SystemWordSize);
   TypeDecl_string:=A('string',SystemWordSize);
-  TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
   TypeDecl_variant:=A('variant',16);//TODO: OLE compatible variants
-  TypeDecl_object:=0;//see StratoParseSource: allow only one object()={}
+  TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
   A('i8',1);
   A('i16',2);
   A('i32',4);
@@ -160,9 +159,10 @@ begin
   A('u8',1);
   A('u16',2);
   A('u32',4);
-  A('u64',8);
+  TypeDecl_intLast:=A('u64',8);
   A('f32',4);//TODO: floating-point support
   A('f64',8);
+  TypeDecl_object:=0;//see StratoParseSource: allow only one object()={}
   TypeDecl_hash:=A('hash',SystemWordSize);//TODO:
   TypeDecl_pointer:=A('pointer',SystemWordSize);
 

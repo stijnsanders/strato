@@ -70,6 +70,7 @@ end;
 function TfrmDebugView.WaitNext:boolean;
 begin
   Result:=false;//default
+  Screen.Cursor:=crDefault;
   if Visible then
    begin
     SetLength(FBreakAt,0);//store?
@@ -133,6 +134,7 @@ begin
       FTrailSuspended:=true;
       lvTrail.Items.BeginUpdate;
       FDoNext:=1;
+      Screen.Cursor:=crHourGlass;
      end;
    end;
 end;
@@ -234,6 +236,7 @@ end;
 
 procedure TfrmDebugView.Done;
 begin
+  Screen.Cursor:=crDefault;
   if Visible then
    begin
     btnNext.Enabled:=false;

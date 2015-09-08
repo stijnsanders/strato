@@ -290,7 +290,7 @@ begin
       '-':
         case CodeNext(1) of
           '-':
-            case CodeNext(1) of
+            case CodeNext(2) of
               '-':
                begin
                 i:=CodeIndex+3;

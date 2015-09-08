@@ -1184,8 +1184,12 @@ begin
           r:=Sphere.Add(ttVarIndex,qx);
           qx.Parent:=p;
           qx.SrcPos:=Source.SrcPos;
-          qx.EvaluatesTo:=ResType(Sphere,p);
           qx.FirstArgument:=q;
+          q:=ResType(Sphere,p);
+          if (q<>0) and (Sphere[q].ThingType=ttArray) then
+            q:=Sphere[q].ElementType;
+          //else error?
+          qx.EvaluatesTo:=q;
           p:=r;
           done:=true;//always only one (need to parse "]" correctly)
          end;
@@ -1465,7 +1469,7 @@ begin
   if p<>0 then
    begin
     px:=Sphere[p];
-    if px.Parent=cb then q:=p else
+    if (px.Parent=cb) and (px.Next=0) then q:=p else
      begin
       //member of another chain, create an alias
       q:=Sphere.Add(ttAlias,qx);
@@ -1806,7 +1810,17 @@ begin
                 px.SrcPos:=Source.SrcPos;
                 px.InitialValue:=ParseLiteral(st);
                 if px.InitialValue<>0 then
+                 begin
+                  if Source.IsNext([stColon,stIdentifier]) then //here or in ParseLiteral?
+                   begin
+                    q:=LookUpType('literal type');
+                    if q=0 then
+                      Source.Error('unknown literal type')
+                    else
+                      Sphere[px.InitialValue].EvaluatesTo:=q;
+                   end;
                   px.EvaluatesTo:=Sphere[px.InitialValue].EvaluatesTo;
+                 end;
                end;
               //stPOpen://enumeration: see above
               stAOpen://record (aka struct)
@@ -2410,7 +2424,7 @@ var
   p,q,r:TStratoIndex;
   st:TStratoToken;
   px,qx,rx:PStratoThing;
-  i:cardinal;
+  i,j:cardinal;
 begin
   while (cb<>0) and Source.NextToken(st) do
   case st of
@@ -2464,11 +2478,21 @@ begin
          end;
         //really found nothing?
         if p=0 then
-         begin
-          Source.Error('undeclared identifier "'+string(fqn)+'"');
-          p:=Sphere.Add(ttVar,px);//silence further errors
-          px.Name:=n;
-         end;
+          if (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) then
+           begin
+            if not Sphere.AddTo(Sphere[cb].FirstItem,ttVar,n,p,px) then
+              Source.Error('duplicate identifier "'+string(nn)+'"');
+            px.Parent:=cb;
+            px.SrcPos:=Source.SrcPos;
+            px.Offset:=Sphere[cb].ByteSize;
+            Push(pUnTypedVar,p);//see stColon below
+           end
+          else
+           begin
+            Source.Error('undeclared identifier "'+string(fqn)+'"');
+            p:=Sphere.Add(ttVar,px);//silence further errors
+            px.Name:=n;
+           end;
        end;
      end;
 
@@ -2519,8 +2543,14 @@ begin
       p:=Sphere.Add(ttLiteral,px);
       px.Parent:=cb;
       px.SrcPos:=Source.SrcPos;
-      px.EvaluatesTo:=TypeDecl_number;
       px.InitialValue:=Sphere.AddBinaryData(Source.GetID);
+      if Source.IsNext([stColon,stIdentifier]) then
+       begin
+        px.EvaluatesTo:=LookUpType('literal type');
+        if px.EvaluatesTo=0 then Source.Error('unknown literal type');
+       end
+      else
+        px.EvaluatesTo:=TypeDecl_number;
      end;
 
     stColon:
@@ -2545,22 +2575,29 @@ begin
          begin
           p:=0;
           q:=LookUpType('type');
-          while (stackIndex<>0) and (stack[stackIndex-1].p=pUnTypedVar) do
+          i:=stackIndex;
+          while (i<>0) and (stack[i-1].p=pUnTypedVar) do dec(i);
+          if stackIndex<>i then
            begin
-            dec(stackIndex);
-            r:=stack[stackIndex].t;//assert ttVar
-            if p=0 then p:=r;
-            rx:=Sphere[r];
-            rx.EvaluatesTo:=q;//assert was 0
-            if q<>0 then
+            j:=i;
+            while i<stackIndex do
              begin
-              rx.Offset:=Sphere[cb].ByteSize;
-              inc(Sphere[cb].ByteSize,ByteSize(Sphere,q));
+              r:=stack[i].t;//assert ttVar
+              if p=0 then p:=r;
+              rx:=Sphere[r];
+              rx.EvaluatesTo:=q;//assert was 0
+              if q<>0 then
+               begin
+                rx.Offset:=Sphere[cb].ByteSize;
+                inc(Sphere[cb].ByteSize,ByteSize(Sphere,q));
+               end;
+              {$IFDEF DEBUG}
+              stack[i].p:=p___;
+              stack[i].t:=0;
+              {$ENDIF}
+              inc(i);
              end;
-            {$IFDEF DEBUG}
-            stack[stackIndex].p:=p___;
-            stack[stackIndex].t:=0;
-            {$ENDIF}
+            stackIndex:=j;
            end;
           if (p<>0) and Source.IsNext([stSemiColon]) then p:=0;//don't add as statement
          end

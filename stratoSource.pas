@@ -395,7 +395,7 @@ begin
     Writeln(ErrOutput,Format('%s(%d:%d): %s',[FFilePath,x,y,msg]));//Index?
    end
   else
-   begin
+   begin   
     x:=0;
     y:=0;
     Writeln(ErrOutput,Format('%s(EOF): %s',[FFilePath,msg]));

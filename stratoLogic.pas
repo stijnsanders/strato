@@ -210,6 +210,7 @@ end;
 
 function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 var
+  q:TStratoIndex;
   px:PStratoThing;
   b:boolean;
 begin
@@ -231,6 +232,13 @@ begin
            begin
             px:=Sphere[px.Target];
             b:=true;
+            //TODO: ttProperty
+           end
+          else
+           begin
+            q:=ResType(Sphere,px.Parent);
+            if (q<>0) and (Sphere[q].ThingType=ttArray) then
+              Result:=true;
            end;
         ttProperty:
           Result:=px.AssignTo<>0;//has a setter (thus isn't read-only)

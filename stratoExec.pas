@@ -27,13 +27,13 @@ implementation
 uses Windows, stratoFn, stratoRunTime, stratoTokenizer, stratoLogic, ComCtrls;
 
 const
-  InitialMemSize=$10000;//?
+  InitialMemSize=$100000;//?
   {$IFDEF DEBUG}
   BaseMemPtr=100;//some null-pointer safe-guard
-  FirstAllocMemPtr=2000;
+  FirstAllocMemPtr=10000;
   {$ELSE}
   BaseMemPtr=$100;//some null-pointer safe-guard
-  FirstAllocMemPtr=$2000;
+  FirstAllocMemPtr=$10000;
   {$ENDIF}
   MaxStackMemPtr=FirstAllocMemPtr-$10;
 
@@ -327,7 +327,7 @@ var
   p,q,r,vt,p0,p1,p2,vt0,pe:TStratoIndex;
   px,qx,rx:PStratoThing;
   i,j,k,mp,np,vp,xp,OpCount:cardinal;
-  ii:int64;
+  ii,jj:int64;
 
   procedure vtp(nvt,nvp:cardinal);
   begin
@@ -341,34 +341,39 @@ var
     li,li1:TListItem;
     pp:TStratoIndex;
     ppx:PStratoThing;
-    pi:cardinal;
+    pi,ii,jj:cardinal;
   begin
     //TODO: move this to other unit
     inc(OpCount);
     if (FDebugView<>nil) and (FDebugView.cbKeepTrail.Checked) then
      begin
-      li:=FDebugView.lvTrail.Items.Add;
-      li.Caption:=IntToStr(OpCount);
-      li.SubItems.Add(IntToStr(p));
-      li.SubItems.Add(IntToStr0(p1));
-      li.SubItems.Add(IntToStr0(p2));
-      li.SubItems.Add(IntToStr(mp));
-      li.SubItems.Add(IntToStr(np));
-      li.SubItems.Add(StratoDumpThing(Sphere,p,Sphere[p]));
-      li.SubItems.Add(IntToStr0(vt));
-      li.SubItems.Add(IntToStr0(vp));
-      if (vt=0) or (vp=0) then
-       begin
-        li.SubItems.Add('');
-        li.SubItems.Add('');
-       end
-      else
-       begin
-        Move(FMem[vp],i,SystemWordSize);
-        li.SubItems.Add(Format('%.8x',[i]));
-        li.SubItems.Add(IntToStr(i));
-       end;
-      //timestamp?
+      FDebugView.lvTrail.Items.BeginUpdate;
+      try
+        li:=FDebugView.lvTrail.Items.Add;
+        li.Caption:=IntToStr(OpCount);
+        li.SubItems.Add(IntToStr(p));
+        li.SubItems.Add(IntToStr0(p1));
+        li.SubItems.Add(IntToStr0(p2));
+        li.SubItems.Add(IntToStr(mp));
+        li.SubItems.Add(IntToStr(np));
+        li.SubItems.Add(StratoDumpThing(Sphere,p,Sphere[p]));
+        li.SubItems.Add(IntToStr0(vt));
+        li.SubItems.Add(IntToStr0(vp));
+        if (vt=0) or (vp=0) then
+         begin
+          li.SubItems.Add('');
+          li.SubItems.Add('');
+         end
+        else
+         begin
+          Move(FMem[vp],i,SystemWordSize);
+          li.SubItems.Add(Format('%.8x',[i]));
+          li.SubItems.Add(IntToStr(i));
+         end;
+        //timestamp?
+      finally
+        FDebugView.lvTrail.Items.EndUpdate;
+      end;
       FDebugView.lvTrail.ItemFocused:=li;
       li.MakeVisible(false);
      end;
@@ -407,10 +412,12 @@ var
         i:=BaseMemPtr;
         pi:=BaseMemPtr;
         k:=0;
+        ii:=0;
         if Sphere.Header.GlobalByteSize=0 then pp:=0 else
           pp:=Sphere.Header.FirstGlobalVar;
-        while (i<FMemIndex) or (i<np) do
+        while ((i<FMemIndex) or (i<np)) and (ii<80) do
          begin
+          inc(ii);
           Move(FMem[i],j,4);
           li1:=FDebugView.lvMem.Items.Add;
           li1.Caption:=IntToStr(i);
@@ -422,8 +429,14 @@ var
               (Sphere[stack[k].p].ThingType=ttCodeBlock) and
               (Sphere[stack[k].p].ByteSize<>0) and
               (stack[k].bp>=i)) do inc(k);
-            if k=stackIndex then
-              pp:=0
+            if (k=stackIndex) or (stack[k].p=0) then
+              if (p<>0) and (px.ThingType=ttCodeBlock) then
+               begin
+                pp:=px.FirstItem;
+                pi:=mp;
+               end
+              else
+                pp:=0
             else
              begin
               pp:=Sphere[stack[k].p].FirstItem;
@@ -431,7 +444,10 @@ var
              end;
            end;
           if (pp=0) or (pi>i) then
-            li1.SubItems.Add('')
+           begin
+            li1.SubItems.Add('');
+            jj:=4;
+           end
           else
            begin
             ppx:=Sphere[pp];
@@ -440,18 +456,22 @@ var
              begin
               li1.SubItems.Add(Format('%d: %s',[pp,
                 StratoDumpThing(Sphere,ppx.Target,Sphere[ppx.Target])]));
+              jj:=ByteSize(Sphere,Sphere[ppx.Target].EvaluatesTo);
               while (pp<>0) and (pi+Sphere[Sphere[pp].Target].Offset<=i) do
-                pp:=ppx.Next;
+                pp:=Sphere[pp].Next;
              end
             else
              begin
               li1.SubItems.Add(Format('%d:%d: %s',[ppx.Parent,pp,
                 StratoDumpThing(Sphere,pp,ppx)]));
+              jj:=ByteSize(Sphere,ppx.EvaluatesTo);
               while (pp<>0) and (pi+Sphere[pp].Offset<=i) do
-                pp:=ppx.Next;
+                pp:=Sphere[pp].Next;
              end;
            end;
-          inc(i,4);
+          if jj=0 then jj:=4;
+          while (jj and 3)<>0 do inc(jj);
+          inc(i,jj);
          end;
         i:=FirstAllocMemPtr;
         if i<FMemAllocIndex then
@@ -1035,19 +1055,15 @@ begin
           Sphere.Error(pe,'Array index not number')
         else
          begin
-          Pop(p1,p2,q,xp);//subject
-          Move(FMem[vp],i,SystemWordSize);
+          //assert p1=IndexStep2
+          q:=p2;xp:=mp;//Pop?
           qx:=Sphere[q];
           if qx.ThingType=ttArray then
            begin
             //TODO: check range? (px.ByteSize)
+            Move(FMem[vp],i,SystemWordSize);
             r:=Sphere[q].ElementType;
             inc(xp,i*ByteSize(Sphere,r));
-            qx:=Sphere[px.Target];
-            if (qx<>nil) and (qx.ThingType=ttVar) and (qx.Parent=r) then
-              inc(xp,qx.Offset)
-            else
-              Sphere.Error(pe,'Unexpected array index and target');//TODO:continue into addr()
             vtp(r,xp);
            end
           else
@@ -1127,15 +1143,17 @@ begin
         else
           case TStratoToken(px.Op) of
             stOpSub,stOpInc,stOpDec:
-              if vt=TypeDecl_number then
+              if (vt>=TypeDecl_number) and (vt<=TypeDecl_intLast) then
                begin
-                Move(FMem[vp],i,SystemWordSize);
+                i:=ByteSize(Sphere,vt);
+                ii:=0;
+                Move(FMem[vp],ii,i);
                 case TStratoToken(px.Op) of
-                  stOpSub:i:=-i;
-                  stOpInc:inc(i);
-                  stOpDec:dec(i);
+                  stOpSub:ii:=-ii;
+                  stOpInc:inc(ii);
+                  stOpDec:dec(ii);
                 end;
-                Move(i,FMem[vp],SystemWordSize);
+                Move(ii,FMem[vp],i);
                 inc(np,SystemWordSize);
                 vt0:=0;//silence unused error
                end
@@ -1224,6 +1242,7 @@ begin
             Pop(p1,p2,q,xp);//left: q@xp right: vt@vp
             np:=mp;
             vt0:=0;//drop value
+            //assert SameType(q,vt
             case TStratoToken(px.Op) of
               stOpEQ:
                begin
@@ -1241,15 +1260,17 @@ begin
                end;
               stOpAdd:
                begin
-                //assert SameType(q.EvaluatesTo,pp.EvaluatesTo)
-                if (q=TypeDecl_number) and (vt=TypeDecl_number) then
+                if (q>=TypeDecl_number) and (q<=TypeDecl_intLast) and (q=vt) then
                  begin
-                  Move(FMem[xp],i,SystemWordSize);
-                  Move(FMem[vp],j,SystemWordSize);
-                  k:=i+j;
-                  vtp(TypeDecl_number,np);
-                  inc(np,SystemWordSize);
-                  Move(k,FMem[vp],SystemWordSize);
+                  i:=ByteSize(Sphere,vt);
+                  ii:=0;
+                  Move(FMem[xp],ii,i);
+                  jj:=0;
+                  Move(FMem[vp],jj,i);
+                  ii:=ii+jj;
+                  vtp(q,np);
+                  inc(np,i);
+                  Move(ii,FMem[vp],i);
                  end
                 else
                 if (q=TypeDecl_string) and (vt=TypeDecl_string) then
@@ -1270,49 +1291,53 @@ begin
                end;
               stOpSub,stOpMul,stOpDiv,stOpMod,stOpShl,stOpShr,stThreeLT,stThreeGT:
                begin
-                //assert SameType(q.EvaluatesTo,pp.EvaluatesTo)
-                if (q=TypeDecl_number) and (vt=TypeDecl_number) then
+                if (q>=TypeDecl_number) and (q<=TypeDecl_intLast) and (q=vt) then
                  begin
-                  Move(FMem[xp],i,SystemWordSize);
-                  Move(FMem[vp],j,SystemWordSize);
+                  i:=ByteSize(Sphere,vt);
+                  ii:=0;
+                  Move(FMem[xp],ii,i);
+                  jj:=0;
+                  Move(FMem[vp],jj,i);
                   case TStratoToken(px.Op) of
                     //stOpAdd:k:=i+j;//see above
-                    stOpSub:k:=i-j;
-                    stOpMul:k:=i*j;
-                    stOpDiv:k:=i div j;
-                    stOpMod:k:=i mod j;
+                    stOpSub:ii:=ii-jj;
+                    stOpMul:ii:=ii*jj;
+                    stOpDiv:ii:=ii div jj;
+                    stOpMod:ii:=ii mod jj;
                     //stOpInc:
                     //stOpDec:
-                    stOpShl:k:=i shl j;
-                    stOpShr:k:=i shr j;
-                    stThreeLT:k:=(i shl j) or (i shr (SystemWordSize*8-j));//roll left
-                    stThreeGT:k:=(i shr j) or (i shl (SystemWordSize*8-j));//roll right
+                    stOpShl:ii:=ii shl jj;
+                    stOpShr:ii:=ii shr jj;
+                    stThreeLT:ii:=(ii shl jj) or (ii shr (i*8-j));//roll left
+                    stThreeGT:ii:=(ii shr jj) or (ii shl (i*8-j));//roll right
                   end;
-                  vtp(TypeDecl_number,np);
-                  inc(np,SystemWordSize);
-                  Move(k,FMem[vp],SystemWordSize);
+                  vtp(q,np);
+                  inc(np,i);
+                  Move(ii,FMem[vp],i);
                  end
                 else
                   Sphere.Error(pe,'//TODO: more operator stuff');
                end;
               stOpNEQ,stOpLT,stOpLTE,stOpGT,stOpGTE:
                begin
-                //assert SameType(q.EvaluatesTo,pp.EvaluatesTo)
-                if (q=TypeDecl_number) and (vt=TypeDecl_number) then
+                if (q>=TypeDecl_number) and (q<=TypeDecl_intLast) and (q=vt) then
                  begin
-                  Move(FMem[xp],i,SystemWordSize);
-                  Move(FMem[vp],j,SystemWordSize);
-                  k:=0;
+                  i:=ByteSize(Sphere,vt);
+                  ii:=0;
+                  Move(FMem[xp],ii,i);
+                  jj:=0;
+                  Move(FMem[vp],jj,i);
+                  j:=0;
                   case TStratoToken(px.Op) of
-                    stOpNEQ:if i<>j then k:=1;
-                    stOpLT: if i<j  then k:=1;
-                    stOpLTE:if i<=j then k:=1;
-                    stOpGT: if i>j  then k:=1;
-                    stOpGTE:if i>=j then k:=1;
+                    stOpNEQ:if ii<>jj then j:=1;
+                    stOpLT: if ii< jj then j:=1;
+                    stOpLTE:if ii<=jj then j:=1;
+                    stOpGT: if ii> jj then j:=1;
+                    stOpGTE:if ii>=jj then j:=1;
                   end;
                   vtp(TypeDecl_bool,np);
                   inc(np,SystemWordSize);
-                  Move(k,FMem[vp],SystemWordSize);
+                  Move(j,FMem[vp],SystemWordSize);
                  end
                 else
                   Sphere.Error(pe,'//TODO: more operator stuff');
@@ -1368,7 +1393,7 @@ begin
             Push(p,px.ValueFrom,qx.EvaluatesTo,np);
             p:=qx.Target;
            end
-          else if (qx.ThingType=ttVarIndex) and
+          else if (qx.ThingType=ttVarIndex) and (qx.Target<>0) and
             (Sphere[qx.Target].ThingType=ttProperty) then
            begin
             //property setter, locate object first
@@ -1413,12 +1438,15 @@ begin
                 stOpAssign:
                   Move(FMem[vp],FMem[xp],ByteSize(Sphere,vt));
                 stOpAssignAdd:
-                  if vt=TypeDecl_number then
+                  if (vt>=TypeDecl_number) and (vt<=TypeDecl_intLast) then
                    begin
-                    Move(FMem[xp],i,SystemWordSize);
-                    Move(FMem[vp],j,SystemWordSize);
-                    i:=i+j;
-                    Move(i,FMem[xp],SystemWordSize);
+                    i:=ByteSize(Sphere,vt);
+                    ii:=0;
+                    Move(FMem[xp],ii,i);
+                    jj:=0;
+                    Move(FMem[vp],jj,i);
+                    ii:=ii+jj;
+                    Move(ii,FMem[xp],i);
                    end
                   else
                   if vt=TypeDecl_string then
@@ -1440,17 +1468,20 @@ begin
                 stOpAssignAnd:
                   if vt=TypeDecl_number then
                    begin
-                    Move(FMem[xp],i,SystemWordSize);
-                    Move(FMem[vp],j,SystemWordSize);
+                    i:=ByteSize(Sphere,vt);
+                    ii:=0;
+                    Move(FMem[xp],ii,i);
+                    jj:=0;
+                    Move(FMem[vp],jj,i);
                     case TStratoToken(px.Op) of
-                      stOpAssignSub:i:=i-j;
-                      stOpAssignMul:i:=i*j;
-                      stOpAssignDiv:i:=i div j;
-                      stOpAssignMod:i:=i mod j;
-                      stOpAssignOr: i:=i or j;
-                      stOpAssignAnd:i:=i and j;
+                      stOpAssignSub:ii:=ii-jj;
+                      stOpAssignMul:ii:=ii*jj;
+                      stOpAssignDiv:ii:=ii div jj;
+                      stOpAssignMod:ii:=ii mod jj;
+                      stOpAssignOr: ii:=ii or  jj;
+                      stOpAssignAnd:ii:=ii and jj;
                     end;
-                    Move(i,FMem[xp],SystemWordSize);
+                    Move(ii,FMem[xp],i);
                    end
                   else
                     Sphere.Error(pe,'//TODO: more operator stuff');
@@ -1870,13 +1901,11 @@ begin
     Sphere.Error(p,'literal expected '+IntToHex(px.ThingType,4))
   else
     //assert q=0 or Sphere[q].ThingType=ttTypeDecl
-    if px.EvaluatesTo=TypeDecl_number then
+    if (px.EvaluatesTo>=TypeDecl_number) and
+      (px.EvaluatesTo<=TypeDecl_intLast) then
      begin
       i:=ParseInteger(string(Sphere.GetBinaryData(px.InitialValue)));
-      if (q=0) or (Sphere[q].ByteSize=SystemWordSize) then
-        Move(i,FMem[addr],SystemWordSize)
-      else
-        Move(i,FMem[addr],Sphere[q].ByteSize);
+      Move(i,FMem[addr],Sphere[q].ByteSize);
      end
     else
     if px.EvaluatesTo=TypeDecl_string then
