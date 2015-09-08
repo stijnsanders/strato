@@ -16,6 +16,7 @@ TODO
 * thread local vars
 * data hiding (no access to values of class from 'outside' of class? doc!)
 * getters, setters (with parameters [])
+* lazy evaluation logic operators (and,or)
 * protected, private (-, -- prefix?)
 * abstract methods (just with missing implementation?)
 * interfaces

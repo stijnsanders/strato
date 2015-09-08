@@ -1557,7 +1557,7 @@ begin
           p:=px.DoElse;
          end
         else
-        if (px.Body<>0) and (p1=p) then
+        if (px.Body<>0) and ((p1=0) or (p1=p)) then
          begin
           Push(p,px.Body,0,np);
           p:=px.Body;
@@ -1586,7 +1586,7 @@ begin
           //perform Body,DoThen
           if (i<>0) and not((px.Body=0) and (px.DoThen=0)) then
            begin
-            Push(p,p,0,mp);
+            Push(p,0,0,mp);
             p:=px.DoThen;
            end;
          end;

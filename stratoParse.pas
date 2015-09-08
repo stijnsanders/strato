@@ -3057,7 +3057,14 @@ begin
     stResult://"??"
      begin
       Juxta(p);
-      p:=Sphere.Lookup(Sphere[cb].FirstItem,Sphere[Sphere[cb].Parent].Name);
+      q:=Sphere[cb].Parent;
+      if q=0 then q:=cb else
+        case Sphere[q].ThingType of
+          ttOverload:q:=Sphere[q].Parent;//ttFunction
+          //ttProperty?
+          //mode?
+        end;
+      p:=Sphere.Lookup(Sphere[cb].FirstItem,Sphere[q].Name);
       if p=0 then
        begin
         Source.Error('"??" undefined');
