@@ -43,7 +43,7 @@ const
   ttNameSpace    = $0011;
     //(use PStratoNameSpace)
     //FirstItem	(0,*)
-    //Source (0,ttSourceFile)
+    //SourceFile (0,ttSourceFile)
     //FirstInitialization (0,ttCodeBlock)
     //FirstFinalization (0,ttCodeBlock)
 
@@ -101,8 +101,9 @@ const
     //EvaluatesTo (0,ttTypeDecl): return value
     //FirstArgument (*): first argument
 
-  ttFunction     = $0001;
-    //FirstItem (0,ttOverload): first overload
+  ttMember       = $0001;
+    //Name:
+    //FirstItem (0,ttOverload,ttPropertyGet,ttPropertySet):
 
   ttOverload     = $0002;
     //SourceFile (ttSourceFile)
@@ -112,7 +113,7 @@ const
 
   ttFnCall       = $0084;
     //FirstArgument (0,ttArgument)
-    //Target (ttVarIndex,ttOverload,ttConstructor,ttDestructor):
+    //Target (ttField,ttOverload,ttConstructor,ttDestructor):
     //EvaluatesTo (0,*): return value type
     //Name=0 when constructor and calling inherited constructor 
 
@@ -124,7 +125,7 @@ const
   ttAssign       = $0003;
     //Op
     //ValueFrom (*)
-    //AssignTo (ttVar,ttVarIndex,ttCast)
+    //AssignTo (ttVar,ttArrayIndex,ttField,ttCast)
 
   ttUnaryOp      = $0025;
     //Op
@@ -165,7 +166,7 @@ const
     //Target: deferred command
 
   ttCatch        = $0006;
-    //DoIf (0,ttTypeDecl): exception object mask
+    //Target (0,ttTypeDecl): exception object mask
     //FirstArgument (ttVar): exception object reference
     //Body (*) exception handling command(s)
 
@@ -174,12 +175,17 @@ const
 
   ttArray        = $0041;
     //ByteSize: total array memory size
-    //ElementType (ttTypeDecl)
+    //Subject: element type (ttTypeDecl)
+    //TODO: multi-dimensional arrays
 
-  ttVarIndex     = $0027;
-    //Parent (ttVar): x in x[y].z
-    //Target: z in x[y].z
-    //FirstArgument: y in x[y].z
+  ttArrayIndex   = $0024;
+    //Target: x in x[y]
+    //FirstArgument: y in x[y]
+    //EvaluateTo (0,ttTypeDecl)
+
+  ttField        = $0027;
+    //Subject (ttVar): x in x.y
+    //Target: y in x.y
     //EvaluateTo (0,ttTypeDecl)
 
   ttThis         = $0028;
@@ -206,13 +212,13 @@ const
     //EvaluatesTo (ttTypeDecl)
 
   ttClass        = $00D0;
-    //FirstItem (0, ttVar, ttFunction, ttProperty, ttConstructors)
+    //FirstItem (0, ttVar, ttMember, ttConstructors)
     //ByteSize: size of data, not value since that's a pointer
     //InheritsFrom (0, ttClass)
     //Target (ttClassInfo)
 
   ttConstructors = $000A;
-    // (like ttFunction)
+    // (like ttMember)
     //FirstItem (0,ttConstructor): first constructor
 
   ttConstructor  = $000B;
@@ -226,19 +232,35 @@ const
     //Target (ttSignature)
     //Body (ttCodeBlock)
 
-  ttInterface    = $00D1;
-    //ByteSize: SystemWordSize (since it's a pointer!)
-    //FirstItem (ttVar, ttFunction, ttProperty)
-    //InheritsFrom (ttRecord)
-
-  ttProperty     = $0029;
-    //EvaluatesTo (ttTypeDecl)
-    //ValueFrom (ttOverload)
-    //AssignTo (ttOverload)
-
   ttClassRef     = $00C1;
     //ByteSize: SystemWordSize
     //EvaluatesTo (ttClass)
+
+  ttInterface    = $00D1;
+    //ByteSize: SystemWordSize (since it's a pointer!)
+    //FirstItem (ttVar, ttMember)
+    //InheritsFrom (ttRecord)
+
+  ttPropertyGet  = $000D;
+    // (like ttOverload)
+    //SourceFile (ttSourceFile)
+    //FirstArgument (*): first argument value in overload body
+    //Target (ttSignature): call signature
+    //Body (ttCodeBlock): overload body
+
+  ttPropertySet  = $000E;
+    // (like ttOverload)
+    //SourceFile (ttSourceFile)
+    //FirstArgument (*): first argument value in overload body
+    //Target (ttSignature): call signature
+    //Body (ttCodeBlock): overload body
+
+  ttPropCall     = $0085;
+    //Op: 0 with ttPropertyGet, stAssign* with ttPropertySet
+    //FirstArgument (0,ttArgument)
+    //Target (ttPropertyGet,ttPropertySet):
+    //EvaluatesTo (0,*): ttPropertySet: value to set
+
 
 type
   TStratoThing=record
@@ -263,25 +285,25 @@ type
         EvaluatesTo:TStratoIndex;
       );
       ttAssign:(
-        Op:cardinal;
+        Subject,
         ValueFrom,
         AssignTo:TStratoIndex;
       );
       ttBinaryOp:(
-        SourceFile:TStratoIndex;//ttOverload,ttConstructor only!
+        Op:cardinal;
         Left,
         Right:TStratoIndex;
       );
       ttOverload:(
-        ElementType:cardinal;//ttArray only!
+        SourceFile:TStratoIndex;//ttNameSpace,ttOverload,ttConstructor only!
         FirstArgument,
-        Target:TStratoIndex;
+        Target,
+        Body:TStratoIndex;
       );
       ttSelection:(
         DoIf,
         DoThen,
-        DoElse,//ttSelection:DoElse,ttIteration:DoFirst
-        Body:TStratoIndex;
+        DoElse:TStratoIndex;//ttIteration:DoFirst
       );
   end;
   PStratoThing=^TStratoThing;

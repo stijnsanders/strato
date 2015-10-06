@@ -31,7 +31,7 @@ type
 
     stAtAt,//"@@": this/self
     stAtAtAt,//"@@@": inherited/base
-    stResult,//"??"
+    stTwoQuestionMarks,//"??": result
 
     stOpAssign, //":="
     stOpAssignAdd, //"+="
@@ -357,9 +357,10 @@ begin
           '?':
             case CodeNext(2) of
               '?':Add(3,stCatch);
-              else Add(2,stResult);
+              else Add(2,stTwoQuestionMarks);
             end;
           '=':Add(2,stOpTypeIs);
+          //':':Add(2,stOpElvis);//TODO: https://en.wikipedia.org/wiki/Elvis_operator
           else Add(1,stQuestionMark);//stOpIf
         end;
       '!':

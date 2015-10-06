@@ -56,7 +56,7 @@ var
     //n:=Sphere.Lookup(ns.FirstItem,FunctionName);
     //if n=0 then
      begin
-      n1:=Sphere.Add(ttFunction,q);
+      n1:=Sphere.Add(ttMember,q);
       q.Name:=Sphere.Dict.StrIdx(FunctionName);
       q.Parent:=ns;
       n:=Sphere.Add(ttOverload,q);

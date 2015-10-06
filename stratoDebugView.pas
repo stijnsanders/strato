@@ -80,7 +80,7 @@ begin
       FTrailSuspended:=false;
       lvTrail.Items.EndUpdate;
      end;
-    while FDoNext=0 do Application.ProcessMessages;
+    while FDoNext=0 do Application.HandleMessage;
     Result:=FDoNext<>1;
    end;
 end;

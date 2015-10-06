@@ -89,10 +89,10 @@ begin
       Result:=Format('===> %d  %s',
         [p.Target,s.FQN(p.Target)]);
     ttSignature:
-      Result:=Format('sig  %s  "%d.(%d):%d"',
+      Result:=Format('sig  %s  %d.(%d):%d',
         [s.FQN(i),p.Target,p.FirstArgument,p.EvaluatesTo]);
-    ttFunction:
-      Result:=Format('fn:  %s  ->%d',
+    ttMember:
+      Result:=Format('mem  %s  ->%d',
         [s.FQN(i),p.FirstItem]);
     ttOverload:
       Result:=Format('fn   %s  %d(%d){%d}',
@@ -138,15 +138,18 @@ begin
       Result:=Format('>>>  ->%d',[p.Target]);
     ttCatch:
       Result:=Format('???  t=%d v=%d ->%d',
-        [p.DoIf,p.FirstArgument,p.Body]);
+        [p.Target,p.FirstArgument,p.Body]);
     ttSysCall:
       Result:=Format('sys  %.4x',[p.Op]);
     ttArray:
       Result:=Format('arr  %s  #%d t=%d',
-        [s.FQN(i),p.ByteSize,p.ElementType]);
-    ttVarIndex:
-      Result:=Format('.[]  %d.%d[%d]  t=%d',
-        [p.Parent,p.Target,p.FirstArgument,p.EvaluatesTo]);
+        [s.FQN(i),p.ByteSize,p.Subject]);
+    ttArrayIndex:
+      Result:=Format('x[]  %d[%d]  t=%d',
+        [p.Target,p.FirstArgument,p.EvaluatesTo]);
+    ttField:
+      Result:=Format('x.y  %d.%d  t=%d',
+        [p.Subject,p.Target,p.EvaluatesTo]);
     ttThis:
       Result:=Format('this @%d t=%d',
         [p.Offset,p.EvaluatesTo]);
@@ -180,12 +183,23 @@ begin
     ttVarByRef:
       Result:=Format('^var %s  @%d t=%d',
         [s.FQN(i),integer(p.Offset),p.EvaluatesTo]);
-    ttProperty:
-      Result:=Format('prop %s  t=%d get=%d set=%d',
-        [s.FQN(i),p.EvaluatesTo,p.ValueFrom,p.AssignTo]);
     ttClassRef:
       Result:=Format('cref %s  t=%d',
         [s.FQN(i),p.EvaluatesTo]);
+    ttPropertyGet:
+      Result:=Format('pget %s  %d[%d]{%d}',
+        [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
+    ttPropertySet:
+      Result:=Format('pset %s  %d[%d]{%d}',
+        [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
+    ttPropCall:
+      if p.Op=0 then
+        Result:=Format('prop %s  %d[%d]',
+          [s.FQN(p.Target),p.Target,p.FirstArgument])
+      else
+        Result:=Format('prop %s  %d[%d] %s %d',
+          [s.FQN(p.Target),p.Target
+          ,p.FirstArgument,TokenName[TStratoToken(p.Op)],p.EvaluatesTo]);
     else
       Result:=Format('?    "%s" (%.4x) %d,%d,%d,%d,%d',
         [s.FQN(i),p.ThingType,p.Name,p.FirstItem

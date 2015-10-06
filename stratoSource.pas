@@ -26,11 +26,11 @@ type
     function IsNextID(const st:array of TStratoToken):boolean; //(doesn't advance index)
     function IsNextBetween(st1,st2:TStratoToken):boolean;//(doesn't advance index)
     procedure Skip(st:TStratoToken);
-    function GetID: UTF8String;
+    function GetID(var SrcPos:cardinal): UTF8String;
     function GetStr: UTF8String;
     function GetStrs: UTF8String;
     procedure Error(const msg: string);
-    function SrcPos:integer;
+    function SrcPos:cardinal;
     property FilePath:string read FFilePath;
     property FileSize:cardinal read FFileSize;
     property LineIndex:cardinal read FLineIndex;
@@ -192,10 +192,11 @@ begin
    end;
 end;
 
-function TStratoSource.GetID: UTF8String;
+function TStratoSource.GetID(var SrcPos: cardinal): UTF8String;
 begin
   //assert (FTIndex>0) and (FTIndex<=FTLength) and (FTokens[FTIndex].Token=stIdentifier)
   Result:=Copy(FSource,FTokens[FTIndex].Index,FTokens[FTIndex].Length);
+  SrcPos:=FTokens[FTIndex].SrcPos;
   FTLast:=FTIndex;
   FTContent:=false;
   inc(FTIndex);
@@ -404,7 +405,7 @@ begin
   if @FOnError<>nil then FOnError(Self,x,y,msg);
 end;
 
-function TStratoSource.SrcPos: integer;
+function TStratoSource.SrcPos: cardinal;
 begin
   if FTLast<FTLength then
     Result:=FTokens[FTLast].SrcPos

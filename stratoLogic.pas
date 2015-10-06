@@ -10,8 +10,6 @@ const
 function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
-function IsCallable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
-function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 function IsAddressable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
 function StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
@@ -19,6 +17,8 @@ function StratoComparativeCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolea
 
 procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
   MergeOnto:TStratoIndex);
+procedure ReplaceNode(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
+  Subject,ReplaceWith:TStratoIndex);
 
 const
 {$IFDEF DEBUG}
@@ -58,15 +58,20 @@ begin
         ttFnCall:
           Result:=px.EvaluatesTo;
         //TODO: ttAlias?
-        //TODO: ttFunction?
         ttClass:
          begin
           Result:=Sphere.Add(ttClassRef,px);
           px.ByteSize:=SystemWordSize;
           px.EvaluatesTo:=p;
          end;
+        //TODO: ttMember:
         ttOverload,ttConstructor:
           Result:=px.Target;//ttSignature
+        ttPropertyGet:
+          Result:=Sphere[px.Target].EvaluatesTo;//type from ttSignature
+        ttPropCall:
+          if (px.Target<>0) then
+            Result:=Sphere[Sphere[px.Target].Target].EvaluatesTo;//type from ttSignature
         //else Result:=0;//see default
       end;
    end;
@@ -85,8 +90,9 @@ begin
       ttTypeDecl,ttRecord,ttArray:
         Result:=Sphere[p].ByteSize;
       else
-        raise Exception.Create('request for byte size of unsupported item '+
-          IntToHex(Sphere[p].ThingType,4));
+        raise Exception.CreateFmt(
+          'request for byte size of unsupported item %d:%.4x',
+          [p,Sphere[p].ThingType]);
       //else raise?Sphere.Error?
     end;
 end;
@@ -171,83 +177,6 @@ begin
    end;
 end;
 
-function IsCallable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
-var
-  px:PStratoThing;
-begin
-  //see also StratoFnCallFindSignature
-  Result:=false;//default
-  px:=Sphere[p];
-  if px.ThingType=ttCast then
-   begin
-    p:=px.EvaluatesTo;
-    px:=Sphere[p];
-   end;
-  case px.ThingType of
-    ttFunction:
-      Result:=true;
-    ttClass://constructor
-      Result:=true;
-    ttVar:
-      if px.EvaluatesTo<>0 then
-       begin
-        px:=Sphere[px.EvaluatesTo];
-        case px.ThingType of
-          ttPointer:
-            Result:=Sphere[px.EvaluatesTo].ThingType=ttSignature;//more?
-          ttClass,ttClassRef:
-            Result:=true;
-        end;
-       end;
-    ttVarIndex:
-      //if px.Target.ThingType=ttFunction
-      Result:=true;//TODO
-    //TODO: ttThis?
-    //TODO: ttClassRef: only class methods
-    //TODO: dedicated function GivesSignature
-  end;
-end;
-
-function IsAssignable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
-var
-  q:TStratoIndex;
-  px:PStratoThing;
-  b:boolean;
-begin
-  Result:=false;//default
-  if p<>0 then
-   begin
-    px:=Sphere[p];
-    b:=true;
-    while b do
-     begin
-      b:=false;
-      case px.ThingType of
-        ttVar,
-        ttCast,//TODO: check about dirty casts
-        ttThis:
-          Result:=true;
-        ttVarIndex:
-          if px.Target<>0 then
-           begin
-            px:=Sphere[px.Target];
-            b:=true;
-            //TODO: ttProperty
-           end
-          else
-           begin
-            q:=ResType(Sphere,px.Parent);
-            if (q<>0) and (Sphere[q].ThingType=ttArray) then
-              Result:=true;
-           end;
-        ttProperty:
-          Result:=px.AssignTo<>0;//has a setter (thus isn't read-only)
-        //TODO: more?
-      end;
-     end;
-   end;
-end;
-
 function IsAddressable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 var
   px:PStratoThing;
@@ -262,15 +191,13 @@ begin
      begin
       b:=false;
       case px.ThingType of
-        ttVar,
-        ttThis:
-          Result:=true;//TODO: always?
-        ttVarIndex:
-          if px.Target<>0 then
-           begin
-            px:=Sphere[px.Target];
-            b:=true;
-           end;
+        ttVar,ttThis:
+          Result:=true;//TODO: always? (not read-only?)
+        ttArrayIndex,ttField:
+         begin
+          px:=Sphere[px.Target];
+          b:=px<>nil;
+         end;
       end;
      end;
    end;
@@ -366,6 +293,41 @@ begin
       while (q<>FirstItem) and (Sphere[q].Name<>n) do q:=Sphere[q].Next;
       if q<>FirstItem then Sphere.Error(p,'duplicate identifier');
       p:=Sphere[p].Next;
+     end;
+   end;
+end;
+
+procedure ReplaceNode(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
+  Subject,ReplaceWith:TStratoIndex);
+var
+  p,q:TStratoIndex;
+begin
+  //assert Subject<>0
+  //assert ReplaceWith not pointed to
+  //assert ReplaceWith.Parent=Subject.Parent
+  if FirstItem=0 then
+    FirstItem:=ReplaceWith
+  else
+   begin
+    p:=FirstItem;
+    q:=0;
+    while (p<>0) and (p<>Subject) do
+     begin
+      q:=p;
+      p:=Sphere[p].Next;
+     end;
+    if p=0 then
+      raise Exception.CreateFmt(
+        'ReplaceNode called with subject %d not on chain %d',
+        [Subject,FirstItem])
+    else
+     begin
+      Sphere[ReplaceWith].Next:=Sphere[Subject].Next;
+      Sphere[Subject].Next:=0;//?
+      if q=0 then
+        FirstItem:=ReplaceWith //assert FirstItem was Subject
+      else
+        Sphere[q].Next:=ReplaceWith;
      end;
    end;
 end;

@@ -120,7 +120,7 @@ const
   iiInterface=8;
   iiArray=9;
   iiSignature=10;
-  iiProperty=11;
+  //iiProperty=11;
   iiFunction=12;
   iiOverload=13;
   iiVar=14;
@@ -140,7 +140,7 @@ const
   iiIteration=28;
   iiThrow=29;
   iiSysCall=30;
-  iiVarIndex=31;
+  iiArrayIndex=31;
   iiInherited=32;
   iiPointer=33;
   iiAddressOf=34;
@@ -150,6 +150,11 @@ const
   iiConstructor=38;
   iiDestructor=39;
   iiClassRef=40;
+  iiPropertyGet=41;
+  iiPropertySet=42;
+  iiPropCall=43;
+  iiPropAssign=44;
+  iiField=45;
 
 procedure TXsTreeNode.AfterConstruction;
 begin
@@ -420,24 +425,21 @@ begin
     b:=false;
     tt:=FSphere[i].ThingType;
     if (n<>nil) and (n is TXsTreeNode) then
-      if tt=ttVarIndex then
-        b:=true
-      else
-        if not(tt in [ttVar,ttVarByRef,ttThis]) then
+      if not(tt in [ttVar,ttVarByRef,ttThis]) then
+       begin
+        q:=FSphere[i].Parent;
+        m:=n;
+        while not(b) and (m<>nil) do
          begin
-          q:=FSphere[i].Parent;
-          m:=n;
-          while not(b) and (m<>nil) do
+          if (m<>nil) and (m is TXsTreeNode) then
            begin
-            if (m<>nil) and (m is TXsTreeNode) then
-             begin
-              p:=(m as TXsTreeNode).Index;
-              if p=i then m:=nil else
-                if p=q then b:=true;
-             end;
-            if m<>nil then m:=m.Parent;
+            p:=(m as TXsTreeNode).Index;
+            if p=i then m:=nil else
+              if p=q then b:=true;
            end;
+          if m<>nil then m:=m.Parent;
          end;
+       end;
     if b then
      begin
       //BuildNode(Result,i)
@@ -500,12 +502,12 @@ begin
       ttAlias,ttGlobal,ttImport,ttTry,ttDeferred,ttThrow:
        begin
         n.JumpIndex:=p.Target;
-        if (p.Target<>0) and (FSphere[p.Target].ThingType=ttVarIndex) then
+        if (p.Target<>0) and (FSphere[p.Target].ThingType=ttField) then
           BuildNode(n,p.Target);
        end;
       ttArray:
-        n.JumpIndex:=p.ElementType;
-      ttFunction,ttConstructors:
+        n.JumpIndex:=p.Subject;
+      ttMember,ttConstructors:
         j:=p.FirstItem;
       ttVar,ttConstant,ttLiteral:
        begin
@@ -518,15 +520,15 @@ begin
         ListNode(n,':arg->',p.FirstArgument);
         JumpNode(n,':res=',p.EvaluatesTo);
        end;
-      ttOverload,ttConstructor:
+      ttOverload,ttConstructor,ttPropertyGet,ttPropertySet:
        begin
         JumpNode(n,':sig=',p.Target);
-        ListNode(n,':arg->',p.FirstArgument);
+        JumpNode(n,':arg->',p.FirstArgument);
         BuildNode(n,p.Body);
        end;
       ttFnCall:
        begin
-        JumpNode(n,':sub=',p.Target);
+        JumpNode(n,':trg=',p.Target);
         ListNode(n,':arg->',p.FirstArgument);
         //if Target is ttConstructor?
         if p.EvaluatesTo<>0 then JumpNode(n,':res->',p.EvaluatesTo);
@@ -539,12 +541,17 @@ begin
        end;
       ttThis://,ttInherited:
         n.JumpIndex:=p.EvaluatesTo;
-      ttVarIndex:
+      ttArrayIndex:
        begin
         n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':par=',p.Parent);
-        JumpNode(n,':sub=',p.Target);
-        ListNode(n,':arg->',p.FirstArgument);
+        JumpNode(n,':arr=',p.Target);
+        ListNode(n,':idx->',p.FirstArgument);
+       end;
+      ttField:
+       begin
+        n.JumpIndex:=p.EvaluatesTo;
+        JumpNode(n,':sub=',p.Subject);
+        JumpNode(n,':mem=',p.Target);
        end;
       ttCodeBlock:
        begin
@@ -621,11 +628,11 @@ begin
         JumpNode(n,':InheritsFrom ',p.InheritsFrom);
         ListNode(n,'->',p.FirstItem);
        end;
-      ttProperty:
+      ttPropCall:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':ValueFrom ',p.ValueFrom);
-        JumpNode(n,':AssignTo ',p.AssignTo);
+        JumpNode(n,':trg=',p.Target);
+        ListNode(n,':arg->',p.FirstArgument);
+        if p.EvaluatesTo<>0 then JumpNode(n,':val=',p.EvaluatesTo);
        end;
     end;
     case p.ThingType of
@@ -638,7 +645,7 @@ begin
       //ttTry,ttDeferred:
       ttThrow:k:=iiThrow;
       ttArray:k:=iiArray;
-      ttFunction:k:=iiFunction;
+      ttMember:k:=iiFunction;
       ttVar:k:=iiVar;
       ttConstant:k:=iiConstant;
       ttLiteral:k:=iiLiteral;
@@ -651,7 +658,8 @@ begin
       ttArgument:k:=iiArg;
       ttThis:k:=iiThis;
       //ttInherited:k:=iiInherited;
-      ttVarIndex:k:=iiVarIndex;
+      ttArrayIndex:k:=iiArrayIndex;
+      ttField:k:=iiField;
       ttCodeBlock:k:=iiBlock;
       ttAssign:k:=iiAssign;
       ttUnaryOp:k:=iiUnOp;
@@ -668,8 +676,11 @@ begin
       ttDereference:k:=iiDereference;
       ttDestructor:k:=iiDestructor;
       ttInterface:k:=iiInterface;
-      ttProperty:k:=iiProperty;
       ttClassRef:k:=iiClassRef;
+      ttPropertyGet:k:=iiPropertyGet;
+      ttPropertySet:k:=iiPropertySet;
+      ttPropCall:
+        if p.Op=0 then k:=iiPropCall else k:=iiPropAssign;
     end;
     n.ImageIndex:=k;
     n.SelectedIndex:=k;

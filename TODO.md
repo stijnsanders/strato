@@ -11,13 +11,12 @@ TODO
 * syscall loadlibrary, COM/OLE/ActiveX...
 * output LLVMIR? GCC? C?
 * chained comparison operators (as in 2 < x < 8 )
-* [or] "---" denoting 'implementation': declarations below line not accessible from 'outside'
+* "---" denoting 'implementation': declarations below line not accessible from 'outside'
+* data hiding (no access to values of class from 'outside' of class? doc!)
+* protected, private (-, -- prefix?)
 * threads (or whichever fancy async thing in vogue by then)
 * thread local vars
-* data hiding (no access to values of class from 'outside' of class? doc!)
-* getters, setters (with parameters [])
 * lazy evaluation logic operators (and,or)
-* protected, private (-, -- prefix?)
 * abstract methods (just with missing implementation?)
 * interfaces
 * 'default' property "" for "[]" on instance

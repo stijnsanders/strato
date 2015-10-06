@@ -1,4 +1,4 @@
-0001 ttFunction
+0001 ttMember
 0002 ttOverload
 0003 ttAssign
 0004 ttTry
@@ -9,17 +9,19 @@
 000A ttConstructors
 000B ttConstructor
 000C ttDestructor
+000D ttPropertyGet
+000E ttPropertySet
 0010 tt__Resolvable
 0011 ttNameSpace
 0020 tt__Typed
 0021 ttLiteral
 0022 ttVar
 0023 ttConstant
+0024 ttArrayIndex
 0025 ttUnaryOp
 0026 ttBinaryOp
-0027 ttVarIndex
+0027 ttField
 0028 ttThis
-0029 ttProperty
 002A ttAddressOf
 002B ttDereference
 0040 tt__IsType
@@ -32,6 +34,7 @@
 0082 ttAlias
 0083 ttGlobal
 0084 ttFnCall
+0085 ttPropCall
 0091 ttPrivate
 00A0 ttArgument
 00A1 ttCast

@@ -23,6 +23,7 @@ type
     pForBodyFirst,pForFirst,pForCrit,pForThen,pForCritDone,pForCritOnly,
       p_CodeBlockDone,
     pForBody,pIfThen,pIfElse,
+
     pUnTypedVar,
     pArgList,
       p_ArgList_Item,
@@ -38,7 +39,8 @@ type
     pMulDiv,
       p_Cast,
     pUnary,
-    pTypeOf,pSizeOf,pAddressOf
+    pTypeOf,pSizeOf,pAddressOf,
+    pUnresolved
   );
 
 type
@@ -51,15 +53,19 @@ type
     Locals:array of TStratoIndex;
     src:TStratoIndex;
 
-    procedure ID(var n:TStratoName;var nn:UTF8String);
-    function LookUpNameSpace(var ns:TStratoIndex;var n:TStratoName):boolean;
+    procedure ID(var n:TStratoName;var nn:UTF8String;var SrcPos:cardinal);
+    function LookUpNameSpace(var ns:TStratoIndex;var n:TStratoName;
+      var SrcPos: cardinal):boolean;
     procedure ParseImport;
     function LookUpID:TStratoIndex;
     procedure LookUpNext(n:TStratoName;const nn:UTF8String;
-      var p,ns:TStratoIndex;var AddedNew:boolean);
+      var p,ns,isNew:TStratoIndex);
+    function Fn(x:TStratoIndex;n:TStratoName;const nn:UTF8String;
+      SrcPos:cardinal):TStratoIndex;
     function ParseLiteral(st0:TStratoToken;OutputIntVal:boolean=false):TStratoIndex;
     function LookUpType(const tname:string):TStratoIndex;
-    function ParseSignature(ns:TStratoIndex;const name:UTF8String):TStratoIndex;
+    function ParseSignature(ns:TStratoIndex;const name:UTF8String;
+      CloseToken:TStratoToken;SrcPos:cardinal):TStratoIndex;
     procedure ParseEnumeration(p:TStratoIndex;px:PStratoThing);
     procedure ParseInterfaceDecl(x:TStratoIndex);
   public
@@ -79,7 +85,7 @@ type
     mark1,mark2:TStratoIndex;
 
     procedure Push(p:TPrecedence;t:TStratoIndex);
-    procedure CodeLookup(n:TStratoName;var p:TStratoIndex);
+    procedure CodeLookup(n:TStratoName;var p:TStratoIndex;SrcPos:cardinal);
     procedure Combine(zz:TPrecedence;var q:TStratoIndex);
     procedure Juxta(var p:TStratoIndex);
     procedure PushBinary(p:TPrecedence;st:TStratoToken;var q:TStratoIndex);
@@ -127,21 +133,22 @@ begin
 end;
 }
 
-procedure TStratoParserBase.ID(var n:TStratoName;var nn:UTF8String);
+procedure TStratoParserBase.ID(var n:TStratoName;var nn:UTF8String;
+  var SrcPos:cardinal);
 begin
-  nn:=Source.GetID;
+  nn:=Source.GetID(SrcPos);
   n:=Sphere.Dict.StrIdx(nn);
 end;
 
 function TStratoParserBase.LookUpNameSpace(var ns:TStratoIndex;
-  var n:TStratoName):boolean;
+  var n:TStratoName;var SrcPos:cardinal):boolean;
 var
   nn:UTF8String;
   p,q:TStratoIndex;
   nx:PStratoNameSpaceData;
 begin
   Result:=true;//default
-  ID(n,nn);
+  ID(n,nn,SrcPos);
   p:=0;
   q:=0;
   //Sphere.Lookup? take ttNameSpace only
@@ -172,7 +179,7 @@ begin
         Sphere[p].Next:=ns;
       Result:=false;
      end;
-    ID(n,nn);
+    ID(n,nn,SrcPos);
     q:=ns;
     ns:=Sphere[ns].FirstItem;
     while (ns<>0)
@@ -194,13 +201,14 @@ var
   alias:UTF8String;
   fn:string;
   i,l:integer;
+  SrcPos,SrcPos1:cardinal;
 begin
   ns:=0;//default
   fn:='';//default;
   //alias?
   if Source.IsNext([stIdentifier,stDefine]) then
    begin
-    alias:=Source.GetID;
+    alias:=Source.GetID(SrcPos);
     Source.Token;//stDefine
    end
   else
@@ -209,7 +217,7 @@ begin
     stIdentifier:
      begin
       //TODO: load from standard library !!!
-      if LookupNameSpace(ns,n) then
+      if LookupNameSpace(ns,n,SrcPos) then
        begin
         px:=Sphere[ns];
         if PStratoNameSpaceData(px).SourceFile=0 then
@@ -237,7 +245,7 @@ begin
     else Source.Error('unsupported import subject syntax');
   end;
   if Source.IsNext([stAt,stNumericLiteral]) then
-    i:=ParseInteger(string(Source.GetID))
+    i:=ParseInteger(string(Source.GetID(SrcPos1)))
   else
     i:=0;
   Source.Skip(stSemiColon);
@@ -263,7 +271,7 @@ begin
         Source.Error('duplicate identifier "'+alias+'"')
       else
        begin
-        px.SrcPos:=Source.SrcPos;
+        px.SrcPos:=SrcPos;
         px.Parent:=Locals[0];
         px.Target:=ns;
        end;
@@ -288,64 +296,43 @@ var
   n:TStratoName;
   nn:UTF8String;
   nsx:array of TStratoIndex;
-  p,q:TStratoIndex;//absolute nsx?
-  px:PStratoNameSpaceData;
+  SrcPos:cardinal;
 begin
   //assert Source.IsNext([stIdentifier]);
   Result:=0;//default
+  ID(n,nn,SrcPos);
   l:=Length(Locals);
-  SetLength(nsx,l);
+  SetLength(nsx,l+1);
   j:=0;
   for i:=0 to l-1 do
    begin
-    nsx[i]:=Locals[i];
+    if Locals[i]=0 then nsx[i]:=0 else
+      nsx[i]:=Sphere.Lookup(Sphere[Locals[i]].FirstItem,n);
     if nsx[i]<>0 then inc(j);
    end;
-  repeat
-    ID(n,nn);
-    for i:=0 to l-1 do
+  nsx[l]:=Sphere.Lookup(Sphere.Header.FirstNameSpace,n);
+  //no inc(j), see below (case j=0)
+  while Source.IsNext([stPeriod,stIdentifier]) do //and (j<>0)?
+   begin
+    ID(n,nn,SrcPos);
+    for i:=0 to l do
       if nsx[i]<>0 then
        begin
-        nsx[i]:=Sphere.Lookup(Sphere[nsx[i]].FirstItem,n);
+        if (Sphere[nsx[i]].ThingType and tt__Resolvable)=0 then
+          nsx[i]:=0
+        else
+          nsx[i]:=Sphere.Lookup(Sphere[nsx[i]].FirstItem,n);
         if nsx[i]=0 then
           dec(j)
         else
           if Sphere[nsx[i]].ThingType=ttImport then
             nsx[i]:=Sphere[nsx[i]].Target;
        end;
-  until (j=0) or not(Source.IsNext([stPeriod,stIdentifier]));
+   end;
   //assert Source.Token=stIdentifier
   case j of
-    0://none found, try namespaces
-     begin
-      p:=Sphere.Header.FirstNameSpace;
-      q:=0;
-      while (p<>0) and (Sphere[p].Name<>n) do
-       begin
-        q:=p;
-        p:=Sphere[p].Next;
-       end;
-      while Source.IsNext([stPeriod,stIdentifier]) do
-       begin
-        if (p=0) or ((Sphere[p].ThingType and tt__Resolvable)=0) then
-         begin
-          p:=Sphere.Add(ttNameSpace,PStratoThing(px));
-          px.Name:=n;
-          px.SourceFile:=src;//?
-          //px.SrcPos:=
-          Sphere[q].Next:=p;
-         end;
-        ID(n,nn);
-        p:=Sphere[p].FirstItem;
-        q:=0;
-        while (p<>0) and (Sphere[p].Name<>n) do
-         begin
-          q:=p;
-          p:=Sphere[p].Next;
-         end;
-       end;
-      Result:=p;
-     end;
+    0://none found, any by namespaces?
+      Result:=nsx[l];
     1://one thing found
      begin
       i:=0;
@@ -365,12 +352,12 @@ begin
 end;
 
 procedure TStratoParserBase.LookUpNext(n:TStratoName;const nn:UTF8String;
-  var p,ns:TStratoIndex;var AddedNew:boolean);
+  var p,ns,isNew:TStratoIndex);
 var
   i,l:integer;
   px:PStratoNameSpaceData;
 begin
-  AddedNew:=false;//default
+  isNew:=0;//default
   if p=0 then
    begin
     l:=Length(Locals);
@@ -391,14 +378,17 @@ begin
       p:=0;//see placeholder below
   if (p=0) or ((Sphere[p].ThingType and tt__Resolvable)=0) then
    begin
-    AddedNew:=true;
     //create to silence further errors?
     p:=Sphere.AddTo(Sphere[ns].FirstItem,ttNameSpace,n,PStratoThing(px));
     if p=0 then
+     begin
       Source.Error('duplicate namespace "'+
-        string(Sphere.FQN(ns)+'.'+nn)+'"')
+        string(Sphere.FQN(ns)+'.'+nn)+'"');
+      isNew:=Sphere.Lookup(Sphere[ns].FirstItem,n);
+     end
     else
      begin
+      isNew:=p;
       px.Parent:=ns;
       px.SourceFile:=src;//?
       //px.SrcPos:=?
@@ -421,6 +411,7 @@ var
     vt:TStratoIndex;
     v1,v2:UTF8String;
   end;
+  SrcPos:cardinal;
 
   procedure Combine(pp:TPrecedence);
   var
@@ -559,6 +550,7 @@ begin
   stackIndex:=0;
   vt:=0;
   v:='';
+  SrcPos:=Source.SrcPos;
   while (Result=0) or (stackIndex<>0) do
    begin
     if st=st_Unknown then st:=st0 else st:=Source.Token;
@@ -606,7 +598,7 @@ begin
       stNumericLiteral:
        begin
         vt:=TypeDecl_number;
-        v:=Source.GetID;
+        v:=Source.GetID(SrcPos);
        end;
       {//TODO:
       stAOpen://JSON?
@@ -682,7 +674,7 @@ begin
              end
             else
               Result:=Sphere.Add(ttLiteral,px);
-            px.SrcPos:=Source.SrcPos;
+            px.SrcPos:=SrcPos;
             px.EvaluatesTo:=vt;
             px.InitialValue:=Sphere.AddBinaryData(v);
            end;
@@ -759,7 +751,7 @@ begin
           qx.Parent:=px.Parent;
           qx.SrcPos:=px.SrcPos;//Source.SrcPos;
           qx.Name:=px.Name;
-          qx.ElementType:=p;
+          qx.Subject:=p;//element type
           qx.ByteSize:=ByteSize(Sphere,p)*i;
          end;
      end;
@@ -780,7 +772,7 @@ begin
 end;
 
 function TStratoParserBase.ParseSignature(ns:TStratoIndex;
-  const name:UTF8String):TStratoIndex;
+  const name:UTF8String;CloseToken:TStratoToken;SrcPos:cardinal):TStratoIndex;
 var
   st:TStratoToken;
   p,q,Signature,NoType:TStratoIndex;
@@ -803,7 +795,7 @@ var
      begin
       if (p=0) and (NoType=0) then NoType:=r;
       rx.Parent:=Signature;
-      rx.SrcPos:=Source.SrcPos;
+      rx.SrcPos:=SrcPos;
       rx.EvaluatesTo:=p;
       //rx.InitialValue:= //see caller
      end;
@@ -815,12 +807,12 @@ begin
   Signature:=Sphere.Add(ttSignature,rx);
   rx.Name:=Sphere.Dict.StrIdx(name);
   rx.Parent:=ns;
-  rx.SrcPos:=Source.SrcPos;
+  rx.SrcPos:=SrcPos;
   Result:=Signature;
   NoType:=0;
   byref:=false;
   st:=stIdentifier;//default (something not stPClose really)
-  while (st<>stPClose) and Source.NextToken(st) do
+  while (st<>CloseToken) and Source.NextToken(st) do
     case st of
 
       stCaret:
@@ -831,7 +823,7 @@ begin
 
       stIdentifier:
        begin
-        argName:=Source.GetID;
+        argName:=Source.GetID(SrcPos);
         p:=0;//default
         q:=0;//default
         st:=Source.Token;
@@ -869,14 +861,18 @@ begin
 
       //TODO: byref? stAt?
 
-      stPClose:;//done
-      else Source.Error('unsupported argument syntax');
+      else
+        if st<>CloseToken then
+          Source.Error('unsupported argument syntax');
     end;
   //TODO: check default values with type
   if Sphere[ns].ThingType<>ttNameSpace then //strRecord,strTypeDecl
     Sphere[Signature].Target:=ns;
   if Source.IsNext([stColon,stIdentifier]) then
-    Sphere[Signature].EvaluatesTo:=LookUpType('returns type');
+    Sphere[Signature].EvaluatesTo:=LookUpType('returns type')
+  else
+    if CloseToken=stBClose then
+      Source.Error('property requires value type');
 end;
 
 procedure TStratoParserBase.ParseEnumeration(p:TStratoIndex;px:PStratoThing);
@@ -886,7 +882,7 @@ var
   nn:UTF8String;
   q:TStratoIndex;
   qx:PStratoThing;
-  e:cardinal;
+  e,SrcPos:cardinal;
 begin
   e:=0;
   st:=stIdentifier;//default (something not stPClose really)
@@ -894,7 +890,7 @@ begin
     case st of
       stIdentifier:
        begin
-        ID(n,nn);
+        ID(n,nn,SrcPos);
         if Source.IsNext([stDefine]) then e:=cardinal(ParseLiteral(Source.Token,true));
         q:=Sphere.AddTo(px.FirstItem,ttConstant,n,qx);
         if q=0 then
@@ -902,7 +898,7 @@ begin
         else
          begin
           qx.Parent:=p;
-          qx.SrcPos:=Source.SrcPos;
+          qx.SrcPos:=SrcPos;
           qx.EvaluatesTo:=p;
           qx.InitialValue:=e;
           inc(e);
@@ -921,6 +917,7 @@ var
   st:TStratoToken;
   n:TStratoName;
   nn:UTF8String;
+  SrcPos:cardinal;
 begin
   //assert previous token stAOpen
   while not(Source.IsNext([stAClose])) and Source.NextToken(st) do
@@ -928,7 +925,7 @@ begin
 
       stIdentifier:
        begin
-        ID(n,nn);
+        ID(n,nn,SrcPos);
         case Source.Token of
           stColon:
             case Source.Token of
@@ -941,7 +938,7 @@ begin
                 else
                  begin
                   qx.Parent:=x;
-                  qx.SrcPos:=Source.SrcPos;
+                  qx.SrcPos:=SrcPos;
                   qx.EvaluatesTo:=p;
                  end;
                end;
@@ -949,17 +946,8 @@ begin
               else Source.Error('unsupported interface field type syntax');
             end;
           stPOpen://signature
-           begin
-            p:=Sphere.Lookup(Sphere[x].FirstItem,n);
-            if (p=0) or (Sphere[p].ThingType<>ttFunction) then
-             begin
-              if p<>0 then Source.Error('duplicate identifier "'+nn+'"');
-              p:=Sphere.AddTo(Sphere[x].FirstItem,ttFunction,n,qx);
-              qx.Parent:=x;
-              qx.SrcPos:=Source.SrcPos;
-             end;
-            StratoFnAddOverload(Sphere,Source,p,ParseSignature(x,nn),src);
-           end;
+            StratoFnAdd(Sphere,Source,ttOverload,Fn(x,n,nn,SrcPos),
+              ParseSignature(x,nn,stPClose,SrcPos),src,SrcPos);
           else Source.Error('unsupported interface field syntax');
         end;
         Source.Skip(stSemiColon);
@@ -1021,7 +1009,8 @@ begin
   inc(stackIndex);
 end;
 
-procedure TStratoParser.CodeLookup(n:TStratoName;var p:TStratoIndex);
+procedure TStratoParser.CodeLookup(n:TStratoName;var p:TStratoIndex;
+  SrcPos:cardinal);
 var
   i,l:integer;
   p0,q,r,s:TStratoIndex;
@@ -1088,10 +1077,11 @@ begin
        end;
       if r<>0 then
        begin
-        p:=Sphere.Add(ttVarIndex,px);
+        p:=Sphere.Add(ttField,px);
         px.Name:=n;
-        px.Parent:=q;
-        px.SrcPos:=Source.SrcPos;
+        //px.Parent:=?
+        px.Subject:=q;
+        px.SrcPos:=SrcPos;
         px.Target:=r;
         if (Sphere[r].ThingType and tt__Typed)<>0 then
           px.EvaluatesTo:=Sphere[r].EvaluatesTo;
@@ -1120,6 +1110,7 @@ var
   p,r:TStratoIndex;
   px,qx:PStratoThing;
   done:boolean;
+  tt:TStratoThingType;
 begin
   if (q<>0) or (zz<=pParentheses) then
    begin
@@ -1156,47 +1147,43 @@ begin
         pArgList://ttFnCall
          begin
           if q<>0 then
-           begin
             StratoFnCallAddArgument(Sphere,p,q,qx);
-            qx.Parent:=cb;
-            qx.SrcPos:=Source.SrcPos;
-           end;
           //calling destructor? (detect prefix '-' or '~')
           if (stackIndex<>0) and (stack[stackIndex-1].p=pUnary) and
             (TStratoToken(Sphere[stack[stackIndex-1].t].Op)
               in [stOpSub,stTilde]) and (TypeDecl_object<>0) then
            begin
-            r:=Sphere[TypeDecl_object].FirstItem;
-            while (r<>0) and (Sphere[r].ThingType<>ttDestructor) do
-              r:=Sphere[r].Next;
+            tt:=ttDestructor;
             dec(stackIndex);
-            //TODO: switch from constructor to destructor;
            end
           else
-            r:=0;
+            tt:=ttOverload;
           //subject stored in px.Target when Push(pArgList
-          if not StratoFnCallFindSignature(Sphere,p,r) then
+          if not StratoFnCallFindSignature(Sphere,p,tt) then
             Source.Error('no function overload found with these arguments');
           done:=true;//always only one (need to parse ")" correctly)
          end;
+        pParentheses:
+          done:=true;//always only one (need to parse ")" correctly)
         pBrackets:
          begin
-          r:=Sphere.Add(ttVarIndex,qx);
-          qx.Parent:=p;
-          qx.SrcPos:=Source.SrcPos;
-          qx.FirstArgument:=q;
-          q:=ResType(Sphere,p);
-          if (q<>0) and (Sphere[q].ThingType=ttArray) then
-            q:=Sphere[q].ElementType;
-          //else error?
-          qx.EvaluatesTo:=q;
-          p:=r;
+          if q<>0 then
+            StratoFnCallAddArgument(Sphere,p,q,qx);
+          if not StratoFnCallFindSignature(Sphere,p,ttPropertyGet) then
+           begin
+            //assert Sphere[p].ThingType=ttArrayIndex
+            q:=ResType(Sphere,Sphere[p].Target);
+            if (q=0) or (Sphere[q].ThingType<>ttArray) then
+              Source.Error('no argument or property to index into');
+            q:=Sphere[p].FirstArgument;
+            //TODO: accept any numeric type?
+            //while q<>0 do //TODO: multi-dim arrays
+            if ResType(Sphere,q)<>TypeDecl_number then
+              Source.Error('argument index not a number')
+            else if Sphere[q].Next<>0 then
+              Source.Error('multiple array index not supported');//yet?
+           end;
           done:=true;//always only one (need to parse "]" correctly)
-         end;
-        pParentheses:
-         begin
-          p:=q;
-          done:=true;//always only one (need to parse ")" correctly)
          end;
 
         //ttIteration,ttIterationPE
@@ -1291,7 +1278,7 @@ begin
            begin
             q:=ResType(Sphere,q);
             while (q<>0) and (Sphere[q].ThingType=ttArray) do
-              q:=Sphere[q].ElementType;
+              q:=Sphere[q].Subject;//element type
             px.EvaluatesTo:=Sphere.Add(ttPointer,qx);
             qx.Parent:=cb;
             qx.SrcPos:=Source.SrcPos;
@@ -1319,7 +1306,16 @@ begin
         //ttAssign
         pAssignment:
          begin
-          px.ValueFrom:=q;
+          case px.ThingType of
+            ttAssign:px.ValueFrom:=q;
+            ttPropCall:
+              if px.Op=cardinal(stOpAssign) then
+                px.EvaluatesTo:=q
+              else
+                //assert px.EvaluatesTo<>nil (see StratoFindPropertySet)
+                Sphere[px.EvaluatesTo].Right:=q;
+            else Source.Error('invalid assignment type');
+          end;
           r:=ResType(Sphere,q);
           if r=0 then
             Source.Error('invalid assignment value')
@@ -1330,12 +1326,12 @@ begin
               Sphere[stack[stackIndex-1].t].EvaluatesTo:=r;
               inc(Sphere[cb].ByteSize,ByteSize(Sphere,r));
              end;
-            //TODO: check types here? (or at run-time?)
-            if not SameType(Sphere,r,ResType(Sphere,px.AssignTo)) then
+            case px.ThingType of
+              ttAssign:q:=ResType(Sphere,px.AssignTo);
+              ttPropCall:q:=Sphere[Sphere[px.Target].Target].EvaluatesTo;
+            end;
+            if not SameType(Sphere,r,q) then
               Source.Error('assignment type mismatch');
-            //TODO: auto-cast?
-            //TODO: if ValueFrom=ttFunction, AssignTo=ttSignature: find suitable signature
-
             //assigning an object reference? reference counting!
             if Sphere[r].ThingType=ttClass then
              begin
@@ -1350,7 +1346,6 @@ begin
                 //TODO: defer release refcount
                end;
              end;
-
            end;
          end;
 
@@ -1362,6 +1357,9 @@ begin
             Source.Error('no type for local var "'+string(Sphere.FQN(p))+'"');
           p:=q;
          end;
+        pUnresolved:
+          p:=StratoCheckMemberNoArguments(Sphere,p,q);
+
         pDefer,pThrow:px.Target:=q;//ttDeferred,ttThrow
         pCatch:px.Body:=q;//ttCatch
         //else ?
@@ -1437,7 +1435,7 @@ begin
     px:=Sphere[p];
     case px.ThingType of
       ttVar,ttFnCall,ttIteration,ttIterationPE,ttAssign,
-      ttDeferred,ttThrow,ttCatch,ttDestructor:
+      ttDeferred,ttThrow,ttCatch,ttDestructor,ttPropCall:
         b:=true;
       ttCodeBlock,ttSelection:
         b:=true;//b:=px.EvaluatesTo=0;//TODO: descend into?
@@ -1492,19 +1490,19 @@ var
   nn:UTF8String;
   px:PStratoThing;
   sx:PStratoSourceFile;
+  SrcPos,SrcPos1:cardinal;
 begin
   //namespace
   if Source.IsNext([stIdentifier]) then
    begin
-    if LookUpNameSpace(ns,n) then px:=Sphere[ns] else px:=nil;
+    if LookUpNameSpace(ns,n,SrcPos) then px:=Sphere[ns] else px:=nil;
     if Source.IsNext([stAt,stNumericLiteral]) then
      begin
-      mark1:=ParseInteger(string(Source.GetID));
+      mark1:=ParseInteger(string(Source.GetID(SrcPos1)));
       mark2:=Sphere.MarkIndex(mark1);
      end;
     if px=nil then
      begin
-      //
       //create namespace
       p:=Sphere.Add(ttNameSpace,px);
       if ns=0 then
@@ -1515,6 +1513,7 @@ begin
         px.Parent:=ns;
        end;
       px.Name:=n;
+      px.SrcPos:=SrcPos;
       ns:=p;
      end;
    end
@@ -1526,7 +1525,7 @@ begin
     ns:=Sphere.Add(ttNameSpace,px);
     px.Name:=Sphere.Dict.StrIdx(nn);
     px.SourceFile:=src;
-    //px.SrcPos:=
+    px.SrcPos:=SrcPos;
     //TODO: split by '.'
     p:=Sphere.Header.FirstNameSpace;
     //assert p<>0 since Sphere.FirstGlobalNameSpace is runtime
@@ -1556,8 +1555,7 @@ var
   ns,p,q,r:TStratoIndex;
   st:TStratoToken;
   px,qx,rx:PStratoThing;
-  i:cardinal;
-  b:boolean;
+  i,SrcPos:cardinal;
 begin
   while (cb=0) and (rd=0) and Source.NextToken(st) do
   case st of
@@ -1569,23 +1567,23 @@ begin
      begin
       //lookup
       p:=0;
-      b:=false;
-      ID(n,nn);
+      r:=0;
+      ID(n,nn,SrcPos);
       fqn:=nn;
       ns:=Locals[1];
       if ns=0 then ns:=Locals[0];
       while Source.IsNext([stPeriod,stIdentifier]) do
        begin
-        LookUpNext(n,nn,p,ns,b);
-        ID(n,nn);
+        LookUpNext(n,nn,p,ns,r);
+        ID(n,nn,SrcPos);
         fqn:=fqn+'.'+nn;
        end;
-      if b then Source.Error('unknown namespace "'+string(fqn)+'"');
+      if r<>0 then Source.Error('unknown namespace "'+string(fqn)+'"');
 
       //operator override?
       if Source.IsNext([stPeriod,stStringLiteral]) then
        begin
-        LookUpNext(n,nn,p,ns,b);
+        LookUpNext(n,nn,p,ns,r);
         //ID(n,nn); but with GetStr:
         nn:=Source.GetStr;
         n:=Sphere.Dict.StrIdx(nn);
@@ -1603,24 +1601,15 @@ begin
               //property
               if Source.IsNext([stAOpen]) then
                begin
-                p:=Sphere.AddTo(Sphere[ns].FirstItem,ttProperty,n,px);
-                if p=0 then
-                 begin
-                  p:=Sphere.Lookup(Sphere[ns].FirstItem,n);
-                  px:=Sphere[p];
-                  if (p=0) or (px.ValueFrom<>0) then
-                   begin
-                    Source.Error('duplicate identifier "'+nn+'"');
-                    p:=Sphere.Add(ttProperty,px);
-                    px.Name:=n;
-                   end;
-                 end
-                else
-                 begin
-                  px.Parent:=ns;
-                  px.SrcPos:=Source.SrcPos;
-                  px.EvaluatesTo:=q;
-                 end;
+                r:=Sphere.Add(ttSignature,rx);
+                rx.Name:=n;//+'_get'?
+                rx.Parent:=ns;
+                rx.Target:=p;
+                rx.EvaluatesTo:=q;
+                rx.FirstArgument:=0;
+                rx.SrcPos:=SrcPos;
+                r:=StratoFnAdd(Sphere,Source,ttPropertyGet,
+                  Fn(ns,n,nn,SrcPos),r,src,SrcPos);
                 if Source.IsNext([stAClose]) then
                  begin
                   //forward only
@@ -1629,8 +1618,8 @@ begin
                   //TODO: check declared somewhere later
                  end
                 else
-                  px.ValueFrom:=CbStart(
-                    StratoFnCodeBlock(Sphere,p,ns,q,n,Source.SrcPos));
+                  Sphere[r].Body:=CbStart(
+                    StratoFnCodeBlock(Sphere,r,ns,q,n,Source.SrcPos));
                 p:=0;
                end
               else
@@ -1650,7 +1639,7 @@ begin
                   px.Name:=n;
                  end;
                 px.Parent:=ns;
-                px.SrcPos:=Source.SrcPos;
+                px.SrcPos:=SrcPos;
                 px.InheritsFrom:=q;
                 if q<>0 then px.ByteSize:=Sphere[q].ByteSize;
                 Source.Skip(stAOpen);
@@ -1667,7 +1656,7 @@ begin
                   px.Name:=n;
                  end;
                 px.Parent:=ns;
-                px.SrcPos:=Source.SrcPos;
+                px.SrcPos:=SrcPos;
                 px.EvaluatesTo:=q;
                 if Source.IsNext([stDefine]) then
                   px.InitialValue:=ParseLiteral(Source.Token);
@@ -1712,7 +1701,7 @@ begin
               px.Name:=n;
              end;
             px.Parent:=ns;
-            px.SrcPos:=Source.SrcPos;
+            px.SrcPos:=SrcPos;
             px.ByteSize:=SystemWordSize;
             ParseEnumeration(p,px);
            end
@@ -1740,7 +1729,7 @@ begin
                         else
                          begin
                           qx.Parent:=ns;
-                          qx.SrcPos:=Source.SrcPos;
+                          qx.SrcPos:=SrcPos;
                           qx.InitialValue:=px.InitialValue;
                           qx.EvaluatesTo:=Sphere[px.InitialValue].EvaluatesTo;
                          end;
@@ -1753,7 +1742,7 @@ begin
                       else
                        begin
                         qx.Parent:=ns;
-                        qx.SrcPos:=Source.SrcPos;
+                        qx.SrcPos:=SrcPos;
                         qx.InitialValue:=p;
                         qx.EvaluatesTo:=Sphere[p].EvaluatesTo;
                        end;
@@ -1775,8 +1764,8 @@ begin
                           else
                            begin
                             qx.Parent:=ns;
-                            qx.SrcPos:=Source.SrcPos;
-                            qx.ElementType:=p;
+                            qx.SrcPos:=SrcPos;
+                            qx.Subject:=p;//element type
                             if p<>0 then qx.ByteSize:=ByteSize(Sphere,p)*i;
                            end;
                          end
@@ -1788,7 +1777,7 @@ begin
                         else
                          begin
                           qx.Parent:=ns;
-                          qx.SrcPos:=Source.SrcPos;
+                          qx.SrcPos:=SrcPos;
                           qx.Target:=p;
                          end;
                        end;
@@ -1807,7 +1796,7 @@ begin
                   px.Name:=n;
                  end;
                 px.Parent:=ns;
-                px.SrcPos:=Source.SrcPos;
+                px.SrcPos:=SrcPos;
                 px.InitialValue:=ParseLiteral(st);
                 if px.InitialValue<>0 then
                  begin
@@ -1833,7 +1822,7 @@ begin
                   px.Name:=n;
                  end;
                 px.Parent:=ns;
-                px.SrcPos:=Source.SrcPos;
+                px.SrcPos:=SrcPos;
                 rd:=p;//switch to ParseRecord
                end;
               stCaret:
@@ -1845,7 +1834,7 @@ begin
                   p:=Sphere.Add(ttTypeDecl,px);
                   px.Name:=n;
                   px.Parent:=ns;
-                  px.SrcPos:=Source.SrcPos;
+                  px.SrcPos:=SrcPos;
                  end;
                 q:=Sphere.AddTo(Sphere[ns].FirstItem,ttPointer,n,qx);
                 if q=0 then
@@ -1853,7 +1842,7 @@ begin
                 else
                  begin
                   qx.Parent:=ns;
-                  qx.SrcPos:=Source.SrcPos;
+                  qx.SrcPos:=SrcPos;
                   qx.ByteSize:=SystemWordSize;
                   qx.EvaluatesTo:=p;
                  end;
@@ -1875,7 +1864,7 @@ begin
                 else
                  begin
                   qx.Parent:=ns;
-                  qx.SrcPos:=Source.SrcPos;
+                  qx.SrcPos:=SrcPos;
                   qx.ByteSize:=SystemWordSize;
                   qx.EvaluatesTo:=p;
                  end;
@@ -1891,7 +1880,7 @@ begin
                   px.Name:=n;
                  end;
                 px.Parent:=ns;
-                px.SrcPos:=Source.SrcPos;
+                px.SrcPos:=SrcPos;
                 px.EvaluatesTo:=TypeDecl_Number;
                 if Source.IsNext([stNumericLiteral]) then
                  begin
@@ -1907,7 +1896,7 @@ begin
                   i:=ByteSize(Sphere,q);
                   //TODO: ttSizeOf?
                   q:=Sphere.Add(ttLiteral,qx);
-                  qx.SrcPos:=Source.SrcPos;
+                  qx.SrcPos:=SrcPos;
                   qx.EvaluatesTo:=TypeDecl_number;
                   qx.InitialValue:=Sphere.AddBinaryData(IntToStr(i));
                   px.InitialValue:=q;
@@ -1921,93 +1910,68 @@ begin
 
         stPOpen://parameter list
          begin
-          p:=ParseSignature(ns,nn);
+          p:=ParseSignature(ns,nn,stPClose,SrcPos);
+          //TODO: detect Source.IsNext([stSemiColon,stAOpen])?
           case Source.Token of
             stSemiColon:
              begin
-              //just a signature? add to namespace
-              r:=0;
-              q:=Sphere[ns].FirstItem;
-              while (q<>0) and (Sphere[q].Name<>n) do
-               begin
-                r:=q;
-                q:=Sphere[q].Next;
-               end;
-              if q=0 then
-                if r=0 then
-                  Sphere[ns].FirstItem:=p
-                else
-                  Sphere[r].Next:=p
+              q:=Sphere.Lookup(Sphere[ns].FirstItem,n);
+              if q=0 then //just a signature? add to namespace
+                Sphere.Append(Sphere[ns].FirstItem,p)
               else
-                if Sphere[q].ThingType=ttSignature then
-                 begin
-                  //signature to forward overload? create ttFunction here
-                  if r=0 then
-                    Sphere[ns].FirstItem:=Sphere[q].Next
-                  else
-                    Sphere[r].Next:=Sphere[q].Next;
-                  Sphere[q].Next:=0;
-                  r:=Sphere.AddTo(Sphere[ns].FirstItem,ttFunction,n,rx);
-                  if r=0 then
+                case Sphere[q].ThingType of
+                  ttMember:
+                    StratoFnAdd(Sphere,Source,ttOverload,q,p,src,SrcPos);
+                  ttSignature:
                    begin
-                    Source.Error('duplicate identifier "'+nn+'"');
-                    r:=Sphere.Add(ttFunction,rx);
+                    //another forward signature? create ttMember here
+                    r:=Sphere.Add(ttMember,rx);
                     rx.Name:=n;
-                   end;
-                  rx.Parent:=ns;
-                  rx.SrcPos:=Source.SrcPos;
-                  StratoFnAddOverload(Sphere,Source,r,q,src);
-                  StratoFnAddOverload(Sphere,Source,r,p,src);
-                 end
-                else
-                  Source.Error('duplicate identifier "'+nn+'"');
+                    rx.Parent:=ns;
+                    rx.SrcPos:=SrcPos;
+                    ReplaceNode(Sphere,Sphere[ns].FirstItem,q,r);
+                    StratoFnAdd(Sphere,Source,ttOverload,r,q,src,Sphere[q].SrcPos);
+                    StratoFnAdd(Sphere,Source,ttOverload,r,p,src,SrcPos);
+                   end
+                  else
+                    Source.Error('duplicate identifier "'+nn+'"');
+                end;
              end;
             stAOpen://code block
              begin
               q:=Sphere.Lookup(Sphere[ns].FirstItem,n);
               if q=0 then
-               begin
-                q:=Sphere.AddTo(Sphere[ns].FirstItem,ttFunction,n,qx);
-                if q=0 then
-                 begin
-                  Source.Error('duplicate identifier "'+nn+'"');
-                  q:=Sphere.Add(ttFunction,qx);
-                  qx.Name:=n;
-                 end;
-                qx.Parent:=ns;
-                qx.SrcPos:=Source.SrcPos;
-               end
+                p:=StratoFnAdd(Sphere,Source,ttOverload,
+                  Fn(ns,n,nn,SrcPos),p,src,SrcPos)
               else
                 case Sphere[q].ThingType of
-                  ttFunction:;//ok!
-                  ttSignature://signature forwarded, function now?
-                    if SameType(Sphere,p,q) then
-                     begin
-                      raise Exception.Create('//TODO: replace sig with fn');
-                     end
-                    else
-                     begin
-                      Source.Error('//TODO: fn decl with forward sig mismatch');
-                      q:=Sphere.Add(ttFunction,qx);
-                      qx.Name:=n;
-                      qx.Parent:=ns;
-                      qx.SrcPos:=Source.SrcPos;
-                     end;
+                  ttMember:
+                    p:=StratoFnAdd(Sphere,Source,ttOverload,q,p,src,SrcPos);
+                  ttSignature://signature forwarded, replace with ttMember
+                   begin
+                    r:=Fn(ns,n,nn,SrcPos);
+                    ReplaceNode(Sphere,Sphere[ns].FirstItem,q,r);
+                    //StratoFnAdd checks for SameType(p,q):
+                    StratoFnAdd(Sphere,Source,ttOverload,r,q,src,Sphere[q].SrcPos);
+                    p:=StratoFnAdd(Sphere,Source,ttOverload,r,p,src,SrcPos);
+                   end;
                   ttClass://constructor
                    begin
                     //Sphere[p].EvaluatesTo:=q;
                     Sphere[p].Target:=q;
+                    p:=StratoFnAdd(Sphere,Source,ttConstructor,q,p,src,SrcPos);
                    end;
                   else
                    begin
                     Source.Error('duplicate identifier "'+nn+'"');
-                    q:=Sphere.Add(ttFunction,qx);
+                    q:=Sphere.Add(ttMember,qx);
                     qx.Name:=n;
                     qx.Parent:=ns;
-                    qx.SrcPos:=Source.SrcPos;
+                    qx.SrcPos:=SrcPos;
+                    p:=StratoFnAdd(Sphere,Source,ttOverload,q,p,src,SrcPos);
                    end;
                 end;
-              CbStart(StratoFnOverloadCodeBlock(Sphere,Source,q,p,src));
+              if p<>0 then CbStart(StratoFnOvlCodeBlock(Sphere,Source,p));
               p:=0;
              end;
             else Source.Error('unsupported signature syntax');
@@ -2039,7 +2003,13 @@ begin
           else
             Source.Error('unsupported declaration syntax');
 
-        //stBOpen://TODO: array property (with overloads of same name?)
+        stBOpen:
+         begin
+          q:=StratoFnAdd(Sphere,Source,ttPropertyGet,Fn(ns,n,nn,SrcPos),
+            ParseSignature(ns,nn,stBClose,SrcPos),src,SrcPos);
+          if Source.IsNext([stAOpen]) then
+            Sphere[q].Body:=CbStart(StratoFnOvlCodeBlock(Sphere,Source,q));
+         end;
 
         //stAOpen:?
 
@@ -2057,18 +2027,18 @@ begin
     stQuestionMark: //interface
      begin
       p:=0;
-      b:=false;
-      ID(n,nn);
+      r:=0;
+      ID(n,nn,SrcPos);
       fqn:=nn;
       ns:=Locals[1];
       if ns=0 then ns:=Locals[0];
       while Source.IsNext([stPeriod,stIdentifier]) do
        begin
-        LookUpNext(n,nn,p,ns,b);
-        ID(n,nn);
+        LookUpNext(n,nn,p,ns,r);
+        ID(n,nn,SrcPos);
         fqn:=fqn+'.'+nn;
        end;
-      if b then Source.Error('unknown namespace "'+string(fqn)+'"');
+      if r<>0 then Source.Error('unknown namespace "'+string(fqn)+'"');
 
       st:=Source.Token;
       case st of
@@ -2117,18 +2087,18 @@ begin
        begin
         //lookup
         p:=0;
-        b:=false;
-        ID(n,nn);
+        r:=0;
+        ID(n,nn,SrcPos);
         fqn:=nn;
         ns:=Locals[1];
         if ns=0 then ns:=Locals[0];
         while Source.IsNext([stPeriod,stIdentifier]) do
          begin
-          LookUpNext(n,nn,p,ns,b);
-          ID(n,nn);
+          LookUpNext(n,nn,p,ns,r);
+          ID(n,nn,SrcPos);
           fqn:=fqn+'.'+nn;
          end;
-        if b then Source.Error('unknown namespace "'+string(fqn)+'"');
+        if r<>0 then Source.Error('unknown namespace "'+string(fqn)+'"');
         //ParseSignature? destructor doesn't have arguments/overloads
         Source.Skip(stPOpen);
         Source.Skip(stPClose);
@@ -2157,12 +2127,12 @@ begin
         //add
         r:=Sphere.AddTo(Sphere[q].FirstItem,ttDestructor,n,rx);
         rx.Parent:=q;
-        rx.SrcPos:=Source.SrcPos;
+        rx.SrcPos:=SrcPos;
         //signature
         p:=Sphere.Add(ttSignature,px);
         px.Name:=n;
         px.Parent:=r;
-        px.SrcPos:=Source.SrcPos;
+        px.SrcPos:=SrcPos;
         px.Target:=q;
         rx.Target:=p;
         //start code block
@@ -2174,10 +2144,11 @@ begin
 
     stAOpen:
      begin
+      SrcPos:=Source.SrcPos;
       ns:=Locals[0];
       cb:=Sphere.Add(ttCodeBlock,qx);
       qx.Parent:=ns;
-      qx.SrcPos:=Source.SrcPos;
+      qx.SrcPos:=SrcPos;
       if PStratoSourceFile(Sphere[src]).InitializationCode=0 then
        begin
         PStratoSourceFile(Sphere[src]).InitializationCode:=cb;
@@ -2185,7 +2156,7 @@ begin
           PStratoNameSpaceData(Sphere[ns]).FirstInitialization,cb);
         p:=Sphere.Add(ttAlias,px);
         px.Parent:=ns;
-        px.SrcPos:=Source.SrcPos;
+        px.SrcPos:=SrcPos;
         px.Target:=cb;
         Sphere.Append(Sphere.Header.FirstInitialization,p);
        end
@@ -2197,7 +2168,7 @@ begin
           PStratoNameSpaceData(Sphere[ns]).FirstFinalization,cb);
         p:=Sphere.Add(ttAlias,px);
         px.Parent:=ns;
-        px.SrcPos:=Source.SrcPos;
+        px.SrcPos:=SrcPos;
         px.Target:=cb;
         Sphere.Prepend(Sphere.Header.FirstFinalization,p);
        end
@@ -2215,6 +2186,7 @@ begin
         px.SourceFile:=src;
         //px.FirstItem:=//see Lookup
         px.Target:=ns;
+        px.SrcPos:=Source.SrcPos;
        end
       else
         Source.Error('Already in private visibility');
@@ -2240,10 +2212,10 @@ var
   px,qx:PStratoThing;
   offset,i,j,s:cardinal;
   st:TStratoToken;
-  tt:TStratoThingType;
   b,neg:boolean;
   fn:UTF8String;
   n:TStratoName;
+  SrcPos,SrcPos1:cardinal;
 begin
   while (cb=0) and (rd<>0) and Source.NextToken(st) do
   case st of
@@ -2252,8 +2224,7 @@ begin
      begin
       offset:=OffsetUseDefault;//default
       p:=0;//default
-      tt:=ttVar;//default
-      fn:=Source.GetID;
+      fn:=Source.GetID(SrcPos);
       if Source.IsNext([stColon]) then
         case Source.Token of
           stIdentifier:
@@ -2265,14 +2236,14 @@ begin
             px.Parent:=rd;
             px.ByteSize:=SystemWordSize;
             px.EvaluatesTo:=q;
-            px.SrcPos:=Source.SrcPos;
+            px.SrcPos:=SrcPos;
            end;
           stAOpen:
            begin
             p:=Sphere.Add(ttRecord,px);
             px.Name:=Sphere.Dict.StrIdx(fn);
             px.Parent:=rd;
-            px.SrcPos:=Source.SrcPos;
+            px.SrcPos:=SrcPos;
             rd:=p;//push? see stAClose below
             //TODO: add struct/typedecl itself to something? x?ns?
            end;
@@ -2292,14 +2263,14 @@ begin
           j:=1;//default;
           case st of
             stNumericLiteral:
-              if not TryStrToInt(string(Source.GetID),integer(i)) then
+              if not TryStrToInt(string(Source.GetID(SrcPos1)),integer(i)) then
                 Source.Error('record field offset not an integer');
             stOpSub:neg:=true;
             stOpAdd:neg:=false;
             stIdentifier:
              begin
               q:=Sphere.Lookup(Sphere[rd].FirstItem,
-                Sphere.Dict.StrIdx(Source.GetID));
+                Sphere.Dict.StrIdx(Source.GetID(SrcPos1)));
               if q=0 then
                 Source.Error('record field not found')
               else
@@ -2320,9 +2291,8 @@ begin
             //stSemiColon:b:=false; else Source.Error?
             else b:=false;
           end;
-          //TODO: stack and combine like ParseLiteral
           if Source.IsNext([stOpMul,stNumericLiteral]) then
-            if TryStrToInt(string(Source.GetID),integer(j)) then
+            if TryStrToInt(string(Source.GetID(SrcPos1)),integer(j)) then
               i:=i*j
             else
               Source.Error('record field offset factor not an integer');
@@ -2335,70 +2305,46 @@ begin
             else
               inc(offset,i);
          end;
-       end
-      else
-      if Source.IsNext([stAOpen]) then
-       begin
-        tt:=ttProperty;
-        //getter and setter, see below
        end;
-      if tt=ttVar then Source.Skip(stSemiColon);
+      //TODO: else if Source.IsNext([stAOpen]) then tt:=ttProperty?
+      Source.Skip(stSemiColon);
 
       //register field with record
       n:=Sphere.Dict.StrIdx(fn);
       qx:=Sphere[rd];
-      r:=Sphere.AddTo(qx.FirstItem,tt,n,px);
+      r:=Sphere.AddTo(qx.FirstItem,ttVar,n,px);
       if r=0 then
        begin
         Source.Error('duplicate record field "'+fn+'"');
-        r:=Sphere.Add(tt,px);
+        Sphere.Add(ttVar,px);
         px.Name:=n;
        end;
       px.Parent:=rd;
       px.EvaluatesTo:=p;
       if p=0 then s:=0 else s:=ByteSize(Sphere,p);
-      if tt=ttVar then
-        if offset=OffsetUseDefault then
-         begin
-          px.Offset:=qx.ByteSize;
-          inc(qx.ByteSize,s);
-         end
-        else
-         begin
-          if integer(offset)<0 then
-           begin
-            if rd<>TypeDecl_object then
-             begin
-              offset:=-integer(offset);
-              Source.Error('negative record field offset not allowed');
-             end;
-           end
-          else
-           begin
-            i:=offset+s;
-            if i>qx.ByteSize then qx.ByteSize:=i;
-           end;
-          px.Offset:=offset;
-         end;
-      px.SrcPos:=Source.SrcPos;
-
-      //property: getter (and maybe setter)
-      if tt=ttProperty then
+      if offset=OffsetUseDefault then
        begin
-        //opening stAOpen consumed by Next above
-        if Source.IsNext([stAClose]) then
+        px.Offset:=qx.ByteSize;
+        inc(qx.ByteSize,s);
+       end
+      else
+       begin
+        if integer(offset)<0 then
          begin
-          //forward only
-          if Source.IsNext([stAOpen,stAClose]) then //empty setter also? skip
-            Source.Skip(stAClose);
-          Source.Skip(stSemiColon);
-          //TODO: check declared somewhere later
+          if rd<>TypeDecl_object then
+           begin
+            offset:=-integer(offset);
+            Source.Error('negative record field offset not allowed');
+           end;
          end
         else
-          px.ValueFrom:=CbStart(
-            StratoFnCodeBlock(Sphere,r,rd,p,n,Source.SrcPos));
+         begin
+          i:=offset+s;
+          if i>qx.ByteSize then qx.ByteSize:=i;
+         end;
+        px.Offset:=offset;
        end;
-
+      px.SrcPos:=SrcPos;
      end;
 
     //stQuestionMark: nested interface?
@@ -2424,19 +2370,20 @@ var
   p,q,r:TStratoIndex;
   st:TStratoToken;
   px,qx,rx:PStratoThing;
-  i,j:cardinal;
+  i,j,SrcPos:cardinal;
 begin
+  SrcPos:=Source.SrcPos;//default
   while (cb<>0) and Source.NextToken(st) do
   case st of
 
     stIdentifier:
      begin
       Juxta(p);
-      ID(n,nn);
+      ID(n,nn,SrcPos);
       fqn:=nn;
       while Source.IsNext([stPeriod,stIdentifier]) do
        begin
-        CodeLookup(n,p);
+        CodeLookup(n,p,SrcPos);
         if p=0 then
          begin
           Source.Error('undeclared identifier "'+string(fqn)+'"');
@@ -2444,13 +2391,13 @@ begin
           p:=Sphere.Add(ttNameSpace,px);//silence further errors
           px.Name:=Sphere.Dict.StrIdx('!!!'+nn);//n
           px.SourceFile:=src;
-          //px.SrcPos:=
+          px.SrcPos:=SrcPos;
          end;
-        ID(n,nn);
+        ID(n,nn,SrcPos);
         fqn:=fqn+'.'+nn;
        end;
       r:=p;
-      CodeLookup(n,p);
+      CodeLookup(n,p,SrcPos);
       if (p<>0) and (Sphere[p].ThingType=ttNameSpace) then p:=0;
       if p=0 then
        begin
@@ -2459,19 +2406,20 @@ begin
         if r<>0 then
          begin
           q:=r;
-          CodeLookup(n,q);
+          CodeLookup(n,q,SrcPos);
           while Source.IsNext([stPeriod,stIdentifier]) do
            begin
-            ID(n,nn);
+            ID(n,nn,SrcPos);
             fqn:=fqn+'.'+nn;
-            if p<>0 then CodeLookup(n,q);
+            if p<>0 then CodeLookup(n,q,SrcPos);
            end;
           if q<>0 then
            begin
-            p:=Sphere.Add(ttVarIndex,px);
-            px.Name:=n;
-            px.Parent:=r;
-            px.SrcPos:=Source.SrcPos;
+            p:=Sphere.Add(ttField,px);
+            //px.Name:=n;
+            px.Parent:=cb;
+            px.Subject:=r;
+            px.SrcPos:=SrcPos;
             px.Target:=q;
             //qx.EvaluatesTo:=ResType(p);
            end;
@@ -2483,7 +2431,7 @@ begin
             if not Sphere.AddTo(Sphere[cb].FirstItem,ttVar,n,p,px) then
               Source.Error('duplicate identifier "'+string(nn)+'"');
             px.Parent:=cb;
-            px.SrcPos:=Source.SrcPos;
+            px.SrcPos:=SrcPos;
             px.Offset:=Sphere[cb].ByteSize;
             Push(pUnTypedVar,p);//see stColon below
            end
@@ -2494,15 +2442,23 @@ begin
             px.Name:=n;
            end;
        end;
+      if (p<>0) and (Sphere[p].ThingType=ttMember) then
+       begin
+        q:=Sphere.Add(ttAlias,qx);//ttField?
+        qx.Parent:=cb;
+        qx.Target:=p;
+        qx.SrcPos:=SrcPos;
+        Push(pUnresolved,q);
+       end;
      end;
 
     stPeriod://"."
      begin
-      ID(n,nn);
+      ID(n,nn,SrcPos);
       fqn:=Sphere.FQN(p)+'.'+nn;
       while Source.IsNext([stPeriod,stIdentifier]) do
        begin
-        CodeLookup(n,p);
+        CodeLookup(n,p,SrcPos);
         if p=0 then
          begin
           Source.Error('undeclared identifier "'+string(fqn)+'"');
@@ -2510,12 +2466,12 @@ begin
           p:=Sphere.Add(ttNameSpace,px);//silence further errors
           px.Name:=Sphere.Dict.StrIdx('!!!'+nn);//n
           px.SourceFile:=src;
-          //px.SrcPos:=
+          px.SrcPos:=SrcPos;
          end;
-        ID(n,nn);
+        ID(n,nn,SrcPos);
         fqn:=fqn+'.'+nn;
        end;
-      CodeLookup(n,p);
+      CodeLookup(n,p,SrcPos);
       if p=0 then
        begin
         Source.Error('undeclared identifier "'+string(fqn)+'"');
@@ -2543,7 +2499,7 @@ begin
       p:=Sphere.Add(ttLiteral,px);
       px.Parent:=cb;
       px.SrcPos:=Source.SrcPos;
-      px.InitialValue:=Sphere.AddBinaryData(Source.GetID);
+      px.InitialValue:=Sphere.AddBinaryData(Source.GetID(SrcPos));
       if Source.IsNext([stColon,stIdentifier]) then
        begin
         px.EvaluatesTo:=LookUpType('literal type');
@@ -2558,11 +2514,11 @@ begin
         if Source.IsNext([stIdentifier]) and
           not(Source.IsNext([stIdentifier,stPeriod])) then
          begin
-          ID(n,nn);
+          ID(n,nn,SrcPos);
           if not Sphere.AddTo(Sphere[cb].FirstItem,ttVar,n,p,px) then
             Source.Error('duplicate identifier "'+string(nn)+'"');
           px.Parent:=cb;
-          px.SrcPos:=Source.SrcPos;
+          px.SrcPos:=SrcPos;
           px.Offset:=Sphere[cb].ByteSize;
           Push(pUnTypedVar,p);//see stColon below
          end
@@ -2622,14 +2578,41 @@ begin
       else
        begin
         //Combine here?
-        //start an argument list?
-        if IsCallable(Sphere,p) then
+        //start an argument list? (and push pArgList below)?
+        r:=p;
+        if (p<>0) and (Sphere[p].ThingType=ttCast) then
+          p:=Sphere[p].EvaluatesTo;
+        if p<>0 then
+          case Sphere[p].ThingType of
+            ttMember:;//overload
+            ttClass:;//constructor
+            ttField:;//property
+            ttVar:
+             begin
+              px:=Sphere[p];
+              if px.EvaluatesTo=0 then r:=0 else
+               begin
+                px:=Sphere[px.EvaluatesTo];
+                case px.ThingType of
+                  ttClassRef:;//dynamic constructor
+                  ttPointer:
+                    if Sphere[px.EvaluatesTo].ThingType<>ttSignature then r:=0;
+                  else r:=0;
+                end;
+               end;
+             end;
+            //TODO: ttThis?
+            //TODO: ttClassRef: only class methods
+            //TODO: dedicated function GivesSignature
+            else r:=0;
+          end;
+        if r<>0 then
          begin
           q:=Sphere.Add(ttFnCall,qx);
           qx.Name:=n;//TODO: from px?
           qx.Parent:=cb;
-          qx.SrcPos:=Source.SrcPos;
-          qx.Target:=p;//see Combine pArgList
+          qx.SrcPos:=SrcPos;//Source.SrcPos;
+          qx.Target:=r;
           Push(pArgList,q);
          end
         else
@@ -2659,7 +2642,7 @@ begin
           q:=Sphere.Add(ttFnCall,qx);
           qx.Name:=n;//?
           qx.Parent:=cb;
-          qx.SrcPos:=Source.SrcPos;
+          qx.SrcPos:=SrcPos;//Source.SrcPos;
           Push(pArgList,q);
          end;
         p:=0;
@@ -2676,19 +2659,17 @@ begin
       if (stackIndex=0) or (p=0) then
         Source.Error('unexpected token')
       else
-      if (stack[stackIndex-1].p=pArgList) then
-       begin
-        //assert Sphere[p].ThingType=ttFnCall
-        StratoFnCallAddArgument(Sphere,stack[stackIndex-1].t,p,px);
-        px.Parent:=cb;
-        px.SrcPos:=Source.SrcPos;
-       end
+      if (stack[stackIndex-1].p in [pArgList,pBrackets]) then
+        //assert Sphere[p].ThingType=ttFnCall,ttField,ttArrayIndex,ttPropCall
+        StratoFnCallAddArgument(Sphere,stack[stackIndex-1].t,p,px)
       else
       if (stack[stackIndex-1].p=pUnTypedVar) and (p<>stack[stackIndex-1].t) then
         if (Sphere[p].ThingType=ttAssign) and (TStratoToken(Sphere[p].Op)=stOpAssign) then
           CbAdd(p)
         else
-          Source.Error('unexpected syntax in local variable declaration');
+          Source.Error('unexpected syntax in local variable declaration')
+      else
+        Source.Error('unsupported syntax');
       p:=0;
      end;
 
@@ -2727,17 +2708,29 @@ begin
       Combine(p_Statement,p);
       if p<>0 then
        begin
-        r:=ResType(Sphere,p);
-        qx:=Sphere[cb];
-        qx.EvaluatesTo:=r;
-        //TODO: if parent is overload with return value, assign
-        if (Sphere[qx.Parent].ThingType=ttProperty) and (Sphere[qx.Parent].ValueFrom=cb) then
+        px:=Sphere[cb];
+        qx:=Sphere[px.Parent];
+        if qx.Target=0 then r:=0 else
+          r:=Sphere[qx.Target].EvaluatesTo;//ttSignature
+        if (qx.ThingType in [ttOverload,ttPropertyGet]) and (r<>0) then
          begin
-          if not SameType(Sphere,r,Sphere[p].EvaluatesTo) then
-            Source.Error('property getter result value mismatch');
+          if not SameType(Sphere,ResType(Sphere,p),r) then
+            Source.Error('result value type mismatch');
+          //assign to result value
+          r:=Sphere.Add(ttAssign,rx);
+          rx.Op:=cardinal(stOpAssign);
+          rx.Parent:=cb;
+          rx.SrcPos:=Source.SrcPos;
+          rx.AssignTo:=Sphere.Lookup(px.FirstItem,Sphere[qx.Parent].Name);//ttMember
+          rx.ValueFrom:=p;
+          //assert rx.AssignTo<>0
+          p:=r;
          end
         else
+         begin
           CheckPassed(p);
+          px.EvaluatesTo:=ResType(Sphere,p);
+         end;
         CbAdd(p);
        end;
       while (stackIndex<>0) and (stack[stackIndex-1].p<>pCodeBlock) do
@@ -2756,26 +2749,13 @@ begin
        begin
         //return to declarations
         p:=cb;
-        cb:=0;
+        cb:=0;//clear here for any CbStart below
 
         //code block done: checks
         r:=Sphere[p].Parent;
-//TODO: check {{{@@@
         if r<>0 then
          begin
           rx:=Sphere[r];
-
-          //property getter done? parse setter
-          if rx.ThingType=ttProperty then
-           begin
-            //TODO: if not(cbInhCalled)
-            if (rx.ValueFrom=p) and Source.IsNext([stAOpen]) then
-              //TODO: check code block's EvaluatesTo with property's?
-              rx.AssignTo:=CbStart(StratoFnCodeBlock(Sphere,r,
-                rx.Parent,rx.EvaluatesTo,rx.Name,Source.SrcPos))
-            else
-              Source.Skip(stSemiColon);//closing property declaration
-           end;
 
           //constructor block done? check inherited called
           if (rx.ThingType=ttConstructor) and not(cbInhCalled)
@@ -2796,7 +2776,7 @@ begin
               qx.Name:=Name_Inherited;
               qx.Parent:=p;
               qx.SrcPos:=Source.SrcPos;
-              qx.Target:=r;
+              qx.Target:=r; //no ttField here, no instance yet!
               //arguments
               StratoFnArgByValues(Sphere,q,
                 Sphere[r].FirstArgument,
@@ -2807,22 +2787,15 @@ begin
               //restore rx for below!
               rx:=Sphere[Sphere[p].Parent];
              end;
-           end;
+           end
+          else
 
           //destructor block done? check inherited called
           if (rx.ThingType=ttDestructor) and not(cbInhCalled)
             and (rx.Parent<>TypeDecl_object) then
            begin
-            q:=rx.Parent;
-            if q<>0 then q:=Sphere[q].InheritsFrom;
-            r:=0;
-            while (r=0) and (q<>0) do
-             begin
-              r:=Sphere[q].FirstItem;
-              while (r<>0) and (Sphere[r].ThingType<>ttDestructor) do
-                r:=Sphere[r].Next;
-              if r=0 then q:=Sphere[q].InheritsFrom;
-             end;
+            r:=StratoFnCallFindInherited(Sphere,ttDestructor,
+              rx.Parent,0,0);//,rx.FirstArgument,0);
             if r=0 then
               Source.Error('unable to find base destructor')
             else
@@ -2831,15 +2804,39 @@ begin
               qx.Name:=Name_Inherited;
               qx.Parent:=p;
               qx.SrcPos:=Source.SrcPos;
-              qx.Target:=Sphere.Add(ttVarIndex,rx);
-              rx.Parent:=Sphere[p].FirstItem;//assert ttThis
+              qx.Target:=Sphere.Add(ttField,rx);
+              rx.Parent:=q;//?
+              rx.Subject:=Sphere[p].FirstItem;//assert ttThis
               rx.SrcPos:=Source.SrcPos;
               rx.Target:=r;//Sphere[r].Signature;
               //qx.FirstArgument:=?
               //append to code block
               Sphere.Append(Sphere[p].FirstStatement,q);
              end;
-           end;
+           end
+          else
+
+          //property getter done? parse setter
+          if rx.ThingType=ttPropertyGet then
+           begin
+            //TODO: if not(cbInhCalled)
+            if Source.IsNext([stAOpen]) then
+             begin
+              //TODO: construct setter signature? (use the same for now)
+              q:=StratoFnAdd(Sphere,Source,ttPropertySet,rx.Parent,rx.Target,
+                src,Source.SrcPos);//rx.Parent.SrcPos?
+              CbStart(StratoFnOvlCodeBlock(Sphere,Source,q));
+             end
+            else
+              Source.Skip(stSemiColon);//closing property declaration
+           end
+          else
+
+          //TODO: ttPropertySet and not cbInhCalled
+          //if (rx.ThingType=ttPropertySet) and not(cbInhCalled) then
+          //else
+
+          ;
 
          end;
        end
@@ -2933,16 +2930,61 @@ begin
         Source.Error('no left side defined for assignment')
       else
        begin
-        q:=Sphere.Add(ttAssign,qx);
-        qx.Parent:=cb;
-        qx.SrcPos:=Source.SrcPos;
-        qx.Op:=cardinal(st);
-        px:=Sphere[p];
-        //if px.ThingType=ttAssign ?
-        if IsAssignable(Sphere,p) then
-          qx.AssignTo:=p
-        else
+        q:=0;//default
+        r:=p;
+        if p<>0 then
+         begin
+          //TODO: read-only when?
+          while (p<>0) and (r<>0) do
+           begin
+            px:=Sphere[p];
+            case px.ThingType of
+              ttVar:p:=0;//is assignable
+              ttThis:
+               begin
+                //only in base object's constructor!
+                r:=Sphere[cb].Parent;
+                if r<>0 then r:=Sphere[r].Parent;
+                if (r<>0) and (Sphere[r].ThingType<>ttConstructor) then r:=0;
+                if r<>0 then r:=Sphere[r].Parent;
+                if r=TypeDecl_object then p:=0 else r:=0;
+               end;
+              ttCast:p:=0;//TODO: check about dirty casts
+              ttArrayIndex:p:=0;
+              ttField:
+                if px.Target=0 then r:=0 else
+                  case Sphere[px.Target].ThingType of
+                    ttPropertyGet:  //see also StratoCheckPropertySet
+                      p:=0;         //  called from Combine(pAssignment
+                    ttPropertySet:
+                      p:=0;
+                    else
+                      p:=px.Target;//?
+                  end;
+              ttPropCall:
+                if StratoFindPropertySet(Sphere,r,p,
+                  cardinal(st),Source.SrcPos) then
+                 begin
+                  q:=r;
+                  p:=0;
+                 end
+                else
+                  r:=0;//Source.Error('read only property'?
+              //TODO: more?
+              else r:=0;
+            end;
+           end;
+         end;
+        if (r=0) or (p<>0) then
           Source.Error('invalid assignment target');
+        if q=0 then
+         begin
+          q:=Sphere.Add(ttAssign,qx);
+          qx.Op:=cardinal(st);
+          qx.Parent:=cb;
+          qx.SrcPos:=Source.SrcPos;
+          qx.AssignTo:=r;
+         end;
         Push(pAssignment,q);
         p:=0;
        end;
@@ -3054,17 +3096,23 @@ begin
          end;
        end;
      end;
-    stResult://"??"
+    stTwoQuestionMarks://"??": result value
      begin
       Juxta(p);
-      q:=Sphere[cb].Parent;
-      if q=0 then q:=cb else
+      q:=cb;
+      r:=0;
+      while (q<>0) and (Sphere[q].ThingType=ttCodeBlock) do
+       begin
+        r:=q;
+        q:=Sphere[q].Parent;
+       end;
+      if q=0 then p:=0 else
         case Sphere[q].ThingType of
-          ttOverload:q:=Sphere[q].Parent;//ttFunction
-          //ttProperty?
-          //mode?
+          ttOverload,ttPropertyGet,ttPropertySet:
+            p:=Sphere.Lookup(Sphere[r].FirstItem,
+              Sphere[Sphere[q].Parent].Name);//ttMember
+          else p:=0;
         end;
-      p:=Sphere.Lookup(Sphere[cb].FirstItem,Sphere[q].Name);
       if p=0 then
        begin
         Source.Error('"??" undefined');
@@ -3131,14 +3179,14 @@ begin
       Push(pCatch,q);
       if Source.IsNext([stPOpen,stIdentifier,stColon,stIdentifier]) then
        begin
-        ID(n,nn);
+        ID(n,nn,SrcPos);
         r:=Sphere.Add(ttVar,rx);
         rx.Name:=n;
         rx.Parent:=cb;
-        rx.SrcPos:=Source.SrcPos;
+        rx.SrcPos:=SrcPos;
         qx.FirstArgument:=r;
         Source.Skip(stColon);
-        qx.DoIf:=LookUpType('catch filter');
+        qx.Target:=LookUpType('catch filter');
         rx.EvaluatesTo:=qx.DoIf;
         rx.Offset:=Sphere[cb].ByteSize;//?
         Source.Skip(stPClose);//TODO: enforce
@@ -3165,7 +3213,16 @@ begin
         Source.Error('unsupported syntax')
       else
        begin
-        Push(pBrackets,p);
+        q:=Sphere.Add(ttArrayIndex,qx);
+        qx.Parent:=cb;
+        qx.Target:=p;
+        qx.SrcPos:=SrcPos;//Sphere[p].SrcPos?Source.SrcPos?
+        r:=ResType(Sphere,p);
+        if (r<>0) and (Sphere[r].ThingType=ttArray) then
+          r:=Sphere[r].Subject;//element type
+        //else error?
+        qx.EvaluatesTo:=r;
+        Push(pBrackets,q);
         p:=0;
        end;
     stBClose://"]"
@@ -3236,8 +3293,9 @@ begin
         else
          begin
           //relative to this
-          qx.Target:=Sphere.Add(ttVarIndex,rx);
-          rx.Parent:=Sphere[p].FirstItem;//assert ttThis
+          qx.Target:=Sphere.Add(ttField,rx);
+          rx.Parent:=cb;
+          rx.Subject:=Sphere[p].FirstItem;//assert ttThis
           rx.SrcPos:=Source.SrcPos;
           rx.Target:=Sphere[p].Parent;//Sphere[].Signature;
          end;
@@ -3251,6 +3309,25 @@ begin
 
     else Source.Error('unsupported syntax');//'unexpected token');
   end;
+end;
+
+function TStratoParserBase.Fn(x:TStratoIndex;n:TStratoName;const nn:UTF8String;
+  SrcPos:cardinal):TStratoIndex;
+var
+  p:TStratoIndex;
+  px:PStratoThing;
+begin
+  p:=Sphere.Lookup(Sphere[x].FirstItem,n);
+  if (p=0) or (Sphere[p].ThingType<>ttMember) then
+   begin
+    if p<>0 then Source.Error('duplicate identifier "'+nn+'"');
+    p:=Sphere.Add(ttMember,px);
+    px.Name:=n;
+    px.Parent:=x;
+    px.SrcPos:=SrcPos;
+    Sphere.Append(Sphere[x].FirstItem,p);
+   end;
+  Result:=p;
 end;
 
 end.

@@ -59,7 +59,7 @@ uses Windows, stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
 const
   StratoSphereDataBlockSize=$800;//2048
   StratoSphereBlockGrowSize=8;
-  StratoSphereFileVersion=$00000103;//0.1.3
+  StratoSphereFileVersion=$00000104;//0.1.4
 
 type
   TStratoSphereDataBlock=array[0..StratoSphereDataBlockSize-1] of TStratoThing;
@@ -364,7 +364,7 @@ var
   i:cardinal;
 begin
   if ID=0 then
-    Result:=nil
+    Result:=nil //TODO: pointer to all PStratoThing with all zeroes?
   else
   if ID=FGetNodeCacheID then
     Result:=FGetNodeCacheST //TODO: thread-safe?
@@ -402,8 +402,8 @@ begin
    begin
     //TODO: tt__Named
     if Node[p].ThingType in [ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration,
-      ttVar,ttConstant,ttImport,ttSignature,ttFunction,ttArgument,
-      ttPointer,ttVarByRef,ttArgByRef,ttClass,ttInterface,ttProperty,
+      ttVar,ttConstant,ttImport,ttSignature,ttMember,ttArgument,
+      ttPointer,ttVarByRef,ttArgByRef,ttClass,ttInterface,
       ttClassRef] then
       if Node[p].Name=0 then
         Result:=UTF8String(IntToStr(p))+'.'+Result
@@ -534,8 +534,8 @@ begin
         inc(i);
         j:=FDict.StrIdx(x);
         if i<>j then
-          raise Exception.CreateFmt('error loading dictionary: %d-%d "%s"',
-            [i,j,x]);
+          raise Exception.CreateFmt(
+            'error loading dictionary: %d-%d "%s"',[i,j,x]);
        end;
   finally
     f.Free;
