@@ -61,9 +61,11 @@ type
     procedure TreeView1Change(Sender: TObject; Node: TTreeNode);
     procedure FormResize(Sender: TObject);
     procedure Splitter2Moved(Sender: TObject);
+    procedure TreeView1CustomDrawItem(Sender: TCustomTreeView;
+      Node: TTreeNode; State: TCustomDrawState; var DefaultDraw: Boolean);
   private
     FSphere:TStratoSphere;
-    FSrcFile:TStratoIndex;
+    FSrcFile,FHighLight:TStratoIndex;
     FSrcPath,FFilePath,FSignature:string;
     w1,w2:integer;
     procedure LoadFile(const FilePath:string);
@@ -831,22 +833,26 @@ end;
 
 procedure TfrmXsViewMain.TreeView1Change(Sender: TObject; Node: TTreeNode);
 var
-  p,q:TStratoIndex;
+  p,q,h1:TStratoIndex;
   qx:PStratoThing;
   pi,Line,Col:cardinal;
   si:TScrollInfo;
 begin
   if txtSourceView.Visible then
+   begin
+    h1:=FHighLight;
     if (Node=nil) or not(Node is TXsTreeNode) then
      begin
       txtSourceView.Clear;
       FSrcFile:=0;
+      FHighLight:=0;
      end
     else
      begin
       Line:=0;
       Col:=0;
       q:=(Node as TXsTreeNode).Index;
+      FHighLight:=(Node as TXsTreeNode).JumpIndex;
       try
         if (q<>0) then
          begin
@@ -891,6 +897,7 @@ begin
           txtSourceView.Perform(EM_SETSEL,pi,pi+1);
           //txtSourceView.Perform(EM_SCROLLCARET,0,0);
          end;
+
       except
         //on e:Exception do?
          begin
@@ -899,6 +906,8 @@ begin
          end;
       end;
      end;
+    if FHighLight<>h1 then TreeView1.Invalidate;
+   end;
 end;
 
 procedure TfrmXsViewMain.FormResize(Sender: TObject);
@@ -914,6 +923,15 @@ procedure TfrmXsViewMain.Splitter2Moved(Sender: TObject);
 begin
   w1:=ClientWidth;
   w2:=txtSourceView.Width;
+end;
+
+procedure TfrmXsViewMain.TreeView1CustomDrawItem(Sender: TCustomTreeView;
+  Node: TTreeNode; State: TCustomDrawState; var DefaultDraw: Boolean);
+begin
+  if FHighLight<>0 then
+    if Node is TXsTreeNode then
+      if (Node as TXsTreeNode).Index=FHighLight then
+        Sender.Canvas.Brush.Color:=$00CC00;
 end;
 
 end.

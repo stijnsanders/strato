@@ -47,6 +47,7 @@ object frmXsViewMain: TfrmXsViewMain
     TabOrder = 0
     OnChange = TreeView1Change
     OnCreateNodeClass = TreeView1CreateNodeClass
+    OnCustomDrawItem = TreeView1CustomDrawItem
     OnDblClick = TreeView1DblClick
     OnExpanding = TreeView1Expanding
     OnKeyPress = TreeView1KeyPress
