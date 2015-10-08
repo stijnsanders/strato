@@ -76,9 +76,12 @@ begin
       Result:=Format('cons %s  t=%d v=%d',
         [s.FQN(i),p.EvaluatesTo,p.InitialValue]);
     ttCodeBlock:
-      Result:=Format('{}   #%d var->%d cmd->%d t=%d',
-        [p.ByteSize,p.FirstItem
-        ,p.FirstStatement,p.EvaluatesTo]);
+      if p.EvaluatesTo=0 then
+        Result:=Format('{}   #%d var->%d cmd->%d',
+          [p.ByteSize,p.FirstItem,p.FirstStatement])
+      else
+        Result:=Format('{}:  #%d var->%d cmd->%d t=%d',
+          [p.ByteSize,p.FirstItem,p.FirstStatement,p.EvaluatesTo]);
     ttImport:
       Result:=Format('<<<  %s  %d',
         [s.FQN(i),p.Target]);

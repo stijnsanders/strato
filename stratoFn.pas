@@ -264,7 +264,7 @@ begin
       ttVar,ttCast:
        begin
         q:=Sphere.Add(ttField,qx);
-        qx.Parent:=FnCall;
+        qx.Parent:=fx.Parent;
         qx.Subject:=p;
         qx.SrcPos:=fx.SrcPos;
         //px.Target:=//see p1:= below
@@ -303,7 +303,11 @@ begin
         //see also StratoFnCallFindInherited!
         r:=0;
         case ThingType of
-          ttOverload:ThingType:=ttConstructors;
+          ttOverload:
+           begin
+            ThingType:=ttConstructors;
+            rt:=p;
+           end;
           ttDestructor:;//
           else ThingType:=0;//Source.Error(...
         end;
@@ -556,99 +560,116 @@ function StratoFindPropertySet(Sphere:TStratoSphere;
   AssignTo,PropCall:TStratoIndex;Op,SrcPos:cardinal):boolean;
 var
   p,q,f,s:TStratoIndex;
-  px,qx,rx:PStratoThing;
+  px,qx,rx,qx1,rx1:PStratoThing;
   n:TStratoName;
   st:TStratoToken;
   p1:^TStratoIndex;
 begin
   //assert Sphere[PropColl].ThingType=ttPropCall
-  Result:=false;//default       
+  Result:=false;//default
   px:=Sphere[PropCall];
   if (PropCall<>0) and (px.Target<>0) then
    begin
     //find virtual property setter
     qx:=Sphere[px.Target];//ttPropertyGet
-    s:=qx.Target;//ttSignature
-    f:=qx.Parent;//ttMember
-    rx:=Sphere[f];
-    n:=rx.Name;
-    q:=rx.Parent;//ttClass
-    repeat
-      p:=Sphere[f].FirstItem;
-      while (p<>0) and not((Sphere[p].ThingType=ttPropertySet)
-        and (SameType(Sphere,Sphere[p].Target,s))) do
-        p:=Sphere[p].Next;
-      if p=0 then
-       begin
-        f:=0;
-        while (q<>0) and (f=0) do
-         begin
-          q:=Sphere[q].InheritsFrom;
-          if q<>0 then
-            f:=Sphere.Lookup(Sphere[q].FirstItem,n);
-         end;
-       end;
-    until (p<>0) or (q=0);
-    if p<>0 then
+    if qx.ThingType=ttField then qx:=Sphere[qx.Target];
+    if qx.ThingType<>ttPropertyGet then qx:=nil; //Source.Error?
+    if qx<>nil then
      begin
-      Result:=true;
-      px:=Sphere[PropCall];
-      st:=st_Unknown;
-      case TStratoToken(Op) of
-        stOpAssign:;//st:=st_Unknown;
-        stOpAssignAdd:st:=stOpAdd;
-        stOpAssignSub:st:=stOpSub;
-        stOpAssignMul:st:=stOpMul;
-        stOpAssignDiv:st:=stOpDiv;
-        stOpAssignMod:st:=stOpMod;
-        stOpAssignOr :st:=stOpOr;
-        stOpAssignAnd:st:=stOpAnd;
-        //else error?
-      end;
-      if st<>st_Unknown then
-       begin
-        //duplicate ttPropCall, insert ttBinaryOp
-        q:=AssignTo;
-        px.EvaluatesTo:=Sphere.Add(ttBinaryOp,rx);
-        rx.Parent:=px.Parent;//cb
-        rx.SrcPos:=SrcPos;
-        rx.Op:=cardinal(st);
-        //rx.Right: see Combine pAssignment
-        p1:=@rx.Left;
-        while (q<>0) and (q<>PropCall) do
+      s:=qx.Target;//ttSignature
+      f:=qx.Parent;//ttMember
+      rx:=Sphere[f];
+      n:=rx.Name;
+      q:=rx.Parent;//ttClass
+      repeat
+        p:=Sphere[f].FirstItem;
+        while (p<>0) and not((Sphere[p].ThingType=ttPropertySet)
+          and (SameType(Sphere,Sphere[p].Target,s))) do
+          p:=Sphere[p].Next;
+        if p=0 then
          begin
-          qx:=Sphere[q];
-          case qx.ThingType of
-            ttField:
-             begin
-              p1^:=Sphere.Add(ttField,rx);
-              rx.Parent:=qx.Parent;
-              rx.Subject:=qx.Subject;
-              rx.EvaluatesTo:=qx.EvaluatesTo;
-              rx.SrcPos:=qx.SrcPos;
-              p1:=@rx.Target;
-              q:=qx.Target;
-             end;
-            //TODO: more?
-            else
-              q:=0;//Source.Error('unsupported property header');
-          end;
+          f:=0;
+          while (q<>0) and (f=0) do
+           begin
+            q:=Sphere[q].InheritsFrom;
+            if q<>0 then
+              f:=Sphere.Lookup(Sphere[q].FirstItem,n);
+           end;
          end;
-        if q<>0 then //if q=PropCall then
+      until (p<>0) or (q=0);
+      if p<>0 then
+       begin
+        Result:=true;
+        //px:=Sphere[PropCall];//see above
+        st:=st_Unknown;
+        case TStratoToken(Op) of
+          stOpAssign:;//st:=st_Unknown;
+          stOpAssignAdd:st:=stOpAdd;
+          stOpAssignSub:st:=stOpSub;
+          stOpAssignMul:st:=stOpMul;
+          stOpAssignDiv:st:=stOpDiv;
+          stOpAssignMod:st:=stOpMod;
+          stOpAssignOr :st:=stOpOr;
+          stOpAssignAnd:st:=stOpAnd;
+          //else error?
+        end;
+        if st<>st_Unknown then
          begin
-          qx:=Sphere[q];
-          p1^:=Sphere.Add(ttPropCall,rx);
-          rx.Parent:=qx.Parent;
-          rx.Target:=qx.Target;
-          rx.FirstArgument:=qx.FirstArgument;
-          rx.SrcPos:=qx.SrcPos;
-         end
-        else
-          Result:=false;
+          //duplicate ttPropCall, insert ttBinaryOp
+          q:=AssignTo;
+          px.EvaluatesTo:=Sphere.Add(ttBinaryOp,rx);
+          rx.Parent:=px.Parent;//cb
+          rx.SrcPos:=SrcPos;
+          rx.Op:=cardinal(st);
+          //rx.Right: see Combine pAssignment
+          p1:=@rx.Left;
+          while (q<>0) and (q<>PropCall) do
+           begin
+            qx:=Sphere[q];
+            case qx.ThingType of
+              ttField:
+               begin
+                p1^:=Sphere.Add(ttField,rx);
+                rx.Parent:=qx.Parent;
+                rx.Subject:=qx.Subject;
+                rx.EvaluatesTo:=qx.EvaluatesTo;
+                rx.SrcPos:=qx.SrcPos;
+                p1:=@rx.Target;
+                q:=qx.Target;
+               end;
+              //TODO: more?
+              else
+                q:=0;//Source.Error('unsupported property header');
+            end;
+           end;
+          if q<>0 then //if q=PropCall then
+           begin
+            qx:=Sphere[q];
+            p1^:=Sphere.Add(ttPropCall,rx);
+            rx.Parent:=qx.Parent;
+            if (qx.Target<>0) and (Sphere[qx.Target].ThingType=ttField) then
+             begin
+              qx1:=Sphere[qx.Target];
+              rx.Target:=Sphere.Add(ttField,rx1);
+              rx1.Parent:=qx1.Parent;
+              rx1.Subject:=qx1.Subject;
+              rx1.Target:=qx1.Target;
+              rx1.EvaluatesTo:=qx1.EvaluatesTo;
+              rx1.SrcPos:=qx1.SrcPos;
+             end
+            else
+              rx.Target:=qx.Target;
+            rx.FirstArgument:=qx.FirstArgument;
+            rx.SrcPos:=qx.SrcPos;
+           end
+          else
+            Result:=false;
+         end;
+        //update ttPropCall
+        px.Op:=Op;
+        qx:=Sphere[px.Target];
+        if qx.ThingType=ttField then qx.Target:=p else px.Target:=p;
        end;
-      //update ttPropCall
-      px.Op:=Op;
-      px.Target:=p;
      end;
    end;
 end;

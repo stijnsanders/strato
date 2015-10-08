@@ -1078,8 +1078,7 @@ begin
       if r<>0 then
        begin
         p:=Sphere.Add(ttField,px);
-        px.Name:=n;
-        //px.Parent:=?
+        px.Parent:=cb;
         px.Subject:=q;
         px.SrcPos:=SrcPos;
         px.Target:=r;
@@ -1174,7 +1173,7 @@ begin
             //assert Sphere[p].ThingType=ttArrayIndex
             q:=ResType(Sphere,Sphere[p].Target);
             if (q=0) or (Sphere[q].ThingType<>ttArray) then
-              Source.Error('no argument or property to index into');
+              Source.Error('no array or property to index into');
             q:=Sphere[p].FirstArgument;
             //TODO: accept any numeric type?
             //while q<>0 do //TODO: multi-dim arrays
@@ -1328,7 +1327,7 @@ begin
              end;
             case px.ThingType of
               ttAssign:q:=ResType(Sphere,px.AssignTo);
-              ttPropCall:q:=Sphere[Sphere[px.Target].Target].EvaluatesTo;
+              ttPropCall:q:=ResType(Sphere,p);
             end;
             if not SameType(Sphere,r,q) then
               Source.Error('assignment type mismatch');
@@ -2189,7 +2188,7 @@ begin
         px.SrcPos:=Source.SrcPos;
        end
       else
-        Source.Error('Already in private visibility');
+        Source.Error('already in private visibility');
 
     stSemiColon://;//stray semicolon? ignore
       if Source.IsNext([stSemiColon,stSemiColon]) then
@@ -2416,7 +2415,6 @@ begin
           if q<>0 then
            begin
             p:=Sphere.Add(ttField,px);
-            //px.Name:=n;
             px.Parent:=cb;
             px.Subject:=r;
             px.SrcPos:=SrcPos;
@@ -2442,13 +2440,22 @@ begin
             px.Name:=n;
            end;
        end;
-      if (p<>0) and (Sphere[p].ThingType=ttMember) then
+      if p<>0 then
        begin
-        q:=Sphere.Add(ttAlias,qx);//ttField?
-        qx.Parent:=cb;
-        qx.Target:=p;
-        qx.SrcPos:=SrcPos;
-        Push(pUnresolved,q);
+        px:=Sphere[p];
+        case px.ThingType of
+          ttField:
+            if (px.Target<>0) and (Sphere[px.Target].ThingType=ttMember) then
+              Push(pUnresolved,p);
+          ttMember:
+           begin
+            q:=Sphere.Add(ttAlias,qx);//ttField?
+            qx.Parent:=cb;
+            qx.Target:=p;
+            qx.SrcPos:=SrcPos;
+            Push(pUnresolved,q);
+           end;
+        end;
        end;
      end;
 
@@ -2916,7 +2923,7 @@ begin
     stDefine:
      begin
       Combine(pAssignment,p);
-      Source.Error('use either ":=" or "==".');
+      Source.Error('use either ":=" or "=="');
       p:=0;
      end;
 

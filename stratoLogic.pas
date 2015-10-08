@@ -71,7 +71,11 @@ begin
           Result:=Sphere[px.Target].EvaluatesTo;//type from ttSignature
         ttPropCall:
           if (px.Target<>0) then
-            Result:=Sphere[Sphere[px.Target].Target].EvaluatesTo;//type from ttSignature
+           begin
+            px:=Sphere[px.Target];
+            if px.ThingType=ttField then px:=Sphere[px.Target];
+            if px<>nil then Result:=Sphere[px.Target].EvaluatesTo;//type from ttSignature
+           end;
         //else Result:=0;//see default
       end;
    end;
