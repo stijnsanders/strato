@@ -20,6 +20,7 @@ type
     FBasePath:string;
     FGetNodeCacheID:TStratoIndex;
     FGetNodeCacheST:PStratoThing;
+    FZeroes:TStratoThing;
     function GetNode(ID: TStratoIndex): PStratoThing;
   public
     constructor Create;
@@ -293,7 +294,7 @@ end;
 function TStratoSphere.AddTo(var First:TStratoIndex;Item:TStratoIndex):boolean;
 var
   n:TStratoName;
-  p,q:PStratoThing;
+  px,qx:PStratoThing;
 begin
   //assert caller sets Sphere[Item].Parent
   {$IFDEF DEBUG}
@@ -306,20 +307,20 @@ begin
   else
    begin
     n:=Node[Item].Name;
-    p:=Node[First];
-    q:=nil;
-    while p<>nil do
+    px:=Node[First];
+    qx:=nil;
+    while px<>nil do
      begin
-      q:=p;
-      if p.Name=n then
+      qx:=px;
+      if px.Name=n then
        begin
         Result:=false;
-        p:=nil;
+        px:=nil;
        end
       else
-        p:=Node[p.Next];
+        px:=Node[px.Next];
      end;
-    if Result then q.Next:=Item;
+    if Result then qx.Next:=Item;
    end;
 end;
 
@@ -347,15 +348,15 @@ end;
 
 procedure TStratoSphere.Append(var First: TStratoIndex; Item: TStratoIndex);
 var
-  p:PStratoThing;
+  px:PStratoThing;
 begin
-  p:=Node[First];
-  if p=nil then
+  if First=0 then
     First:=Item
   else
    begin
-    while p.Next<>0 do p:=Node[p.Next];
-    p.Next:=Item;
+    px:=Node[First];
+    while px.Next<>0 do px:=Node[px.Next];
+    px.Next:=Item;
    end;
 end;
 
@@ -364,7 +365,7 @@ var
   i:cardinal;
 begin
   if ID=0 then
-    Result:=nil //TODO: pointer to all PStratoThing with all zeroes?
+    Result:=nil
   else
   if ID=FGetNodeCacheID then
     Result:=FGetNodeCacheST //TODO: thread-safe?
@@ -385,6 +386,19 @@ begin
      end;
     FGetNodeCacheID:=ID;
     FGetNodeCacheST:=Result;
+   end;
+  if Result=nil then
+   begin
+    //reset to zeroes just to be sure (use ZeroMemory?)
+    FZeroes.ThingType:=0;
+    FZeroes.Parent:=0;
+    FZeroes.Next:=0;
+    FZeroes.Name:=0;
+    FZeroes.FirstItem:=0;
+    FZeroes.ByteSize:=0;
+    FZeroes.InheritsFrom:=0;
+    FZeroes.SrcPos:=0;
+    Result:=@FZeroes;
    end;
 end;
 

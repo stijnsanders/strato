@@ -74,7 +74,7 @@ begin
            begin
             px:=Sphere[px.Target];
             if px.ThingType=ttField then px:=Sphere[px.Target];
-            if px<>nil then Result:=Sphere[px.Target].EvaluatesTo;//type from ttSignature
+            Result:=Sphere[px.Target].EvaluatesTo;//type from ttSignature
            end;
         //else Result:=0;//see default
       end;
@@ -199,8 +199,8 @@ begin
           Result:=true;//TODO: always? (not read-only?)
         ttArrayIndex,ttField:
          begin
+          b:=px.Target<>0;
           px:=Sphere[px.Target];
-          b:=px<>nil;
          end;
       end;
      end;
