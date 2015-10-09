@@ -309,13 +309,14 @@ begin
     n:=Node[Item].Name;
     px:=Node[First];
     qx:=nil;
-    while px<>nil do
+    while px.ThingType<>0 do
      begin
       qx:=px;
       if px.Name=n then
        begin
         Result:=false;
-        px:=nil;
+        FZeroes.ThingType:=0;
+        px:=@FZeroes;
        end
       else
         px:=Node[px.Next];
