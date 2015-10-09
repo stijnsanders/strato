@@ -1163,7 +1163,10 @@ begin
           done:=true;//always only one (need to parse ")" correctly)
          end;
         pParentheses:
+         begin
           done:=true;//always only one (need to parse ")" correctly)
+          p:=q;
+         end;
         pBrackets:
          begin
           if q<>0 then
@@ -2670,11 +2673,14 @@ begin
         //assert Sphere[p].ThingType=ttFnCall,ttField,ttArrayIndex,ttPropCall
         StratoFnCallAddArgument(Sphere,stack[stackIndex-1].t,p,px)
       else
-      if (stack[stackIndex-1].p=pUnTypedVar) and (p<>stack[stackIndex-1].t) then
-        if (Sphere[p].ThingType=ttAssign) and (TStratoToken(Sphere[p].Op)=stOpAssign) then
-          CbAdd(p)
-        else
-          Source.Error('unexpected syntax in local variable declaration')
+      if stack[stackIndex-1].p=pUnTypedVar then
+       begin
+        if p<>stack[stackIndex-1].t then
+          if (Sphere[p].ThingType=ttAssign) and (TStratoToken(Sphere[p].Op)=stOpAssign) then
+            CbAdd(p)
+          else
+            Source.Error('unexpected syntax in local variable declaration');
+       end
       else
         Source.Error('unsupported syntax');
       p:=0;

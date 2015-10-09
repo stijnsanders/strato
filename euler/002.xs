@@ -12,10 +12,10 @@ do not exceed four million, find the sum of the even-valued terms.
 */
 
 {
-	a:=1;
-	b:=2;
-	c:=0;
-	sum:=2;//first even term is the 2 to start with!
+	:a:=1;
+	:b:=2;
+	:c:=0;
+	:sum:=2;//first even term is the 2 to start with!
 	&(c<4000000){
 		c:=a+b;
 		a:=b;

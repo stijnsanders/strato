@@ -380,11 +380,15 @@ begin
 end;
 
 procedure TfrmXsViewMain.DoShow;
+var
+  tw:cardinal;
 begin
   inherited;
   if ParamCount<>0 then LoadFile(ParamStr(1));
   w1:=ClientWidth;
   w2:=txtSourceView.Width;
+  tw:=12;
+  txtSourceView.Perform(EM_SETTABSTOPS,1,integer(@tw));
 end;
 
 procedure TfrmXsViewMain.AppActivate(Sender: TObject);
@@ -582,7 +586,7 @@ begin
         n.JumpIndex:=p.EvaluatesTo;
         JumpNode(n,':sub=',p.Target);
        end;
-      ttClass:
+      ttClass,ttInterface:
        begin
         n.JumpIndex:=p.InheritsFrom;
         j:=p.FirstItem;
@@ -624,11 +628,6 @@ begin
        begin
         JumpNode(n,':sig=',p.Target);
         BuildNode(n,p.Body);
-       end;
-      ttInterface:
-       begin
-        JumpNode(n,':InheritsFrom ',p.InheritsFrom);
-        ListNode(n,'->',p.FirstItem);
        end;
       ttPropCall:
        begin

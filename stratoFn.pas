@@ -245,22 +245,96 @@ begin
   //assert all Arguments added
   fx:=Sphere[FnCall];
   p:=fx.Target;
-  px:=Sphere[p];
-  if (p<>0) and (px.ThingType=ttField) then
-   begin
-    p1:=p;
-    p:=px.Target;
-   end
-  else
-    p1:=FnCall;
+  if Sphere[p].ThingType=ttField then p:=Sphere[p].Target;
   r:=0;//default
   rt:=0;//default
-  while (r=0) and (p<>0) do
-   begin
-    px:=Sphere[p];
-    case px.ThingType of
+  while (p<>0) and (Sphere[p].ThingType in
+    [ttVar,ttCast,ttField,ttArrayIndex,ttClassRef]) do
+    p:=Sphere[p].EvaluatesTo;
+  px:=Sphere[p];
+  case px.ThingType of
+    ttMember:
+     begin
+      r:=Sphere[p].FirstItem;
+      while (r<>0) and not((Sphere[r].ThingType=ThingType) and
+        StratoFnArgListsMatch(Sphere,
+          Sphere[Sphere[r].Target].FirstArgument,fx.FirstArgument)) do
+        r:=Sphere[r].Next;
+      if r<>0 then rt:=Sphere[Sphere[r].Target].EvaluatesTo;
+     end;
 
-      ttVar,ttCast:
+    ttOverload:
+     begin
+      r:=StratoFnCallFindInherited(Sphere,ttOverload,Sphere[p].Parent,
+        fx.FirstArgument,Sphere[Sphere[p].Parent].Name);
+      if r<>0 then rt:=Sphere[Sphere[r].Target].EvaluatesTo;
+     end;
+
+    //ttInterface? //TODO:
+
+    ttClass:
+     begin
+      //see also StratoFnCallFindInherited!
+      r:=0;
+      case ThingType of
+        ttOverload:
+         begin
+          ThingType:=ttConstructors;
+          rt:=p;
+         end;
+        ttDestructor:;//
+        else ThingType:=0;//Source.Error(...
+      end;
+      repeat
+        if r=0 then
+         begin
+          r:=Sphere[p].FirstItem;
+          while (r<>0) and (Sphere[r].ThingType<>ThingType) do
+            r:=Sphere[r].Next;
+          if ThingType=ttConstructors then
+            if r<>0 then r:=Sphere[r].FirstItem;//ttConstructor
+         end
+        else
+          if ThingType=ttConstructors then r:=Sphere[r].Next else r:=0;
+        if r=0 then p:=Sphere[p].InheritsFrom;
+      until (p=0) or ((r<>0) and StratoFnArgListsMatch(Sphere,
+        Sphere[Sphere[r].Target].FirstArgument,fx.FirstArgument));
+     end;
+
+    ttConstructor:
+     begin
+      //constructor calling inherited constructor
+      r:=StratoFnCallFindInherited(Sphere,ttConstructor,Sphere[p].Parent,
+        fx.FirstArgument,0);
+      if r<>0 then
+       begin
+        p:=fx.Parent;
+        while (p<>0) and (Sphere[p].ThingType=ttCodeBlock) do
+          p:=Sphere[p].Parent;
+        rt:=p;
+       end;
+     end;
+
+    ttDestructor:
+      r:=StratoFnCallFindInherited(Sphere,ttDestructor,Sphere[p].Parent,0,0);
+
+    //else error?
+  end;
+  if r=0 then Result:=false else
+   begin
+    p:=fx.Target;
+    if (p<>0) and (px.ThingType=ttField) then
+     begin
+      p1:=p;
+      p:=Sphere[p].Target;
+     end
+    else
+      p1:=FnCall;
+    while (p<>0) and (Sphere[p].ThingType in
+      [ttVar,ttCast,ttField,ttArrayIndex,ttClassRef]) do
+     begin
+      px:=Sphere[p];
+      if Sphere[p].ThingType in [ttVar,ttCast] then
        begin
         q:=Sphere.Add(ttField,qx);
         qx.Parent:=fx.Parent;
@@ -270,90 +344,9 @@ begin
         //qx.EvaluatesTo:=?
         Sphere[p1].Target:=q;
         p1:=q;
-        p:=px.EvaluatesTo;
        end;
-
-      ttField,ttArrayIndex,ttClassRef:
-        p:=px.EvaluatesTo;
-
-      ttMember:
-       begin
-        r:=Sphere[p].FirstItem;
-        while (r<>0) and not((Sphere[r].ThingType=ThingType) and
-          StratoFnArgListsMatch(Sphere,
-            Sphere[Sphere[r].Target].FirstArgument,fx.FirstArgument)) do
-          r:=Sphere[r].Next;
-        if r<>0 then rt:=Sphere[Sphere[r].Target].EvaluatesTo;
-        p:=0;
-       end;
-
-      ttOverload:
-       begin
-        r:=StratoFnCallFindInherited(Sphere,ttOverload,Sphere[p].Parent,
-          fx.FirstArgument,Sphere[Sphere[p].Parent].Name);
-        if r<>0 then rt:=Sphere[Sphere[r].Target].EvaluatesTo;
-        p:=0;
-       end;
-
-      //ttInterface? //TODO:
-
-      ttClass:
-       begin
-        //see also StratoFnCallFindInherited!
-        r:=0;
-        case ThingType of
-          ttOverload:
-           begin
-            ThingType:=ttConstructors;
-            rt:=p;
-           end;
-          ttDestructor:;//
-          else ThingType:=0;//Source.Error(...
-        end;
-        repeat
-          if r=0 then
-           begin
-            r:=Sphere[p].FirstItem;
-            while (r<>0) and (Sphere[r].ThingType<>ThingType) do
-              r:=Sphere[r].Next;
-            if ThingType=ttConstructors then
-              if r<>0 then r:=Sphere[r].FirstItem;//ttConstructor
-           end
-          else
-            if ThingType=ttConstructors then r:=Sphere[r].Next else r:=0;
-          if r=0 then p:=Sphere[p].InheritsFrom;
-        until (p=0) or ((r<>0) and StratoFnArgListsMatch(Sphere,
-            Sphere[Sphere[r].Target].FirstArgument,fx.FirstArgument));
-        p:=0;
-       end;
-
-      ttConstructor:
-       begin
-        //constructor calling inherited constructor
-        r:=StratoFnCallFindInherited(Sphere,ttConstructor,Sphere[p].Parent,
-          fx.FirstArgument,0);
-        if r<>0 then
-         begin
-          p:=fx.Parent;
-          while (p<>0) and (Sphere[p].ThingType=ttCodeBlock) do
-            p:=Sphere[p].Parent;
-          rt:=p;
-         end;
-        p:=0;
-       end;
-
-      ttDestructor:
-       begin
-        r:=StratoFnCallFindInherited(Sphere,ttDestructor,Sphere[p].Parent,0,0);
-        p:=0;
-       end;
-
-      else
-        p:=0;//error?
-    end;
-   end;
-  if r=0 then Result:=false else
-   begin
+      p:=px.EvaluatesTo;
+     end;
     Sphere[p1].Target:=r;
     if ThingType=ttPropertyGet then
       fx.ThingType:=ttPropCall
