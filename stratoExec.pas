@@ -1032,7 +1032,7 @@ begin
         if p1=IndexStep1 then
          begin
           Push(p,IndexStep2,vt,vp);
-          p:=px.FirstArgument;
+          p:=Sphere[px.FirstArgument].Target;//ttArgument
           vt0:=0;
          end
         else
@@ -1043,7 +1043,7 @@ begin
           else
            begin
             Move(FMem[vp],i,SystemWordSize);
-            vtp(mp+ByteSize(Sphere,px.EvaluatesTo)*i,px.EvaluatesTo);
+            vtp(px.EvaluatesTo,mp+ByteSize(Sphere,px.EvaluatesTo)*i);
            end;
          end;
 
