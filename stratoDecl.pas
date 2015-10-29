@@ -367,6 +367,25 @@ type
   end;
   PStratoNameSpaceData=^TStratoNameSpaceData;
 
+const
+{$IFDEF DEBUG}
+  IndexStep1=999999901;
+  IndexStep2=999999902;
+  IndexStep3=999999903;
+  IndexStep4=999999904;
+  IndexStep5=999999905;
+  IndexStep6=999999906;
+  IndexStep7=999999907;
+{$ELSE}
+  IndexStep1={TStratoIndex}cardinal(-$E);
+  IndexStep2={TStratoIndex}cardinal(-$D);
+  IndexStep3={TStratoIndex}cardinal(-$C);
+  IndexStep4={TStratoIndex}cardinal(-$B);
+  IndexStep5={TStratoIndex}cardinal(-$A);
+  IndexStep6={TStratoIndex}cardinal(-$9);
+  IndexStep7={TStratoIndex}cardinal(-$8);
+{$ENDIF}
+  
 implementation
 
 end.

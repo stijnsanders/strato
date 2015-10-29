@@ -5,7 +5,7 @@ interface
 {$D-}
 {$L-}
 
-uses SysUtils, Classes, stratoDict, stratoSource, stratoDecl;
+uses SysUtils, Classes, stratoDict, stratoDecl;
 
 type
   TStratoSphere=class(TObject)
@@ -55,7 +55,7 @@ type
 
 implementation
 
-uses Windows, stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
+uses Windows, stratoLogic, stratoSource;
 
 const
   StratoSphereDataBlockSize=$800;//2048
