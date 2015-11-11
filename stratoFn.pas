@@ -1,5 +1,14 @@
 unit stratoFn;
 
+{
+
+stratoFn
+
+declares utility functions and procedures to perform mutations with a
+TStratoSphere related to functions
+
+}
+
 interface
 
 {$D-}

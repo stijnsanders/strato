@@ -1,5 +1,21 @@
 unit stratoTokenizer;
 
+{
+
+stratoTokenizer
+
+  declares the StratoTokenize function
+
+function StratoTokenize
+
+  renders a list of tokens based on a string of strato code
+  Code: the strato code
+  LineIndex: multiplier used to store line and column numbers in
+    a single integer value
+  returns a dynamic array of TStratoSourceToken records
+
+}
+
 interface
 
 type

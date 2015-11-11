@@ -1,5 +1,20 @@
 unit stratoDecl;
 
+{
+
+stratoDecl
+
+  declares TStratoThing and related types
+
+TStratoThingType constant values are declared here,
+they determine which fields of the TStratoThing record
+are used to hold which value, this way the total size
+of the TStratoThing record is held low at 32 bytes,
+and enables faster random access into arrays of
+TStratoThing records as used by TStratoSphere.
+
+}
+
 interface
 
 type

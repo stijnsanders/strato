@@ -1,5 +1,15 @@
 unit stratoExec;
 
+{
+
+stratoExec
+
+
+declares TStratoMachine, used to interpret code managed by a TStratoSphere
+instance
+
+}
+
 interface
 
 uses SysUtils, stratoDecl, stratoSphere, stratoDebug, stratoDebugView;

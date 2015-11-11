@@ -1,5 +1,14 @@
 unit stratoSphere;
 
+{
+
+stratoSphere
+
+declares the TStratoSphere object that manages parsed code into a set of
+TStratoThing records
+
+}
+
 interface
 
 {$D-}

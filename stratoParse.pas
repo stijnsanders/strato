@@ -1,5 +1,14 @@
 unit stratoParse;
 
+{
+
+stratoParse
+
+declares the StratoParseSource function, that parses strato code,
+managed by a TStratoSource object, into a TStratoSphere
+
+}
+
 interface
 
 uses stratoDecl, stratoSphere, stratoSource;

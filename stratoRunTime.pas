@@ -1,5 +1,14 @@
 unit stratoRunTime;
 
+{
+
+stratoRunTime
+
+declare procedure DefaultTypes that adds basic run-time declarations
+into a TStratoSphere
+
+}
+
 interface
 
 uses stratoSphere, stratoDecl, stratoLogic, stratoFn;
@@ -16,6 +25,7 @@ const
 
 procedure DefaultTypes(Sphere:TStratoSphere);
 
+//TODO: move these into TStratoSpere!
 var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
   TypeDecl_number,TypeDecl_intLast,TypeDecl_variant,TypeDecl_pointer,

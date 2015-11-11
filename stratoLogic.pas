@@ -1,5 +1,14 @@
 unit stratoLogic;
 
+{
+
+stratoLogic
+
+declares utility functions and procedures to perform mutations with a
+TStratoSphere related to code logic control
+
+}
+
 interface
 
 uses stratoDecl, stratoSphere;
