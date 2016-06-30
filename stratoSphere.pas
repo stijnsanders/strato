@@ -1,22 +1,22 @@
 unit stratoSphere;
 
-{
-
-stratoSphere
-
-declares the TStratoSphere object that manages parsed code into a set of
-TStratoThing records
-
-}
-
 interface
 
-{$D-}
-{$L-}
+{xxx$D-}
+{xxx$L-}
 
-uses SysUtils, Classes, stratoDict, stratoDecl;
+uses SysUtils, Classes, stratoDict, stratoSource, stratoDecl;
 
 type
+  {
+  TStratoSphere=class;//forward
+
+  TStratoRef=record
+    Sphere:TStratoSphere;
+    Index:TStratoIndex;
+  end;
+  }
+
   TStratoSphere=class(TObject)
   private
     FDict:TStringDictionary;
@@ -35,21 +35,42 @@ type
     constructor Create;
     destructor Destroy; override;
     function MarkIndex(Index:TStratoIndex): TStratoIndex;
-    function Add(ThingType: cardinal; var Info: PStratoThing): TStratoIndex;
-    function AddTo(var First: TStratoIndex; ThingType: cardinal;
-      Name: TStratoName; var Info: PStratoThing): TStratoIndex; overload;
-    function AddTo(var First:TStratoIndex;Item:TStratoIndex):boolean; overload;
-    function AddTo(var First: TStratoIndex; ThingType: cardinal;
-      Name: TStratoName; var Index: TStratoIndex;
-      var Info: PStratoThing): boolean; overload;
-    procedure Prepend(var First:TStratoIndex;Item:TStratoIndex);
-    procedure Append(var First:TStratoIndex;Item:TStratoIndex);
-    function Lookup(First:TStratoIndex;Name:TStratoName):TStratoIndex;
+
+    //add
+    function Add(ThingType: TStratoThingType;
+      const Values:array of cardinal): TStratoIndex; overload;
+    function Add(Parent: TStratoIndex; ListField: TStratoField; ThingType: TStratoThingType;
+      const Values:array of cardinal): TStratoIndex; overload;
+    function Add(Parent: TStratoIndex; ListField: TStratoField; ThingType: TStratoThingType;
+      const Values:array of cardinal;
+      var Index: TStratoIndex): boolean; overload;
+
+    function Append(Parent:TStratoIndex;List:TStratoField;
+      Item:TStratoIndex):TStratoIndex;
+
+    //get ThingType:
+    function t(p:TStratoIndex):TStratoThingType;
+    //get reference:
+    function r(p:TStratoIndex;f:TStratoField):TStratoIndex; overload;
+    function r(p:TStratoIndex;f:TStratoField;var q:TStratoIndex):boolean; overload;
+    function rr(p:TStratoIndex;const ff:array of TStratoField):TStratoIndex;
+    //get value:
+    function v(p:TStratoIndex;f:TStratoField):cardinal;
+    //set:
+    procedure s(p:TStratoIndex;f:TStratoField;q:TStratoIndex); overload;
+    //procedure s(p:TStratoIndex;f:TStratoField;v:cardinal); overload;
+    procedure s(p:TStratoIndex;const Values:array of cardinal); overload;
+
+    function Lookup(Parent:TStratoIndex;ListField:TStratoField;
+      Name:TStratoName):TStratoIndex;
     function FQN(p:TStratoIndex):UTF8String;
     function AddBinaryData(const x:UTF8String):TStratoIndex;
     function GetBinaryData(p:TStratoIndex):UTF8String;
     function Header:PStratoHeader;
+    function NameSpace(ns:TStratoIndex):PStratoNameSpaceData;
+    function SourceFile(src:TStratoIndex):PStratoSourceFile;
     function NextIndex(var Index:TStratoIndex):boolean;
+    function DebugInfo(p:TStratoIndex):string;
     procedure AddGlobalVar(p:TStratoIndex);
     procedure ReadSettings(const IniPath:string);
     procedure LoadFromFile(const FilePath:string);
@@ -58,18 +79,18 @@ type
     procedure InlineError(Sender:TObject;Line,LPos:cardinal;
       const ErrorMsg:string);
     property Dict:TStringDictionary read FDict;
-    property Node[ID:TStratoIndex]:PStratoThing read GetNode; default;
+    //property Node[ID:TStratoIndex]:PStratoThing read GetNode; default;
     property BasePath:string read FBasePath;
   end;
 
 implementation
 
-uses Windows, stratoLogic, stratoSource;
+uses Windows, stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
 
 const
   StratoSphereDataBlockSize=$800;//2048
   StratoSphereBlockGrowSize=8;
-  StratoSphereFileVersion=$00000104;//0.1.4
+  StratoSphereFileVersion=$00000105;//0.1.5
 
 type
   TStratoSphereDataBlock=array[0..StratoSphereDataBlockSize-1] of TStratoThing;
@@ -188,44 +209,55 @@ end;
 procedure TStratoSphere.Error(p: TStratoIndex; const Msg: string);
 var
   q:TStratoIndex;
-  px:PStratoThing;
+  i,j:cardinal;
+  s:PStratoSourceFile;
 begin
   q:=p;
-  while (q<>0) and not(Node[q].ThingType
-    in [ttNameSpace,ttPrivate,ttOverload,ttConstructor]) do
-    q:=Node[q].Parent;
+  while (q<>0) and not(t(q) in
+    [ttNameSpace,ttPrivate,ttOverload,ttConstructor]) do
+    q:=r(q,tfParent);
   if q<>0 then
-    case Node[q].ThingType of
+    case t(q) of
       ttNameSpace:
-        q:=PStratoNameSpaceData(Node[q]).SourceFile;
+        q:=PStratoNameSpaceData(GetNode(q)).SourceFile;
       ttOverload,ttConstructor,ttPrivate:
-        q:=Node[q].SourceFile;
+        q:=r(q,tfSourceFile);
       else
         q:=0;//raise?
     end;
   //TODO: raise?
-  px:=Node[p];
   if (p=0) or (q=0) then
     Writeln(ErrOutput,Msg)
   else
+   begin
+    s:=PStratoSourceFile(GetNode(q));
+    i:=v(p,tfSrcPos);
+    j:=s.SrcPosLineIndex;
     Writeln(ErrOutput,Format('%s(%d:%d): %s',
-      [GetBinaryData(PStratoSourceFile(Node[q]).FileName)
-      ,px.SrcPos div PStratoSourceFile(Node[q]).SrcPosLineIndex
-      ,px.SrcPos mod PStratoSourceFile(Node[q]).SrcPosLineIndex
+      [GetBinaryData(s.FileName)
+      ,i div j
+      ,i mod j
       ,Msg
       ]));
+   end;
   ExitCode:=1;
 end;
 
-function TStratoSphere.Add(ThingType: cardinal;
-  var Info: PStratoThing): TStratoIndex;
+function TStratoSphere.Add(ThingType: TStratoThingType;
+  const Values:array of cardinal): TStratoIndex;
 var
   p:TStratoIndex;
-  i,j:cardinal;
+  pp:PStratoThing;
+  i,j,l:cardinal;
+  f:TStratoField;
+  q:TStratoIndex;
 begin
+  l:=Length(Values);
+  if (l mod 2)<>0 then
+    raise Exception.Create('TStratoSphere.Add Values required 2-by-2');
   if FBlock[FBlockIndex].Index=FBlock[FBlockIndex].Size then
    begin
-    //block fill, determine first index for next block
+    //block full, determine first index for next block
     p:=FBlock[FBlockIndex].First+FBlock[FBlockIndex].Size;
     j:=StratoSphereDataBlockSize;
     i:=0;
@@ -260,114 +292,107 @@ begin
   i:=FBlock[FBlockIndex].Index;
   inc(FBlock[FBlockIndex].Index);
   Result:=FBlock[FBlockIndex].First+i;
-  Info:=@(PStratoSphereDataBlock(FBlock[FBlockIndex].Data)[i]);
-  //ZeroMemory(Info^?
-  Info.ThingType:=ThingType;
+  pp:=@(PStratoSphereDataBlock(FBlock[FBlockIndex].Data)[i]);
+  //ZeroMemory(q^?
+  pp[tfThingType]:=ThingType;
+  i:=0;
+  while (i<l) do
+   begin
+    f:=Values[i];
+    q:=Values[i+1];
+    inc(i,2);
+    {$IFDEF DEBUG}
+    pp[rx(ThingType,f)]:=q;
+    if ((f and $100)=0) and (q<>0) then rxc(ThingType,f,t(q));
+    {$ELSE}
+    pp[f and $07]:=q;
+    {$ENDIF}
+   end;
 end;
 
-function TStratoSphere.AddTo(var First: TStratoIndex; ThingType: cardinal;
-  Name: TStratoName; var Info: PStratoThing): TStratoIndex;
+function TStratoSphere.Add(Parent: TStratoIndex; ListField:TStratoField;
+  ThingType: TStratoThingType; const Values:array of cardinal): TStratoIndex;
 var
-  p:PStratoThing;
+  i,l:integer;
+  p,q:TStratoIndex;
 begin
-  if First=0 then
+  //assert Values contains [tfParent,Parent]
+  l:=Length(Values);
+  i:=0;
+  while (i<l) and (Values[i]<>tfName) do inc(i,2);
+  if i=l then
+    raise Exception.Create('TStratoSphere.Add needs tfName value')
+  else
+    inc(i);
+  p:=r(Parent,ListField);//tfFirstItem
+  if p=0 then
    begin
     //first item
-    First:=Add(ThingType,Info);
-    Info.Name:=Name;
-    Result:=First;
+    Result:=Add(ThingType,Values);
+    s(Parent,Listfield,Result);
    end
   else
    begin
     //assert all named things
-    p:=Node[First];
-    while (p.Next<>0) and (p.Name<>Name) do p:=Node[p.Next];
-    if (p.Next=0) and (p.Name<>Name) then
+    q:=r(p,tfNext);
+    while (q<>0) and (v(p,tfName)<>Values[i]) do
      begin
-      //add
-      Result:=Add(ThingType,Info);
-      Info.Name:=Name;
-      //TODO: sort? build better look-up lists?
-      p.Next:=Result;//assert was 0
+      p:=q;
+      q:=r(p,tfNext);
+     end;
+    if q<>0 then
+     begin
+      //duplicate ! assert caller handles zero value
+      Result:=0;
      end
     else
      begin
-      //duplicate ! assert caller handles zero values
-      Result:=0;
-      Info:=nil;
+      //add here
+      Result:=Add(ThingType,Values);
+      s(p,tfNext,Result);
+      //TODO: sort? build better look-up lists?
      end;
-   end;
-  //assert caller sets Info.Parent
-end;
-
-function TStratoSphere.AddTo(var First:TStratoIndex;Item:TStratoIndex):boolean;
-var
-  n:TStratoName;
-  px,qx:PStratoThing;
-begin
-  //assert caller sets Sphere[Item].Parent
-  {$IFDEF DEBUG}
-  if Node[Item].Next<>0 then
-    raise Exception.Create('broken chain detected');
-  {$ENDIF}
-  Result:=true;//default
-  if First=0 then
-    First:=Item
-  else
-   begin
-    n:=Node[Item].Name;
-    px:=Node[First];
-    qx:=nil;
-    while px.ThingType<>0 do
-     begin
-      qx:=px;
-      if px.Name=n then
-       begin
-        Result:=false;
-        FZeroes.ThingType:=0;
-        px:=@FZeroes;
-       end
-      else
-        px:=Node[px.Next];
-     end;
-    if Result then qx.Next:=Item;
    end;
 end;
 
-function TStratoSphere.AddTo(var First: TStratoIndex; ThingType: cardinal;
-  Name: TStratoName; var Index: TStratoIndex;
-  var Info: PStratoThing): boolean;
+function TStratoSphere.Add(Parent: TStratoIndex; ListField:TStratoField;
+  ThingType: TStratoThingType; const Values:array of cardinal; var Index: TStratoIndex): boolean;
 begin
-  Index:=AddTo(First,ThingType,Name,Info);
+  Index:=Add(Parent,ListField,ThingType,Values);
   if Index=0 then
    begin
     //create anyway to prevent errors on further parsing
-    Index:=Add(ThingType,Info);
-    Info.Name:=Name;
+    Index:=Add(ThingType,Values);
+    //Append?
     Result:=false;
    end
   else
     Result:=true;
 end;
 
-procedure TStratoSphere.Prepend(var First: TStratoIndex; Item: TStratoIndex);
-begin
-  Node[Item].Next:=First;
-  First:=Item;
-end;
-
-procedure TStratoSphere.Append(var First: TStratoIndex; Item: TStratoIndex);
+function TStratoSphere.Append(Parent:TStratoIndex;List:TStratoField;
+  Item:TStratoIndex):TStratoIndex;
 var
-  px:PStratoThing;
+  p,q:TStratoIndex;
 begin
-  if First=0 then
-    First:=Item
+  {$IFDEF DEBUG}
+  if r(Item,tfNext)<>0 then
+    raise Exception.Create('broken chain detected');
+  {$ENDIF}
+  p:=r(Parent,List);
+  if p=0 then
+    s(Parent,List,Item)
   else
    begin
-    px:=Node[First];
-    while px.Next<>0 do px:=Node[px.Next];
-    px.Next:=Item;
+    q:=r(p,tfNext);
+    while q<>0 do
+     begin
+      p:=q;
+      q:=r(p,tfNext);
+     end;
+    s(p,tfNext,Item);
    end;
+  Result:=Item;
 end;
 
 function TStratoSphere.GetNode(ID: TStratoIndex): PStratoThing;
@@ -383,7 +408,8 @@ begin
    begin
     if (ID>=FBlock[FBlockIndex].First)
       and (ID<FBlock[FBlockIndex].First+FBlock[FBlockIndex].Index) then
-      Result:=@(PStratoSphereDataBlock(FBlock[FBlockIndex].Data)[ID-FBlock[FBlockIndex].First])
+      Result:=@(PStratoSphereDataBlock(FBlock[FBlockIndex].Data)
+        [ID-FBlock[FBlockIndex].First])
     else
      begin
       i:=0;
@@ -400,23 +426,124 @@ begin
   if Result=nil then
    begin
     //reset to zeroes just to be sure (use ZeroMemory?)
-    FZeroes.ThingType:=0;
-    FZeroes.Parent:=0;
-    FZeroes.Next:=0;
-    FZeroes.Name:=0;
-    FZeroes.FirstItem:=0;
-    FZeroes.ByteSize:=0;
-    FZeroes.InheritsFrom:=0;
-    FZeroes.SrcPos:=0;
+    for i:=0 to 7 do FZeroes[i]:=0;
     Result:=@FZeroes;
    end;
 end;
 
-function TStratoSphere.Lookup(First:TStratoIndex;Name:TStratoName):TStratoIndex;
+function TStratoSphere.t(p: TStratoIndex): TStratoThingType;
 begin
-  Result:=First;
-  while (Result<>0) and (Node[Result].Name<>Name) do
-    Result:=Node[Result].Next;
+  if p=0 then Result:=0 else Result:=GetNode(p)[tfThingType];
+end;
+
+function TStratoSphere.r(p: TStratoIndex; f: TStratoField): TStratoIndex;
+{$IFDEF DEBUG}
+var
+  pp:PStratoThing;
+begin
+  if (f and $100)<>0 then
+    raise Exception.Create('Use Sphere.v to request value');
+  if p=0 then
+    Result:=0//raise?
+  else
+   begin
+    pp:=GetNode(p);
+    Result:=pp[rx(pp[tfThingType],f)];
+   end;
+{$ELSE}
+begin
+  if p=0 then Result:=0 else Result:=GetNode(p)[f and $07];
+{$ENDIF}
+end;
+
+function TStratoSphere.r(p: TStratoIndex; f: TStratoField;
+  var q: TStratoIndex): boolean;
+begin
+  q:=r(p,f);
+  Result:=q<>0;
+end;
+
+function TStratoSphere.rr(p:TStratoIndex;
+  const ff:array of TStratoField):TStratoIndex;
+var
+  i,l:integer;
+begin
+  Result:=p;
+  i:=0;
+  l:=Length(ff);
+  while (Result<>0) and (i<l) do
+   begin
+    Result:=r(Result,ff[i]);
+    inc(i);
+   end;
+end;
+
+function TStratoSphere.v(p: TStratoIndex; f: TStratoField): cardinal;
+{$IFDEF DEBUG}
+var
+  pp:PStratoThing;
+begin
+  if (f and $100)=0 then
+    raise Exception.Create('Use Sphere.r to request reference');
+  if p=0 then
+    Result:=0//raise?
+  else
+   begin
+    pp:=GetNode(p);
+    Result:=pp[rx(pp[tfThingType],f)];
+   end;
+{$ELSE}
+begin
+  if p=0 then Result:=0 else Result:=GetNode(p)[f and $07];
+{$ENDIF}
+end;
+
+procedure TStratoSphere.s(p: TStratoIndex; f: TStratoField; q: TStratoIndex);
+{$IFDEF DEBUG}
+var
+  pp:PStratoThing;
+begin
+  pp:=GetNode(p);
+  pp[rx(pp[tfThingType],f)]:=q;
+  if ((f and $100)=0) and (q<>0) then rxc(pp[tfThingType],f,t(q));
+{$ELSE}
+begin
+  GetNode(p)[f and $07]:=q;
+{$ENDIF}
+end;
+
+procedure TStratoSphere.s(p: TStratoIndex; const Values: array of cardinal);
+var
+  pp:PStratoThing;
+  i,l:cardinal;
+  f:TStratoField;
+  q:TStratoIndex;
+begin
+  l:=Length(Values);
+  if (l mod 2)<>0 then
+    raise Exception.Create('TStratoSphere.Add Values required 2-by-2');
+  pp:=GetNode(p);
+  i:=0;
+  while (i<l) do
+   begin
+    f:=Values[i];
+    q:=Values[i+1];
+    inc(i,2);
+    {$IFDEF DEBUG}
+    pp[rx(pp[tfThingType],f)]:=q;
+    if ((f and $100)=0) and (q<>0) then rxc(pp[tfThingType],f,t(q));
+    {$ELSE}
+    pp[f and $07]:=q;
+    {$ENDIF}
+   end;
+end;
+
+function TStratoSphere.Lookup(Parent:TStratoIndex;ListField:TStratoField;
+  Name:TStratoName):TStratoIndex;
+begin
+  if ListField=0 then Result:=Parent else Result:=r(Parent,ListField);
+  while (Result<>0) and (v(Result,tfName)<>Name) do
+    Result:=r(Result,tfNext);
 end;
 
 function TStratoSphere.FQN(p: TStratoIndex): UTF8String;
@@ -425,34 +552,49 @@ begin
   while p<>0 do
    begin
     //TODO: tt__Named
-    if Node[p].ThingType in [ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration,
+    if t(p) in [ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration,
       ttVar,ttConstant,ttImport,ttSignature,ttMember,ttArgument,
       ttPointer,ttVarByRef,ttArgByRef,ttClass,ttInterface,
       ttClassRef] then
-      if Node[p].Name=0 then
+      if GetNode(p)[tfName and $07]=0 then//if v(p,tfName)=0 then
         Result:=UTF8String(IntToStr(p))+'.'+Result
       else
-        Result:=FDict.Str[Node[p].Name]+'.'+Result;
-    p:=Node[p].Parent;
+        Result:=FDict.Str[v(p,tfName)]+'.'+Result;
+    p:=r(p,tfParent);
    end;
   if Result<>'' then SetLength(Result,Length(Result)-1);//trailing "."
 end;
 
 function TStratoSphere.AddBinaryData(const x: UTF8String): TStratoIndex;
 var
-  l,i:cardinal;
-  p,q:PStratoBinaryData;
+  l,i,bx,bi:cardinal;
+  p:PStratoBinaryData;
+  q:TStratoIndex;
 begin
   l:=Length(x);
-  Result:=Add(ttBinaryData,PStratoThing(p));
+  bx:=FBlockIndex;
+  bi:=FBlock[bx].Index;
+  Result:=Add(ttBinaryData,[]);
+  p:=PStratoBinaryData(GetNode(Result));
   p.DataLength:=l;//Length
   //need more than one node?
+  //TODO: calculate, not iterate (also split over blocks?
   i:=l+8;//check including header of first node
-  //TODO: calculate, not iterate
   while i>SizeOf(TStratoThing) do
    begin
-    Add(ttBinaryData,PStratoThing(q));//to inc FDataIndex
-    dec(i,SizeOf(TStratoThing));
+    q:=Add(ttBinaryData,[]);//to inc FDataIndex
+    if FBlockIndex<>bx then
+     begin
+      //TODO: replace with something cleaner
+      //new block started?
+      Result:=q;
+      p:=PStratoBinaryData(GetNode(q));
+      FBlock[bx].Index:=bi;
+      bx:=FBlockIndex;
+      bi:=FBlock[bx].Index;
+     end
+    else
+      dec(i,SizeOf(TStratoThing));
    end;
   //p.???:=FDataIndex-Result;?
   //store data
@@ -462,14 +604,15 @@ end;
 function TStratoSphere.GetBinaryData(p: TStratoIndex): UTF8String;
 var
   l:integer;
+  pp:PStratoBinaryData;
 begin
   if p=0 then Result:='' else
    begin
-    //assert x<>0 and x<FDataIndex
-    //assert Node[x].ThingType:=ttBinary
-    l:=PStratoBinaryData(Node[p]).DataLength;
+    //assert t(p)=ttBinary
+    pp:=PStratoBinaryData(GetNode(p));
+    l:=pp.DataLength;
     SetLength(Result,l);
-    Move(PStratoBinaryData(Node[p]).DataStart,Result[1],l);
+    Move(pp.DataStart,Result[1],l);
    end;
 end;
 
@@ -479,19 +622,49 @@ begin
   Result:=@(PStratoSphereDataBlock(FBlock[0].Data)[0]);
 end;
 
+function TStratoSphere.NameSpace(ns:TStratoIndex):PStratoNameSpaceData;
+var
+  pp:PStratoThing;
+begin
+  pp:=GetNode(ns);
+  if (pp=nil) or (pp[tfThingType]<>ttNameSpace) then
+    raise Exception.Create('Index is not a NameSpace');
+  Result:=PStratoNameSpaceData(pp);
+end;
+
+function TStratoSphere.SourceFile(src:TStratoIndex):PStratoSourceFile;
+var
+  pp:PStratoThing;
+begin
+  pp:=GetNode(src);
+  if (pp=nil) or (pp[tfThingType]<>ttSourceFile) then
+    raise Exception.Create('Index is not a SourceFile');
+  Result:=PStratoSourceFile(pp);
+end;
+
 procedure TStratoSphere.AddGlobalVar(p: TStratoIndex);
 var
-  q:TStratoIndex;
-  qx:PStratoThing;
+  p1,p2,p3:TStratoIndex;
 begin
   //assert p<>0
-  //assert Node[p].ThingType=ttVar
-  Node[p].Offset:=Header.GlobalByteSize;
-  if Node[p].EvaluatesTo<>0 then
-    inc(Header.GlobalByteSize,ByteSize(Self,Node[p].EvaluatesTo));
-  q:=Add(ttGlobal,qx);
-  qx.Target:=p;
-  Append(Header.FirstGlobalVar,q);
+  //assert t(p)=ttVar
+  s(p,tfOffset,Header.GlobalByteSize);
+  p1:=r(p,tfEvaluatesTo);
+  if p1<>0 then inc(Header.GlobalByteSize,ByteSize(Self,p1));
+  p1:=Add(ttGlobal,[tfTarget,p]);
+  if Header.FirstGlobalVar=0 then
+    Header.FirstGlobalVar:=p1
+  else
+   begin
+    p2:=Header.FirstGlobalVar;
+    p3:=r(p2,tfNext);
+    while p3<>0 do
+     begin
+      p2:=p3;
+      p3:=r(p3,tfNext);
+     end;
+    s(p2,tfNext,p1);
+   end;
 end;
 
 procedure TStratoSphere.LoadFromFile(const FilePath: string);
@@ -654,6 +827,18 @@ begin
      end
     else
       Result:=true;
+   end;
+end;
+
+function TStratoSphere.DebugInfo(p:TStratoIndex):string;
+var
+  pp:PStratoThing;
+begin
+  if p=0 then Result:='' else
+   begin
+    pp:=GetNode(p);
+    Result:=Format('(%.4x) %d,%d,%d,%d,%d',
+      [pp[0],pp[3],pp[4],pp[5],pp[6],pp[7]]);
    end;
 end;
 

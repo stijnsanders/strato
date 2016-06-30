@@ -18,7 +18,7 @@ object frmXsViewMain: TfrmXsViewMain
   TextHeight = 14
   object Splitter1: TSplitter
     Left = 0
-    Top = 212
+    Top = 211
     Width = 541
     Height = 4
     Cursor = crVSplit
@@ -29,7 +29,7 @@ object frmXsViewMain: TfrmXsViewMain
     Left = 284
     Top = 41
     Width = 4
-    Height = 171
+    Height = 170
     Align = alRight
     ResizeStyle = rsUpdate
     OnMoved = Splitter2Moved
@@ -38,7 +38,7 @@ object frmXsViewMain: TfrmXsViewMain
     Left = 0
     Top = 41
     Width = 284
-    Height = 171
+    Height = 170
     Align = alClient
     HideSelection = False
     Images = ImageList1
@@ -57,7 +57,7 @@ object frmXsViewMain: TfrmXsViewMain
   end
   object ListBox1: TListBox
     Left = 0
-    Top = 216
+    Top = 215
     Width = 541
     Height = 58
     Align = alBottom
@@ -113,7 +113,7 @@ object frmXsViewMain: TfrmXsViewMain
     Left = 288
     Top = 41
     Width = 253
-    Height = 171
+    Height = 170
     Align = alRight
     HideSelection = False
     ReadOnly = True

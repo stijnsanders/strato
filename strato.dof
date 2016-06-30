@@ -110,8 +110,8 @@ IncludeVerInfo=1
 AutoIncBuild=0
 MajorVer=0
 MinorVer=1
-Release=4
-Build=464
+Release=5
+Build=490
 Debug=0
 PreRelease=0
 Special=0
@@ -119,23 +119,3 @@ Private=0
 DLL=0
 Locale=1033
 CodePage=1252
-[Version Info Keys]
-CompanyName=
-FileDescription=strato
-FileVersion=0.1.4.464
-InternalName=
-LegalCopyright=
-LegalTrademarks=
-OriginalFilename=
-ProductName=strato
-ProductVersion=0.0.0.0
-Comments=
-[HistoryLists\hlConditionals]
-Count=1
-Item0=DEBUG
-[HistoryLists\hlUnitAliases]
-Count=1
-Item0=WinTypes=Windows;WinProcs=Windows;DbiTypes=BDE;DbiProcs=BDE;DbiErrs=BDE;
-[HistoryLists\hlUnitOutputDirectory]
-Count=1
-Item0=dcu

@@ -1,14 +1,5 @@
 unit stratoLogic;
 
-{
-
-stratoLogic
-
-declares utility functions and procedures to perform mutations with a
-TStratoSphere related to code logic control
-
-}
-
 interface
 
 uses stratoDecl, stratoSphere;
@@ -20,51 +11,65 @@ function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 function ByteSize(Sphere:TSTratoSphere;p:TStratoIndex):cardinal;
 function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 function IsAddressable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
-procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
-function StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
-function StratoComparativeCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
+procedure StratoSelectionCheckType(Sphere:TStratoSphere;p:TStratoIndex);
+function StratoOperatorCheckType(Sphere:TStratoSphere;p:TStratoIndex):boolean;
+function StratoComparativeCheckType(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 
-procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
-  MergeOnto:TStratoIndex);
-procedure ReplaceNode(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
-  Subject,ReplaceWith:TStratoIndex);
+procedure MoveChain(Sphere:TStratoSphere;Parent,MergeOnto:TStratoIndex);
+procedure ReplaceNode(Sphere:TStratoSphere;Parent,Subject,ReplaceWith:TStratoIndex);
+
+const
+{$IFDEF DEBUG}
+  IndexStep1=999999901;
+  IndexStep2=999999902;
+  IndexStep3=999999903;
+  IndexStep4=999999904;
+  IndexStep5=999999905;
+  IndexStep6=999999906;
+  IndexStep7=999999907;
+{$ELSE}
+  IndexStep1={TStratoIndex}cardinal(-$E);
+  IndexStep2={TStratoIndex}cardinal(-$D);
+  IndexStep3={TStratoIndex}cardinal(-$C);
+  IndexStep4={TStratoIndex}cardinal(-$B);
+  IndexStep5={TStratoIndex}cardinal(-$A);
+  IndexStep6={TStratoIndex}cardinal(-$9);
+  IndexStep7={TStratoIndex}cardinal(-$8);
+{$ENDIF}
 
 implementation
 
-uses SysUtils, stratoTokenizer, stratoRunTime;
+uses SysUtils, stratoRunTime, stratoFn, stratoTokenizer;
 
 function ResType(Sphere:TStratoSphere;p:TStratoIndex):TStratoIndex;
 var
-  px:PStratoThing;
+  q:TStratoIndex;
 begin
   Result:=0;//default
   if p<>0 then
    begin
-    px:=Sphere[p];
-    if (px.ThingType and tt__Typed)<>0 then
-      Result:=px.EvaluatesTo
+    if (Sphere.t(p) and tt__Typed)<>0 then
+      Result:=Sphere.r(p,tfEvaluatesTo)
     else
-      case px.ThingType of
+      case Sphere.t(p) of
         ttFnCall:
-          Result:=px.EvaluatesTo;
+          Result:=Sphere.r(p,tfEvaluatesTo);
         //TODO: ttAlias?
         ttClass:
-         begin
-          Result:=Sphere.Add(ttClassRef,px);
-          px.ByteSize:=SystemWordSize;
-          px.EvaluatesTo:=p;
-         end;
+          Result:=Sphere.Add(ttClassRef,
+            [tfByteSize,SystemWordSize
+            ,tfEvaluatesTo,p
+            ]);
         //TODO: ttMember:
         ttOverload,ttConstructor:
-          Result:=px.Target;//ttSignature
+          Result:=Sphere.r(p,tfSignature);//ttSignature
         ttPropertyGet:
-          Result:=Sphere[px.Target].EvaluatesTo;//type from ttSignature
+          Result:=Sphere.r(Sphere.r(p,tfSignature),tfEvaluatesTo);//type from ttSignature
         ttPropCall:
-          if (px.Target<>0) then
+          if Sphere.r(p,tfTarget,q) then
            begin
-            px:=Sphere[px.Target];
-            if px.ThingType=ttField then px:=Sphere[px.Target];
-            Result:=Sphere[px.Target].EvaluatesTo;//type from ttSignature
+            if Sphere.t(q)=ttField then q:=Sphere.r(q,tfTarget);
+            Result:=Sphere.r(Sphere.r(q,tfSignature),tfEvaluatesTo);//type from ttSignature
            end;
         //else Result:=0;//see default
       end;
@@ -77,16 +82,16 @@ begin
   if p=0 then
     raise Exception.Create('request for byte size of nothing')//Result:=0
   else
-    case Sphere[p].ThingType of
+    case Sphere.t(p) of
       ttEnumeration,ttSignature,ttPointer,
       ttClass,ttInterface,ttClassRef:
         Result:=SystemWordSize;
       ttTypeDecl,ttRecord,ttArray:
-        Result:=Sphere[p].ByteSize;
+        Result:=Sphere.v(p,tfByteSize);
       else
         raise Exception.CreateFmt(
           'request for byte size of unsupported item %d:%.4x',
-          [p,Sphere[p].ThingType]);
+          [p,Sphere.t(p)]);
       //else raise?Sphere.Error?
     end;
 end;
@@ -95,21 +100,20 @@ function SameType(Sphere:TStratoSphere;s1,s2:TStratoIndex):boolean;
 var
   ptr1,ptr2:integer;
   tt:TStratoThingType;
-  x1,x2:PStratoThing;
 begin
   //TODO: auto-cast?
   //TODO: ttAlias?
   ptr1:=0;
-  while (s1<>0) and (Sphere[s1].ThingType=ttPointer) do
+  while Sphere.t(s1)=ttPointer do
    begin
     inc(ptr1);
-    s1:=Sphere[s1].EvaluatesTo;
+    s1:=Sphere.r(s1,tfEvaluatesTo);
    end;
   ptr2:=0;
-  while (s2<>0) and (Sphere[s2].ThingType=ttPointer) do
+  while Sphere.t(s2)=ttPointer do
    begin
     inc(ptr2);
-    s2:=Sphere[s2].EvaluatesTo;
+    s2:=Sphere.r(s2,tfEvaluatesTo);
    end;
   if (s1=0) or (s2=0) then
     Result:=(s1=0) and (s2=0) and (ptr1=ptr2)
@@ -118,40 +122,34 @@ begin
     Result:=ptr1=ptr2
   else
    begin
-    tt:=Sphere[s1].ThingType;
-    if tt=Sphere[s2].ThingType then
+    tt:=Sphere.t(s1);
+    if tt=Sphere.t(s2) then
       case tt of
         ttClass:
          begin
-          while (s1<>0) and (s1<>s2) do s1:=Sphere[s1].InheritsFrom;
+          while (s1<>0) and (s1<>s2) do s1:=Sphere.r(s1,tfInheritsFrom);
           Result:=(s1=s2) and (ptr1=ptr2);
          end;
         ttClassRef:
          begin
-          s1:=Sphere[s1].EvaluatesTo;
-          s2:=Sphere[s2].EvaluatesTo;
-          while (s1<>0) and (s1<>s2) do s1:=Sphere[s1].InheritsFrom;
+          s1:=Sphere.r(s1,tfEvaluatesTo);
+          s2:=Sphere.r(s2,tfEvaluatesTo);
+          while (s1<>0) and (s1<>s2) do s1:=Sphere.r(s1,tfInheritsFrom);
           Result:=(s1=s2) and (ptr1=ptr2);
          end;
         ttSignature:
          begin
-          x1:=Sphere[s1];
-          x2:=Sphere[s2];
           //TODO: local stack array
-          if SameType(Sphere,x1.EvaluatesTo,x2.EvaluatesTo) and
-            SameType(Sphere,x1.Target,x2.Target) then
+          if SameType(Sphere,Sphere.r(s1,tfEvaluatesTo),Sphere.r(s2,tfEvaluatesTo)) and
+            SameType(Sphere,Sphere.r(s1,tfTarget),Sphere.r(s2,tfTarget)) then
            begin
-            s1:=x1.FirstArgument;
-            s2:=x2.FirstArgument;
-            x1:=Sphere[s1];
-            x2:=Sphere[s2];
+            s1:=Sphere.r(s1,tfFirstArgument);
+            s2:=Sphere.r(s2,tfFirstArgument);
             while (s1<>0) and (s2<>0) and //assert ttArgument
-              SameType(Sphere,x1.EvaluatesTo,x2.EvaluatesTo) do
+              SameType(Sphere,Sphere.r(s1,tfEvaluatesTo),Sphere.r(s2,tfEvaluatesTo)) do
              begin
-              s1:=x1.Next;
-              s2:=x2.Next;
-              x1:=Sphere[s1];
-              x2:=Sphere[s2];
+              s1:=Sphere.r(s1,tfNext);
+              s2:=Sphere.r(s2,tfNext);
              end;
             Result:=((s1=0) and (s2=0)) and (ptr1=ptr2);
            end
@@ -164,7 +162,7 @@ begin
     else
     //if (tt=ttClassRef) and (s2=TypeDecl_type) then
     if (tt=ttTypeDecl) and (s1=TypeDecl_type) and
-      (Sphere[s2].ThingType=ttClassRef) then
+      (Sphere.t(s2)=ttClassRef) then
       Result:=true
     else
       Result:=false;
@@ -173,94 +171,80 @@ end;
 
 function IsAddressable(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 var
-  px:PStratoThing;
   b:boolean;
 begin
   Result:=false;//default
-  if p<>0 then
+  b:=true;
+  while b do
    begin
-    px:=Sphere[p];
-    b:=true;
-    while b do
-     begin
-      b:=false;
-      case px.ThingType of
-        ttVar,ttThis:
-          Result:=true;//TODO: always? (not read-only?)
-        ttArrayIndex,ttField:
-         begin
-          b:=px.Target<>0;
-          px:=Sphere[px.Target];
-         end;
-      end;
-     end;
+    b:=false;
+    case Sphere.t(p) of
+      ttVar,ttThis:
+        Result:=true;//TODO: always? (not read-only?)
+      ttArrayIndex,ttField:
+        b:=Sphere.r(p,tfTarget,p);
+    end;
    end;
 end;
 
-procedure StratoSelectionCheckType(Sphere:TStratoSphere;pp:TStratoIndex);
+procedure StratoSelectionCheckType(Sphere:TStratoSphere;p:TStratoIndex);
 var
-  p:PStratoThing;
-  p1,p2:TStratoIndex;
+  q,p1,p2:TStratoIndex;
 begin
-  p:=Sphere[pp];
-  if p.DoThen=0 then p1:=0 else p1:=ResType(Sphere,p.DoThen);
-  if p.DoElse=0 then p2:=0 else p2:=ResType(Sphere,p.DoElse);
+  if Sphere.r(p,tfDoThen,q) then p1:=ResType(Sphere,q) else p1:=0;
+  if Sphere.r(p,tfDoElse,q) then p2:=ResType(Sphere,q) else p2:=0;
   if p1=0 then
-    p.EvaluatesTo:=p2
+    Sphere.s(p,tfEvaluatesTo,p2)
   else
     if p2=0 then
-      p.EvaluatesTo:=p1
+      Sphere.s(p,tfEvaluatesTo,p1)
     else
       if p1=p2 then
-        p.EvaluatesTo:=p1
+        Sphere.s(p,tfEvaluatesTo,p1)
       else
         if (p1<>0) and SameType(Sphere,p1,p2) then
-          p.EvaluatesTo:=p2
+          Sphere.s(p,tfEvaluatesTo,p2)
         else
         if (p2<>0) and SameType(Sphere,p2,p1) then //?
-          p.EvaluatesTo:=p1
+          Sphere.s(p,tfEvaluatesTo,p1)
         else
           ;//TODO: auto-expand on numerics?
 end;
 
-function StratoOperatorCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
+function StratoOperatorCheckType(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 var
-  p:PStratoThing;
   p1,p2:TStratoIndex;
 begin
-  p:=Sphere[pp];
-  if (p.Left<>0) and (p.Right<>0) then
+  if Sphere.r(p,tfLeft,p1) and Sphere.r(p,tfRight,p2) then
    begin
-    p1:=ResType(Sphere,p.Left);
-    p2:=ResType(Sphere,p.Right);
+    p1:=ResType(Sphere,p1);
+    p2:=ResType(Sphere,p2);
     if p1=p2 then
-      p.EvaluatesTo:=p1
+      Sphere.s(p,tfEvaluatesTo,p1)
     else
     if SameType(Sphere,p1,p2) then
-      p.EvaluatesTo:=p2
+      Sphere.s(p,tfEvaluatesTo,p2)
     else
     if SameType(Sphere,p2,p1) then //?
-      p.EvaluatesTo:=p1
+      Sphere.s(p,tfEvaluatesTo,p1)
     //TODO: auto-expand on numerics?
    end;
-  Result:=p.EvaluatesTo<>0;
+  Result:=Sphere.r(p,tfEvaluatesTo)<>0;
 end;
 
-function StratoComparativeCheckType(Sphere:TStratoSphere;pp:TStratoIndex):boolean;
+function StratoComparativeCheckType(Sphere:TStratoSphere;p:TStratoIndex):boolean;
 var
-  p:PStratoThing;
   p1,p2:TStratoIndex;
 begin
-  p:=Sphere[pp];
   Result:=false;//default
-  if (p.Left<>0) and (p.Right<>0) then
+  if Sphere.r(p,tfLeft,p1) and Sphere.r(p,tfRight,p2) then
    begin
-    p1:=ResType(Sphere,p.Left);
-    p2:=ResType(Sphere,p.Right);
-    if TStratoToken(p.Op)=stOpTypeIs then
+    p1:=ResType(Sphere,p1);
+    p2:=ResType(Sphere,p2);
+    if TStratoToken(Sphere.v(p,tfOperator))=stOpTypeIs then
       Result:=(p1<>0) and (p2<>0)
-        and ((Sphere[p1].ThingType and tt__IsType)<>0)
-        and ((Sphere[p2].ThingType and tt__IsType)<>0)
+        and ((Sphere.t(p1) and tt__IsType)<>0)
+        and ((Sphere.t(p2) and tt__IsType)<>0)
     else
       Result:=(p1=p2)
         or (SameType(Sphere,p1,p2))
@@ -269,59 +253,62 @@ begin
    end;
 end;
 
-procedure MoveChain(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
-  MergeOnto:TStratoIndex);
+procedure MoveChain(Sphere:TStratoSphere;Parent,MergeOnto:TStratoIndex);
 var
-  p,q:TStratoIndex;
+  p,p1,q:TStratoIndex;
   n:TStratoName;
 begin
-  if FirstItem<>0 then
+  p1:=Sphere.r(Parent,tfFirstItem);
+  if p1<>0 then
    begin
-    p:=FirstItem;
-    Sphere.Append(Sphere[MergeOnto].FirstItem,p);
+    Sphere.Append(MergeOnto,tfFirstItem,p1);
+    p:=p1;
     while p<>0 do
      begin
-      Sphere[p].Parent:=MergeOnto;
-      n:=Sphere[p].Name;
-      q:=Sphere[MergeOnto].FirstItem;
-      while (q<>FirstItem) and (Sphere[q].Name<>n) do q:=Sphere[q].Next;
-      if q<>FirstItem then Sphere.Error(p,'duplicate identifier');
-      p:=Sphere[p].Next;
+      Sphere.s(p,tfParent,MergeOnto);
+      n:=Sphere.v(p,tfName);
+      q:=Sphere.r(MergeOnto,tfFirstItem);
+      while (q<>p1) and (Sphere.v(q,tfName)<>n) do q:=Sphere.r(q,tfNext);
+      if q<>p1 then Sphere.Error(p,'duplicate identifier');
+      p:=Sphere.r(p,tfNext);
      end;
    end;
 end;
 
-procedure ReplaceNode(Sphere:TStratoSphere;var FirstItem:TStratoIndex;
-  Subject,ReplaceWith:TStratoIndex);
+procedure ReplaceNode(Sphere:TStratoSphere;Parent,Subject,ReplaceWith:TStratoIndex);
 var
   p,q:TStratoIndex;
 begin
   //assert Subject<>0
   //assert ReplaceWith not pointed to
   //assert ReplaceWith.Parent=Subject.Parent
-  if FirstItem=0 then
-    FirstItem:=ReplaceWith
+  {$IFDEF DEBUG}
+  if Sphere.r(ReplaceWith,tfNext)<>0 then
+    raise Exception.Create('broken chain detected');
+  {$ENDIF}
+  p:=Sphere.r(Parent,tfFirstItem);
+  if p=0 then
+    Sphere.s(Parent,tfFirstItem,ReplaceWith)
   else
    begin
-    p:=FirstItem;
     q:=0;
     while (p<>0) and (p<>Subject) do
      begin
       q:=p;
-      p:=Sphere[p].Next;
+      p:=Sphere.r(p,tfNext);
      end;
     if p=0 then
       raise Exception.CreateFmt(
         'ReplaceNode called with subject %d not on chain %d',
-        [Subject,FirstItem])
+        [Subject,Parent])
     else
      begin
-      Sphere[ReplaceWith].Next:=Sphere[Subject].Next;
-      Sphere[Subject].Next:=0;//?
+      Sphere.s(ReplaceWith,tfNext,Sphere.r(Subject,tfNext));
+      Sphere.s(Subject,tfNext,0);//?
       if q=0 then
-        FirstItem:=ReplaceWith //assert FirstItem was Subject
+        Sphere.s(Parent,tfFirstItem,ReplaceWith) //assert FirstItem was Subject
       else
-        Sphere[q].Next:=ReplaceWith;
+        Sphere.s(q,tfNext,ReplaceWith);
      end;
    end;
 end;

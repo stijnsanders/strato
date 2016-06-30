@@ -1,15 +1,5 @@
 unit stratoSource;
 
-{
-
-stratoSource
-
-declares the TStratoSource class and related types,
-used to manage strato code while it being parsed into a TStratoSphere
-(see StratoParseSource)
-
-}
-
 interface
 
 uses SysUtils, Classes, stratoTokenizer;

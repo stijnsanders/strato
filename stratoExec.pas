@@ -1,15 +1,5 @@
 unit stratoExec;
 
-{
-
-stratoExec
-
-
-declares TStratoMachine, used to interpret code managed by a TStratoSphere
-instance
-
-}
-
 interface
 
 uses SysUtils, stratoDecl, stratoSphere, stratoDebug, stratoDebugView;
@@ -104,13 +94,13 @@ begin
   while p<>0 do
    begin
     Perform(Sphere,p);
-    p:=Sphere[p].Next;
+    p:=Sphere.r(p,tfNext);
    end;
   p:=Sphere.Header.FirstFinalization;
   while p<>0 do
    begin
     Perform(Sphere,p);
-    p:=Sphere[p].Next;
+    p:=Sphere.r(p,tfNext);
    end;
 
   if FDebugView<>nil then FDebugView.Done;
@@ -130,12 +120,12 @@ begin
   while p<>0 do
    begin
     //assert Sphere[p].ThingType=ttGlobal
-    q:=Sphere[p].Target;
+    q:=Sphere.r(p,tfTarget);
     //assert Sphere[q].ThingType=ttVar
-    r:=Sphere[q].InitialValue;
+    r:=Sphere.r(q,tfInitialValue);
     if r<>0 then LiteralToMemory(Sphere,r,
-      Sphere[q].EvaluatesTo,SphereBasePtr+Sphere[q].Offset);
-    p:=Sphere[p].Next;
+      Sphere.r(q,tfEvaluatesTo),SphereBasePtr+Sphere.v(q,tfOffset));
+    p:=Sphere.r(p,tfNext);
    end;
 end;
 
@@ -182,7 +172,7 @@ var
   procedure BreakLoop;
   var
     q,p1,p2:TStratoIndex;
-    qx:PStratoThing;
+    qt:TStratoThingType;
     dd:array of record
       cb,p:TStratoIndex;
       bp:cardinal;
@@ -192,22 +182,20 @@ var
     ddi:=0;
     ddl:=0;
     q:=0;
-    qx:=nil;
-    while (stackIndex<>0) and ((q=0) or (
-      (qx.ThingType<>ttIteration) and
-      (qx.ThingType<>ttIterationPE) and
-      (qx.ThingType<>ttFnCall))) do
+    qt:=0;
+    while (stackIndex<>0) and
+      not((qt=ttIteration) or (qt=ttIterationPE) or (qt=ttFnCall)) do
      begin
       Pop(q,p1,p2,bp);
-      qx:=Sphere[q];
-      if (q<>0) and (qx.ThingType=ttCodeBlock) then
+      if (q<>0) and (Sphere.t(q)=ttCodeBlock) then
        begin
         p1:=q;
-        q:=qx.FirstStatement;
-        while (q<>0) and (Sphere[q].ThingType<>ttDeferred) do
-          q:=Sphere[q].Next;
+        q:=Sphere.r(q,tfFirstStatement);
+        while (q<>0) and (Sphere.t(q)<>ttDeferred) do
+          q:=Sphere.r(q,tfNext);
         if q<>0 then
          begin
+          qt:=Sphere.t(q);
           if ddi=ddl then //grow
            begin
             inc(ddl,$100);
@@ -229,14 +217,13 @@ var
       bp:=dd[ddi].bp;
       Push(p1,0,0,bp);//dummy restore value, with cb here for Addr
       Push(q,q,0,bp);
-      Push(Sphere[q].Target,0,0,bp);
+      Push(Sphere.r(q,tfTarget),0,0,bp);
      end;
   end;
 
   procedure Throw(var bp:cardinal;vt:TStratoIndex;vp:cardinal);
   var
     p,p1,p2,q,cc:TStratoIndex;
-    px:PStratoThing;
     dd:array of record
       cb,p:TStratoIndex;
       bp:cardinal;
@@ -251,21 +238,21 @@ var
     while (stackIndex<>0) and (cc=0) do
      begin
       p:=0;
-      while (stackIndex<>0) and ((p=0) or (Sphere[p].ThingType<>ttCodeBlock)) do
+      while (stackIndex<>0) and ((p=0) or (Sphere.t(p)<>ttCodeBlock)) do
         Pop(p,p1,p2,xp);
       if p<>0 then
        begin
-        if p1<>0 then p1:=Sphere[p1].Next;
+        if p1<>0 then p1:=Sphere.r(p1,tfNext);
         while (p1<>0) and (cc=0) do
          begin
-          px:=Sphere[p1];
-          case px.ThingType of
+          case Sphere.t(p1) of
             ttCatch://check catch filter
              begin
-              if (px.Target=0) or SameType(Sphere,vt,px.Target) then
+              q:=Sphere.r(p1,tfTarget);
+              if (q=0) or SameType(Sphere,vt,q) then
                 cc:=p1
               else
-                p1:=px.Next;
+                p1:=Sphere.r(p1,tfNext);
              end;
             ttTry:
              begin
@@ -273,15 +260,15 @@ var
               //so disregard any following 'catch's
               p1:=0;
              end;
-            else p1:=px.Next;
+            else p1:=Sphere.r(p1,tfNext);
           end;
          end;
         if cc=0 then
          begin
           //check interrupted code block for any deferred
-          q:=Sphere[p].FirstStatement;
-          while (q<>0) and (Sphere[q].ThingType<>ttDeferred) do
-            q:=Sphere[q].Next;
+          q:=Sphere.r(p,tfFirstStatement);
+          while (q<>0) and (Sphere.t(q)<>ttDeferred) do
+            q:=Sphere.r(q,tfNext);
           if q<>0 then
            begin
             if ddi=ddl then //grow
@@ -309,12 +296,12 @@ var
     else
      begin
       Push(p,cc,p2,bp);
-      Push(Sphere[cc].Body,0,0,bp);
+      Push(Sphere.r(cc,tfBody),0,0,bp);
 
       //TODO: proper allocation! since catch var is set post cb.ByteSize, that memory could be in use!!
       //vt:=//TODO: cast to cc.ItemType
       i:=ByteSize(Sphere,vt);
-      Move(FMem[vp],FMem[xp+Sphere[Sphere[cc].FirstArgument].Offset],i);
+      Move(FMem[vp],FMem[xp+Sphere.v(Sphere.r(cc,tfFirstArgument),tfOffset)],i);
 
       bp:=xp+ByteSize(Sphere,p)+i;
 
@@ -327,7 +314,7 @@ var
         bp:=dd[ddi].bp;
         Push(p1,0,0,bp);//dummy restore value, with cb here for Addr
         Push(q,q,0,bp);
-        Push(Sphere[q].Target,0,0,bp);
+        Push(Sphere.r(q,tfTarget),0,0,bp);
        end;
 
      end;
@@ -335,7 +322,6 @@ var
 
 var
   p,q,r,vt,p0,p1,p2,vt0,pe:TStratoIndex;
-  px,qx,rx:PStratoThing;
   i,j,k,mp,np,vp,xp,OpCount:cardinal;
   ii,jj:int64;
 
@@ -350,7 +336,6 @@ var
   var
     li,li1:TListItem;
     pp:TStratoIndex;
-    ppx:PStratoThing;
     pi,ii,jj:cardinal;
   begin
     //TODO: move this to other unit
@@ -366,7 +351,7 @@ var
         li.SubItems.Add(IntToStr0(p2));
         li.SubItems.Add(IntToStr(mp));
         li.SubItems.Add(IntToStr(np));
-        li.SubItems.Add(StratoDumpThing(Sphere,p,Sphere[p]));
+        li.SubItems.Add(StratoDumpThing(Sphere,p));
         li.SubItems.Add(IntToStr0(vt));
         li.SubItems.Add(IntToStr0(vp));
         if (vt=0) or (vp=0) then
@@ -407,7 +392,7 @@ var
           if stack[i].p=0 then
             li.SubItems.Add('')
           else
-            li.SubItems.Add(StratoDumpThing(Sphere,stack[i].p,Sphere[stack[i].p]));
+            li.SubItems.Add(StratoDumpThing(Sphere,stack[i].p));
           inc(i);
          end;
       finally
@@ -436,20 +421,20 @@ var
           if pp=0 then
            begin
             while (k<stackIndex) and not((stack[k].p<>0) and
-              (Sphere[stack[k].p].ThingType=ttCodeBlock) and
-              (Sphere[stack[k].p].ByteSize<>0) and
+              (Sphere.t(stack[k].p)=ttCodeBlock) and
+              (Sphere.v(stack[k].p,tfByteSize)<>0) and
               (stack[k].bp>=i)) do inc(k);
             if (k=stackIndex) or (stack[k].p=0) then
-              if (p<>0) and (px.ThingType=ttCodeBlock) then
+              if (p<>0) and (Sphere.t(p)=ttCodeBlock) then
                begin
-                pp:=px.FirstItem;
+                pp:=Sphere.r(p,tfFirstItem);
                 pi:=mp;
                end
               else
                 pp:=0
             else
              begin
-              pp:=Sphere[stack[k].p].FirstItem;
+              pp:=Sphere.r(stack[k].p,tfFirstItem);
               pi:=stack[k].bp;
              end;
            end;
@@ -460,23 +445,22 @@ var
            end
           else
            begin
-            ppx:=Sphere[pp];
             //TODO: accurately keep pi+.Offset equal to i !!!
-            if ppx.ThingType=ttGlobal then
+            if Sphere.t(pp)=ttGlobal then
              begin
               li1.SubItems.Add(Format('%d: %s',[pp,
-                StratoDumpThing(Sphere,ppx.Target,Sphere[ppx.Target])]));
-              jj:=ByteSize(Sphere,Sphere[ppx.Target].EvaluatesTo);
-              while (pp<>0) and (pi+Sphere[Sphere[pp].Target].Offset<=i) do
-                pp:=Sphere[pp].Next;
+                StratoDumpThing(Sphere,Sphere.r(pp,tfTarget))]));
+              jj:=ByteSize(Sphere,Sphere.rr(pp,[tfTarget,tfEvaluatesTo]));
+              while (pp<>0) and (pi+Sphere.v(Sphere.r(pp,tfTarget),tfOffset)<=i) do
+                pp:=Sphere.r(pp,tfNext);
              end
             else
              begin
-              li1.SubItems.Add(Format('%d:%d: %s',[ppx.Parent,pp,
-                StratoDumpThing(Sphere,pp,ppx)]));
-              jj:=ByteSize(Sphere,ppx.EvaluatesTo);
-              while (pp<>0) and (pi+Sphere[pp].Offset<=i) do
-                pp:=Sphere[pp].Next;
+              li1.SubItems.Add(Format('%d:%d: %s',[Sphere.r(pp,tfParent),pp,
+                StratoDumpThing(Sphere,pp)]));
+              jj:=ByteSize(Sphere,Sphere.r(pp,tfEvaluatesTo));
+              while (pp<>0) and (pi+Sphere.v(pp,tfOffset)<=i) do
+                pp:=Sphere.r(pp,tfNext);
              end;
            end;
           if jj=0 then jj:=4;
@@ -511,25 +495,25 @@ var
       try
         FDebugView.txtUpNext.Lines.Clear;
         FDebugView.txtUpNext.Lines.Add(Format('p : %d: %s [mp:%d,np:%d]',
-          [p,StratoDumpThing(Sphere,p,Sphere[p]),mp,np]));
+          [p,StratoDumpThing(Sphere,p),mp,np]));
         if p1=0 then
           FDebugView.txtUpNext.Lines.Add('p1')
         else if p1>=IndexStep1 then
           FDebugView.txtUpNext.Lines.Add('p1: '+IntToStr(p1))
         else
           FDebugView.txtUpNext.Lines.Add(Format('p1: %d: %s',
-            [p1,StratoDumpThing(Sphere,p1,Sphere[p1])]));
+            [p1,StratoDumpThing(Sphere,p1)]));
         if p2=0 then
           FDebugView.txtUpNext.Lines.Add('p2')
         else if p2>=IndexStep1 then
           FDebugView.txtUpNext.Lines.Add('p2: '+IntToStr(p2))
         else
           FDebugView.txtUpNext.Lines.Add(Format('p2: %d: %s',
-            [p2,StratoDumpThing(Sphere,p2,Sphere[p2])]));
+            [p2,StratoDumpThing(Sphere,p2)]));
         if vt<>0 then
          begin
           FDebugView.txtUpNext.Lines.Add(Format('vt: %d: %s',
-            [vt,StratoDumpThing(Sphere,vt,Sphere[vt])]));
+            [vt,StratoDumpThing(Sphere,vt)]));
           Move(FMem[vp],j,4);//TODO: ByteSize(Sphere,vt);
           FDebugView.txtUpNext.Lines.Add(Format('vp: @=%d x=%.8x v=%d',[vp,j,j]));
          end;
@@ -537,9 +521,10 @@ var
         FDebugView.txtUpNext.Lines.EndUpdate;
       end;
       try
-        ppx:=Sphere[pe];
         if (pe<>0) and StratoGetSourceFile(Sphere,pe,pp,pi) then
-          FDebugView.ShowSource(Sphere,pp,ppx.SrcPos div pi,ppx.SrcPos mod pi)
+          FDebugView.ShowSource(Sphere,pp,
+            Sphere.v(pe,tfSrcPos) div pi,
+            Sphere.v(pe,tfSrcPos) mod pi)
         else
           FDebugView.txtSourceView.Clear;
       except
@@ -569,52 +554,51 @@ begin
     //pop from stack: see end of loop below
     p0:=p;//see check below
     vt0:=vt;//see check below
-    px:=Sphere[p];
-    if px.SrcPos<>0 then pe:=p;//else look up stack?
+    if Sphere.v(p,tfSrcPos)<>0 then pe:=p;//else look up stack?
     //assert q=0 or ((q.ThingType and str__Typed)<>0)
 
     if RefreshDebugView then
       asm int 3 end;//DebugBreak;//forced breakpoint
 
-    case px.ThingType of
+    case Sphere.t(p) of
 
-      ttAlias:p:=px.Target;
+      ttAlias:p:=Sphere.r(p,tfTarget);
 
       ttFnCall:
-        if px.Target=0 then
+        if Sphere.r(p,tfTarget)=0 then
           Sphere.Error(pe,'call without function overload')
         else
          begin
-          qx:=Sphere[px.Target];
+          q:=Sphere.r(p,tfTarget);
           //step 0: determine call target
           if p1=0 then
            begin
             r:=0;
             p2:=0;
             mp:=np;
-            case qx.ThingType of
+            case Sphere.t(q) of
               ttOverload:
-                r:=qx.Body;
+                r:=Sphere.r(q,tfBody);
               ttVar,ttArrayIndex:
                begin
                 Push(p,IndexStep1,0,mp);
-                p:=px.Target;
+                p:=q;
                end;
               ttField:
                begin
                 Push(p,IndexStep1,0,mp);
-                p:=qx.Subject
+                p:=Sphere.r(q,tfSubject);
                end;
               ttConstructor:
                begin
-                r:=qx.Body;
-                if px.Name<>Name_Inherited then
+                r:=Sphere.r(q,tfBody);
+                if Sphere.v(p,tfName)<>Name_Inherited then
                  begin
                   //store default nil pointer, base class
                   //see also StratoFnAddOverload
                   i:=0;
                   Move(i,FMem[np],SystemWordSize);
-                  p2:=px.EvaluatesTo;//assert ttClass
+                  p2:=Sphere.r(p,tfEvaluatesTo);//assert ttClass
                   Move(p2,FMem[np+SystemWordSize],SystemWordSize);
                  end
                 else
@@ -622,7 +606,7 @@ begin
                   //constructor calling constructor: copy this and original class
                   //see also StratoFnAddOverload
                   i:=stackIndex;
-                  while (i<>0) and (Sphere[stack[i-1].p].ThingType<>ttFnCall) do
+                  while (i<>0) and (Sphere.t(stack[i-1].p)<>ttFnCall) do
                     dec(i);
                   if i=0 then
                     Sphere.Error(pe,'Unable to obtain parent constructor base pointer')//TODO:throw
@@ -632,7 +616,7 @@ begin
                     Move(FMem[stack[i-1].bp],FMem[np],SystemWordSize*2);
                    end;
                   //assert vp=0
-                  p2:=qx.EvaluatesTo;
+                  p2:=Sphere.rr(q,[tfSignature,tfEvaluatesTo]);
                  end;
                end;
               ttDestructor:
@@ -648,17 +632,17 @@ begin
           //step 1: target evaluated (see above: ttVar,ttField) store ttThis
           if p1=IndexStep1 then
            begin
-            q:=0;
-            case qx.ThingType of
+            r:=0;
+            case Sphere.t(q) of
               ttVar,ttArrayIndex:
                 if vt=0 then
                   Sphere.Error(pe,'unable to resolve call target variable')
                 else
-                  case Sphere[vt].ThingType of
+                  case Sphere.t(vt) of
                     ttClassRef:
                      begin
                       Move(FMem[vp],p2,SystemWordSize);
-                      q:=StratoFnCallFindVirtual(Sphere,p2,px.Target);
+                      r:=StratoFnCallFindVirtual(Sphere,p2,Sphere.r(p,tfTarget));
                      end;
                     else
                       Sphere.Error(pe,'unexpected call target variable type');
@@ -668,7 +652,7 @@ begin
                 if (vp=0) or (vt=0) then
                   p2:=vt //this null? assert in constructor
                 else
-                  case Sphere[vt].ThingType of
+                  case Sphere.t(vt) of
                     ttClass:
                      begin
                       Move(FMem[vp],vp,SystemWordSize);//dereference first
@@ -680,37 +664,37 @@ begin
                     else
                       p2:=vt;//more checks? error?
                   end;
-                if (p2=vt) or (px.Name=Name_Inherited) then
-                  q:=qx.Target
+                if (p2=vt) or (Sphere.v(p,tfName)=Name_Inherited) then
+                  r:=Sphere.r(q,tfTarget)
                 else
                   if TypeDecl_object=0 then
                    begin
                     Sphere.Error(p,'base class for dynamic calls not defined');
-                    q:=qx.Target;
+                    r:=Sphere.r(q,tfTarget);
                    end
                   else
-                    q:=StratoFnCallFindVirtual(Sphere,p2,qx.Target);//!
+                    r:=StratoFnCallFindVirtual(Sphere,p2,Sphere.r(q,tfTarget));//!
                end;
               else
                 raise Exception.Create('//TODO');
             end;
-            if q=0 then r:=0 else r:=Sphere[q].Body;
             if r=0 then
               Sphere.Error(p,'dynamic implementation not found')
             else
-              case Sphere[q].ThingType of
+             begin
+              case Sphere.t(r) of
                 ttOverload,ttDestructor:
                  begin
                   //get address for 'this' ("@@")
-                  q:=Sphere[r].FirstItem;
-                  while (q<>0) and (Sphere[q].ThingType<>ttThis) do
-                    q:=Sphere[q].Next;
+                  q:=Sphere.rr(r,[tfBody,tfFirstItem]);
+                  while (q<>0) and (Sphere.t(q)<>ttThis) do
+                    q:=Sphere.r(q,tfNext);
                   if q=0 then
                     Sphere.Error(pe,'Could not find "@@"')
                   else
                     //TODO: SameType? vt px.Target.Target
                     //not FMem[vp] here! see ttThis under ttVar below
-                    Move(vp,FMem[mp+Sphere[q].Offset],SystemWordSize);
+                    Move(vp,FMem[mp+Sphere.v(q,tfOffset)],SystemWordSize);
                  end;
                 ttConstructor:
                  begin
@@ -723,20 +707,21 @@ begin
                 else
                   Sphere.Error(pe,'unexpected virtual call target');
               end;
+              if r<>0 then r:=Sphere.r(r,tfBody);
+             end;
             vt:=0;
            end;
           //found a body, or enumerating arguments?
           if r<>0 then
            begin
-            rx:=Sphere[r];
             //step 2: evaluate arguments
             if p1<>p then
              begin
               //step 2a: start evaluating arguments
-              if rx.ThingType=ttCodeBlock then
+              if Sphere.t(r)=ttCodeBlock then
                begin
-                p1:=px.FirstArgument;
-                p2:=Sphere[rx.Parent].FirstArgument;
+                p1:=Sphere.r(p,tfFirstArgument);
+                p2:=Sphere.rr(r,[tfParent,tfFirstArgument]);
                 if (p1<>0) and (p2=0) then
                   Sphere.Error(pe,'overload without argument values in code block')
                 else
@@ -745,13 +730,13 @@ begin
                     //push function's code block (to address variables)
                     Push(r,0,0,np);
                     //start getting the first argument
-                    qx:=Sphere[p1];
                     //TODO: //if qx.ThingType<>ttArgByRef then
-                    if qx.InitialValue<>0 then LiteralToMemory(Sphere,
-                      qx.InitialValue,qx.EvaluatesTo,np+Sphere[p2].Offset);
+                    if Sphere.r(p1,tfInitialValue,q) then
+                      LiteralToMemory(Sphere,q,
+                        Sphere.r(p1,tfEvaluatesTo),np+Sphere.v(p2,tfOffset));
                     Push(p,p1,p2,np);
-                    inc(np,rx.ByteSize);
-                    p:=qx.Target;
+                    inc(np,Sphere.v(r,tfByteSize));
+                    p:=Sphere.r(p1,tfTarget);
                    end;
                end
               else
@@ -760,32 +745,32 @@ begin
                 //store argument value
                 if vt=0 then
                   Sphere.Error(pe,'no value for argument "'+
-                    string(Sphere.Dict.Str[Sphere[p1].Name])+'"')
+                    string(Sphere.Dict.Str[Sphere.v(p1,tfName)])+'"')
                 else
                  begin
-                  if Sphere[p2].ThingType=ttVarByRef then
-                    Move(vp,FMem[mp+Sphere[p2].Offset],SystemWordSize)
+                  if Sphere.t(p2)=ttVarByRef then
+                    Move(vp,FMem[mp+Sphere.v(p2,tfOffset)],SystemWordSize)
                   else
                    begin
                     //assert p2.ThingType=ttArgument
                     i:=ByteSize(Sphere,vt);
-                    if i<>0 then Move(FMem[vp],FMem[mp+Sphere[p2].Offset],i);
+                    if i<>0 then Move(FMem[vp],FMem[mp+Sphere.v(p2,tfOffset)],i);
                    end;
                   vt:=0;
                  end;
                 //next argument
-                p1:=Sphere[p1].Next;
-                p2:=Sphere[p2].Next;//assert sequence of arguments correctly added as vars to codeblock
+                p1:=Sphere.r(p1,tfNext);
+                p2:=Sphere.r(p2,tfNext);//assert sequence of arguments correctly added as vars to codeblock
                 np:=mp;
                 if p1=0 then
                   Pop(r,p1,p2,xp)
                 else
                  begin
-                  qx:=Sphere[p1];
-                  if qx.InitialValue<>0 then LiteralToMemory(Sphere,
-                    qx.InitialValue,qx.EvaluatesTo,mp+Sphere[p2].Offset);
+                  if Sphere.r(p1,tfInitialValue,q) then
+                    LiteralToMemory(Sphere,q,
+                      Sphere.r(p1,tfEvaluatesTo),mp+Sphere.v(p2,tfOffset));
                   Push(p,p1,p2,mp);
-                  p:=qx.Target;
+                  p:=Sphere.r(p1,tfTarget);
                  end;
                end;
               //step 3: jump to target body
@@ -798,16 +783,16 @@ begin
              end
             else
             //step 4: output result value
-            if Sphere[rx.Parent].ThingType=ttConstructor then
+            if Sphere.t(Sphere.r(r,tfParent))=ttConstructor then
              begin
               xp:=mp;//+Sphere[q].Offset;//assert 0 (see StratoFnAddOverload)
               //called by constructor? cascade 'this'
-              if px.Name=Name_Inherited then
+              if Sphere.v(p,tfName)=Name_Inherited then
                begin
                 i:=stackIndex;
                 if i<>0 then dec(i);
                 while (i<>0) and not((stack[i-1].p<>0) and
-                  (Sphere[stack[i-1].p].ThingType=ttFnCall)) do dec(i);
+                  (Sphere.t(stack[i-1].p)=ttFnCall)) do dec(i);
                 if i=0 then
                   Sphere.Error(pe,'Could not find current code block for call')
                 else
@@ -817,20 +802,16 @@ begin
                   Move(FMem[mp],FMem[xp],SystemWordSize);
                  end;
                end;
-              vtp(px.EvaluatesTo,xp);
+              vtp(Sphere.r(p,tfEvaluatesTo),xp);
              end
             else
-              if px.EvaluatesTo<>0 then
+              if Sphere.r(p,tfEvaluatesTo)<>0 then
                begin
                 //assert first value in code block is return value (after this)
-                q:=rx.FirstItem;
-                qx:=Sphere[q];
-                if (q<>0) and (qx.ThingType=ttThis) then
-                 begin
-                  q:=qx.Next;//assert Sphere[px.Target].ThingType=ttField
-                  qx:=Sphere[q];
-                 end;
-                vtp(qx.EvaluatesTo,mp+qx.Offset);
+                q:=Sphere.r(r,tfFirstItem);
+                if (q<>0) and (Sphere.t(q)=ttThis) then
+                  q:=Sphere.r(q,tfNext);//assert t(p.Target)=ttField
+                vtp(Sphere.r(q,tfEvaluatesTo),mp+Sphere.v(q,tfOffset));
                end;
            end;
          end;
@@ -840,52 +821,62 @@ begin
         if p1=0 then //begin block
          begin
           mp:=np;
-          if px.FirstStatement<>0 then
+          q:=Sphere.r(p,tfFirstStatement);
+          if q<>0 then
            begin
-            Push(p,px.FirstStatement,0,mp);
+            Push(p,q,0,mp);
             //initial values
-            r:=px.FirstItem;
+            r:=Sphere.r(p,tfFirstItem);
             while r<>0 do
              begin
-              rx:=Sphere[r];
-              if rx.InitialValue<>0 then LiteralToMemory(Sphere,
-                rx.InitialValue,rx.EvaluatesTo,mp+rx.Offset);
-              r:=rx.Next;
+              if Sphere.t(r)<>ttThis then
+               begin
+                q:=Sphere.r(r,tfInitialValue);
+                if q<>0 then LiteralToMemory(Sphere,q,
+                  Sphere.r(r,tfEvaluatesTo),mp+Sphere.v(r,tfOffset));
+               end;
+              //else assert ttThis value provided by ttFnCall
+              r:=Sphere.r(r,tfNext);
              end;
             //first statement
-            p:=px.FirstStatement;
+            np:=mp+Sphere.v(p,tfByteSize);
+            p:=Sphere.r(p,tfFirstStatement);
            end;
          end
         else
          begin
           //assert p=cb
-          q:=Sphere[p1].Next;
+          q:=Sphere.r(p1,tfNext);
           if q<>0 then
            begin
             //next statement
             Push(p,q,p2,mp);
+            np:=mp+Sphere.v(p,tfByteSize);
             p:=q;
             vt:=0;
            end
           else
            begin
             //code block done
-            if px.EvaluatesTo=0 then vt:=0 else vt0:=0;//silence unused error
+            if Sphere.r(p,tfEvaluatesTo)=0 then
+              vt:=0
+            else
+              vt0:=0;//silence unused error
             //check any deferred
-            q:=px.FirstStatement;
-            while (q<>0) and (Sphere[q].ThingType<>ttDeferred) do
-              q:=Sphere[q].Next;
+            q:=Sphere.r(p,tfFirstStatement);
+            while (q<>0) and (Sphere.t(q)<>ttDeferred) do
+              q:=Sphere.r(q,tfNext);
             if q<>0 then
              begin
               Push(0,0,vt,vp);//keep result value
               vt:=0;
               Push(p,IndexStep1,0,mp);
               Push(q,q,p2,mp);
-              p:=Sphere[q].Target;
+              np:=mp+Sphere.v(p,tfByteSize);
+              p:=Sphere.r(q,tfTarget);
              end;
            end;
          end;
-        np:=mp+px.ByteSize;
        end;
 
       ttDeferred://when p1=0: don't run now, see ttThrow,ttCodeBlock
@@ -893,13 +884,13 @@ begin
          begin
           //next deferred command?
           np:=mp;
-          q:=Sphere[p1].Next;
-          while (q<>0) and (Sphere[q].ThingType<>ttDeferred) do
-            q:=Sphere[q].Next;
+          q:=Sphere.r(p1,tfNext);
+          while (q<>0) and (Sphere.t(q)<>ttDeferred) do
+            q:=Sphere.r(q,tfNext);
           if q<>0 then
            begin
             Push(q,q,p2,mp);
-            p:=Sphere[q].Target;
+            p:=Sphere.r(q,tfTarget);
             vt:=0;
            end
           else
@@ -911,7 +902,7 @@ begin
          end;
 
       ttCatch://when p1=0: don't run now, see ttThrow
-        ;//if p1<>0 then p:=px.Target;//see ttThrow
+        ;//if p1<>0 then p:=p.Target;//see ttThrow
 
       ttSysCall:
         try
@@ -925,28 +916,27 @@ begin
       ttOverload:
        begin
         //address of
-        q:=Sphere.Add(ttPointer,qx);
-        qx.ByteSize:=SystemWordSize;
-        qx.EvaluatesTo:=px.Target;//ttSignature
-        vtp(q,np);
+        vtp(Sphere.Add(ttPointer,
+          [tfByteSize,SystemWordSize
+          ,tfEvaluatesTo,Sphere.r(p,tfSignature)//ttSignature
+          ]),np);
         Move(p,FMem[np],SystemWordSize);
-        inc(np,ByteSize(Sphere,vt));
+        inc(np,SystemWordSize);
        end;
 
       ttVar://vp:=Addr(p);
        begin
-        if p1=0 then vtp(px.EvaluatesTo,0);
+        if p1=0 then vtp(Sphere.r(p,tfEvaluatesTo),0);
         q:=p;
         p:=0;
         while (q<>0) and (p=0) do
          begin
-          qx:=Sphere[q];
-          case qx.ThingType of
+          case Sphere.t(q) of
 
             //ttRecord://TODO: dereference pointer
 
             ttVar:
-              inc(vp,qx.Offset);
+              inc(vp,Sphere.v(q,tfOffset));
 
             ttNameSpace://global var
              begin
@@ -969,12 +959,12 @@ begin
              begin
               //assert Sphere[qx.Parent].ThingType=ttCodeBlock
               i:=stackIndex;
-              while (i<>0) and (stack[i-1].p<>qx.Parent) do dec(i);
+              while (i<>0) and (stack[i-1].p<>Sphere.r(q,tfParent)) do dec(i);
               if i=0 then
                 Sphere.Error(pe,'this unknown')
               else
                begin
-                mp:=stack[i-1].bp+qx.Offset;
+                mp:=stack[i-1].bp+Sphere.v(q,tfOffset);
                 xp:=0;
                 Move(FMem[mp],xp,SystemWordSize);
                 inc(vp,xp);
@@ -985,7 +975,7 @@ begin
             else
               Sphere.Error(pe,'invalid relativity chain');
           end;
-          if q<>0 then q:=Sphere[q].Parent;
+          if q<>0 then q:=Sphere.r(q,tfParent);
          end;
         //TODO: on error throw access violation!
         //TODO: detect out of memory!!!
@@ -995,18 +985,18 @@ begin
        begin
         //assert Sphere[px.Parent].ThingType=ttCodeBlock
         i:=stackIndex;
-        while (i<>0) and (stack[i-1].p<>px.Parent) do dec(i);
+        while (i<>0) and (stack[i-1].p<>Sphere.r(p,tfParent)) do dec(i);
         if i=0 then
           Sphere.Error(pe,'this unknown')
         else
-          vtp(px.EvaluatesTo,stack[i-1].bp+px.Offset);
+          vtp(Sphere.r(p,tfEvaluatesTo),stack[i-1].bp+Sphere.v(p,tfOffset));
        end;
 
       ttField:
         if p1=0 then
          begin
           Push(p,IndexStep1,0,mp);
-          p:=px.Subject;
+          p:=Sphere.r(p,tfSubject);
          end
         else
         if p1=IndexStep1 then
@@ -1014,21 +1004,21 @@ begin
             Sphere.Error(pe,'ttField could not determine subject')
           else
            begin
-            qx:=Sphere[px.Target];
-            case qx.ThingType of
+            q:=Sphere.r(p,tfTarget);
+            case Sphere.t(q) of
               ttVar,ttVarByRef,ttThis: //assert qx.Target=vt
                begin
                 //auto-dereference
-                case Sphere[vt].ThingType of
+                case Sphere.t(vt) of
                   ttClass:
                     Move(FMem[vp],vp,SystemWordSize);
                   //more?
                 end;
-                vtp(qx.EvaluatesTo,vp+qx.Offset);
+                vtp(Sphere.r(q,tfEvaluatesTo),vp+Sphere.v(q,tfOffset));
                end;
               //more?
               else Sphere.Error(pe,'unexpected ttField subject '+
-                IntToHex(qx.ThingType,4));
+                IntToHex(Sphere.t(q),4));
             end;
            end;
 
@@ -1036,13 +1026,13 @@ begin
         if p1=0 then
          begin
           Push(p,IndexStep1,0,np);
-          p:=px.Target;
+          p:=Sphere.r(p,tfTarget);
          end
         else
         if p1=IndexStep1 then
          begin
           Push(p,IndexStep2,vt,vp);
-          p:=Sphere[px.FirstArgument].Target;//ttArgument
+          p:=Sphere.rr(p,[tfFirstArgument,tfTarget]);//ttArgument
           vt0:=0;
          end
         else
@@ -1053,65 +1043,73 @@ begin
           else
            begin
             Move(FMem[vp],i,SystemWordSize);
-            vtp(px.EvaluatesTo,mp+ByteSize(Sphere,px.EvaluatesTo)*i);
+            q:=Sphere.r(p,tfEvaluatesTo);
+            vtp(q,mp+ByteSize(Sphere,q)*i);
            end;
          end;
 
       ttConstant:
        begin
-        vtp(px.EvaluatesTo,np);
+        q:=Sphere.r(p,tfEvaluatesTo);
+        vtp(q,np);
         inc(np,ByteSize(Sphere,vt));
-        LiteralToMemory(Sphere,px.InitialValue,px.EvaluatesTo,vp);
+        LiteralToMemory(Sphere,Sphere.r(p,tfInitialValue),q,vp);
        end;
       ttLiteral:
        begin
-        vtp(px.EvaluatesTo,np);
+        q:=Sphere.r(p,tfEvaluatesTo);
+        vtp(q,np);
         inc(np,ByteSize(Sphere,vt));
-        LiteralToMemory(Sphere,p,px.EvaluatesTo,vp);
+        LiteralToMemory(Sphere,p,q,vp);
        end;
 
       ttUnaryOp:
-        if px.Right=0 then
+        if Sphere.r(p,tfRight)=0 then
           Sphere.Error(pe,'unary operator without subject')
         else
         if p1=0 then
          begin
           //if "?@@" in constructor then use class type from original call
-          if (TStratoToken(px.Op) in [stOpSizeOf,stQuestionMark])//stOpTypeOf
-            and (Sphere[px.Right].ThingType=ttThis) then
+          if (TStratoToken(Sphere.v(p,tfOperator)) in
+            [stOpSizeOf,stQuestionMark])//stOpTypeOf
+            and (Sphere.t(Sphere.r(p,tfRight))=ttThis) then
            begin
-            //assert Sphere[px.Parent].ThingType=ttCodeBlock
+            //assert Sphere.t(p.Parent)=ttCodeBlock
             i:=stackIndex;
-            while (i<>0) and (stack[i-1].p<>px.Parent) do dec(i);
+            while (i<>0) and (stack[i-1].p<>Sphere.r(p,tfParent)) do dec(i);
             if i=0 then q:=0 else
              begin
               q:=stack[i-1].p;
-              while (q<>0) and (Sphere[q].ThingType=ttCodeBlock) do
-                q:=Sphere[q].Parent;
-              if Sphere[q].ThingType=ttConstructor then
+              while (q<>0) and (Sphere.t(q)=ttCodeBlock) do
+                q:=Sphere.r(q,tfParent);
+              if Sphere.t(q)=ttConstructor then
                begin
                 //original constructor class type stored right after 'this'
                 //see also StratoFnAddOverload
-                Move(FMem[stack[i-1].bp+SystemWordSize],i,SystemWordSize);
+                Move(FMem[stack[i-1].bp+SystemWordSize],r,SystemWordSize);
                 //assert Sphere[i].ThingType=ttClass
-                if TStratoToken(px.Op)=stOpSizeOf then
+                if TStratoToken(Sphere.v(p,tfOperator))=stOpSizeOf then
                  begin
-                  if i=0 then
-                    Sphere.Error(pe,'SizeOf object to construct on empty reference')
+                  if r=0 then
+                   begin
+                    Sphere.Error(pe,'SizeOf object to construct on empty reference');
+                    i:=0;//?throw?
+                   end
                   else
-                    if Sphere[i].ThingType=ttClass then //here? switch to ByteSize?
-                      i:=Sphere[i].ByteSize
+                    if Sphere.t(r)=ttClass then //here? switch to ByteSize?
+                      i:=Sphere.v(r,tfByteSize)
                     else
-                      i:=ByteSize(Sphere,i);
+                      i:=ByteSize(Sphere,r);
                   vtp(TypeDecl_number,np);
+                  inc(np,SystemWordSize);
+                  Move(i,FMem[vp],SystemWordSize);
                  end
                 else //stQuestionMark://stOpTypeOf:
                  begin
-                  //i:=i;
                   vtp(TypeDecl_type,np);
+                  inc(np,SystemWordSize);
+                  Move(r,FMem[vp],SystemWordSize);
                  end;
-                inc(np,SystemWordSize);
-                Move(i,FMem[vp],SystemWordSize);
                end
               else q:=0;
              end;
@@ -1120,7 +1118,7 @@ begin
           if q=0 then //nope, evaluate 'right'
            begin
             Push(p,p,0,np);
-            p:=px.Right;
+            p:=Sphere.r(p,tfRight);
             vt:=0;
            end;
          end
@@ -1128,14 +1126,14 @@ begin
         if vt=0 then
           Sphere.Error(pe,'unary operator without value')
         else
-          case TStratoToken(px.Op) of
+          case TStratoToken(Sphere.v(p,tfOperator)) of
             stOpSub,stOpInc,stOpDec:
               if (vt>=TypeDecl_number) and (vt<=TypeDecl_intLast) then
                begin
                 i:=ByteSize(Sphere,vt);
                 ii:=0;
                 Move(FMem[vp],ii,i);
-                case TStratoToken(px.Op) of
+                case TStratoToken(Sphere.v(p,tfOperator)) of
                   stOpSub:ii:=-ii;
                   stOpInc:inc(ii);
                   stOpDec:dec(ii);
@@ -1170,29 +1168,30 @@ begin
               Move(i,FMem[vp],SystemWordSize);
              end;
             stQuestionMark://stOpTypeOf
-              if (vt<>0) and (Sphere[vt].ThingType=ttClass) then
+              if (vt<>0) and (Sphere.t(vt)=ttClass) then
                begin
                 //and TypeDecl_object<>0?
-                Move(FMem[vp],i,SystemWordSize);
-                if i=0 then
+                Move(FMem[vp],r,SystemWordSize);
+                if r=0 then
                   //hmm, type of null pointer, pass base type?
-                  i:=vt
+                  r:=vt
                 else
                   //assert _basetype@-SystemWordSize
-                  Move(FMem[i-SystemWordSize],i,SystemWordSize);
-                q:=Sphere.Add(ttClassRef,qx);
-                qx.ByteSize:=SystemWordSize;
-                qx.EvaluatesTo:=i;
+                  Move(FMem[r-SystemWordSize],r,SystemWordSize);
+                q:=Sphere.Add(ttClassRef,
+                  [tfByteSize,SystemWordSize
+                  ,tfEvaluatesTo,r
+                  ]);
                 vtp(q,np);
                 inc(np,SystemWordSize);
-                Move(i,FMem[vp],SystemWordSize);
+                Move(r,FMem[vp],SystemWordSize);
                end
               else
                begin
-                i:=vt;
+                r:=vt;
                 vtp(TypeDecl_type,np);
                 inc(np,SystemWordSize);
-                Move(i,FMem[vp],SystemWordSize);
+                Move(r,FMem[vp],SystemWordSize);
                end;
             //TODO: more!
             else
@@ -1200,26 +1199,26 @@ begin
           end;
       ttBinaryOp:
         if p1=0 then //evaluate left
-          if px.Left=0 then
+          if Sphere.r(p,tfLeft)=0 then
             Sphere.Error(pe,'binary operator without left side')
           else
            begin
             Push(p,IndexStep1,0,np);
-            p:=px.Left;
+            p:=Sphere.r(p,tfLeft);
            end
         else
         if p1=IndexStep1 then //evaluate right
           if vt=0 then
             Sphere.Error(pe,'binary operator left side without value')
           else
-            if px.Right=0 then
+            if Sphere.r(p,tfRight)=0 then
               Sphere.Error(pe,'binary operator without right side')
             else
              begin
               Push(0,0,vt,vp);//store result left on stack
               vt:=0;
               Push(p,IndexStep2,0,mp);
-              p:=px.Right;
+              p:=Sphere.r(p,tfRight);
              end
         else
         //if p1=IndexStep2 then //perform operator
@@ -1231,7 +1230,7 @@ begin
             np:=mp;
             vt0:=0;//drop value
             //assert SameType(q,vt
-            case TStratoToken(px.Op) of
+            case TStratoToken(Sphere.v(p,tfOperator)) of
               stOpEQ:
                begin
                 i:=0;
@@ -1286,7 +1285,7 @@ begin
                   Move(FMem[xp],ii,i);
                   jj:=0;
                   Move(FMem[vp],jj,i);
-                  case TStratoToken(px.Op) of
+                  case TStratoToken(Sphere.v(p,tfOperator)) of
                     //stOpAdd:k:=i+j;//see above
                     stOpSub:ii:=ii-jj;
                     stOpMul:ii:=ii*jj;
@@ -1316,7 +1315,7 @@ begin
                   jj:=0;
                   Move(FMem[vp],jj,i);
                   j:=0;
-                  case TStratoToken(px.Op) of
+                  case TStratoToken(Sphere.v(p,tfOperator)) of
                     stOpNEQ:if ii<>jj then j:=1;
                     stOpLT: if ii< jj then j:=1;
                     stOpLTE:if ii<=jj then j:=1;
@@ -1336,7 +1335,7 @@ begin
                   Move(FMem[xp],i,SystemWordSize);
                   Move(FMem[vp],j,SystemWordSize);
                   k:=0;
-                  case TStratoToken(px.Op) of
+                  case TStratoToken(Sphere.v(p,tfOperator)) of
                     stOpAnd:if (i<>0) and (j<>0) then k:=1 else k:=0;
                     stOpOr: if (i<>0) or  (j<>0) then k:=1 else k:=0;
                     stOpXor:if (i<>0) xor (j<>0) then k:=1 else k:=0;
@@ -1347,13 +1346,13 @@ begin
                  end;
               stOpTypeIs:
                begin
-                if (Sphere[q].ThingType=ttClass) and (xp<>0) then
+                if (Sphere.t(q)=ttClass) and (xp<>0) then
                  begin
                   Move(FMem[xp],i,SystemWordSize);//dereference
                   //assert object._baseclass @-SystemWordSize
                   Move(FMem[i-SystemWordSize],q,SystemWordSize);
                  end;
-                if (Sphere[vt].ThingType=ttClassRef) and (vp<>0) then
+                if (Sphere.t(vt)=ttClassRef) and (vp<>0) then
                   Move(FMem[vp],vt,SystemWordSize);
                 if SameType(Sphere,vt,q) then i:=1 else i:=0;
                 vtp(TypeDecl_bool,np);
@@ -1369,26 +1368,25 @@ begin
         if p1=0 then //evaluate AssignTo
          begin
           //see also stratoLogic IsAssignable
-          q:=px.AssignTo;
-          qx:=Sphere[q];
-          if px.ValueFrom=0 then
+          q:=Sphere.r(p,tfAssignTo);
+          if Sphere.r(p,tfValueFrom)=0 then
             Sphere.Error(pe,'assignment without right side')
           else if q=0 then
             Sphere.Error(pe,'assignment without left side')
-          else if qx.ThingType=ttCast then
+          else if Sphere.t(q)=ttCast then
            begin
             //'dirty' cast into
-            Push(p,px.ValueFrom,qx.EvaluatesTo,np);
-            p:=qx.Target;
+            Push(p,Sphere.r(p,tfValueFrom),Sphere.r(q,tfEvaluatesTo),np);
+            p:=Sphere.r(q,tfTarget);
            end
           else
            begin
-            Push(p,px.ValueFrom,0,np);
-            p:=px.AssignTo;
+            Push(p,Sphere.r(p,tfValueFrom),0,np);
+            p:=Sphere.r(p,tfAssignTo);
            end;
          end
         else
-        if p1=px.ValueFrom then //evaluate ValueFrom
+        if p1=Sphere.r(p,tfValueFrom) then //evaluate ValueFrom
           if vt=0 then
             Sphere.Error(pe,'assignment right side without value')
           else
@@ -1401,7 +1399,7 @@ begin
             Push(0,0,vt,vp);//store address
             vt:=0;
             Push(p,IndexStep1,0,mp);
-            p:=px.ValueFrom;
+            p:=Sphere.r(p,tfValueFrom);
            end
         else
         //if p1=IndexStep1
@@ -1413,7 +1411,7 @@ begin
             if not SameType(Sphere,vt,q) then
               Sphere.Error(pe,'assignment type mismatch')
             else
-              case TStratoToken(px.Op) of
+              case TStratoToken(Sphere.v(p,tfOperator)) of
                 stOpAssign:
                   Move(FMem[vp],FMem[xp],ByteSize(Sphere,vt));
                 stOpAssignAdd:
@@ -1452,7 +1450,7 @@ begin
                     Move(FMem[xp],ii,i);
                     jj:=0;
                     Move(FMem[vp],jj,i);
-                    case TStratoToken(px.Op) of
+                    case TStratoToken(Sphere.v(p,tfOperator)) of
                       stOpAssignSub:ii:=ii-jj;
                       stOpAssignMul:ii:=ii*jj;
                       stOpAssignDiv:ii:=ii div jj;
@@ -1471,15 +1469,17 @@ begin
             np:=mp;
            end;
       ttSelection:
-        if (p1=0) and (px.DoIf<>0) then
+       begin
+        q:=Sphere.r(p,tfDoIf);
+        if (p1=0) and (q<>0) then
          begin
-          Push(p,px.DoIf,0,np);
-          p:=px.DoIf;
+          Push(p,q,0,np);
+          p:=q;
          end
         else
          begin
-          if px.DoIf=0 then
-            p:=px.DoThen
+          if q=0 then
+            p:=Sphere.r(p,tfDoThen)
           else
            begin
             //assert vt=0 or vt=TypeDecl_bool
@@ -1487,7 +1487,7 @@ begin
             if vt=TypeDecl_bool then
              begin
               Move(FMem[vp],i,SystemWordSize);
-              if i<>0 then p:=px.DoThen else p:=px.DoElse;
+              if i<>0 then p:=Sphere.r(p,tfDoThen) else p:=Sphere.r(p,tfDoElse);
              end
             else
               Sphere.Error(pe,'selection criterium value is not boolean');
@@ -1495,19 +1495,21 @@ begin
             np:=mp;
            end;
          end;
+       end;
       ttIteration:
-        if (p1=0) and (px.DoElse<>0) then //DoFirst
+        if (p1=0) and Sphere.r(p,tfDoFirst,q) then
          begin
           Push(p,p,0,np);
-          p:=px.DoElse;
+          p:=q;
          end
         else
          begin
           if p1<>0 then np:=mp;
-          if px.DoIf=0 then i:=1 else
+          //evaluate DoIf
+          if Sphere.r(p,tfDoIf,q) then
            begin
-            i:=0;//default
-            if p1=px.DoIf then
+            i:=0;//Default
+            if p1=q then
              begin
               if vt=TypeDecl_bool then
                 Move(FMem[vp],i,SystemWordSize)
@@ -1516,39 +1518,47 @@ begin
              end
             else
              begin
-              Push(p,px.DoIf,0,np);
-              p:=px.DoIf;
+              Push(p,q,0,np);
+              p:=q;
+             end;
+           end
+          else
+            i:=1;
+          //perform Body,DoThen
+          if (p=p0) and (i<>0) then
+           begin
+            r:=Sphere.r(p,tfBody);
+            q:=Sphere.r(p,tfDoThen);
+            if (r<>0) or (q<>0) then
+             begin
+              Push(p,p,0,np);
+              p:=r;
+              if q<>0 then Push(q,0,0,np);
              end;
            end;
           vt:=0;
-          //perform Body,DoThen
-          if (i<>0) and not((px.Body=0) and (px.DoThen=0)) then
-           begin
-            Push(p,p,0,np);
-            p:=px.Body;
-            if px.DoThen<>0 then Push(px.DoThen,0,0,np);
-           end;
          end;
       ttIterationPE:
-        if (p1=0) and (px.DoElse<>0) then //DoFirst
+        if (p1=0) and Sphere.r(p,tfDoFirst,q) then
          begin
           Push(p,p,0,np);
-          p:=px.DoElse;
+          p:=q;
          end
         else
-        if (px.Body<>0) and ((p1=0) or (p1=p)) then
+        if Sphere.r(p,tfBody,q) and ((p1=0) or (p1=p)) then
          begin
-          Push(p,px.Body,0,np);
-          p:=px.Body;
+          Push(p,q,0,np);
+          p:=q;
           vt:=0;//silence DoFirst/DoThen leftover
          end
         else
          begin
           if p1<>0 then np:=mp;
-          if px.DoIf=0 then i:=1 else
+          //evaluate DoIf
+          if Sphere.r(p,tfDoIf,q) then
            begin
             i:=0;//default
-            if p1=px.DoIf then
+            if p1=q then
              begin
               if vt=TypeDecl_bool then
                 Move(FMem[vp],i,SystemWordSize)
@@ -1557,27 +1567,30 @@ begin
              end
             else
              begin
-              Push(p,px.DoIf,0,np);
-              p:=px.DoIf;
+              Push(p,q,0,np);
+              p:=q;
              end;
-           end;
-          vt:=0;
+           end
+          else
+            i:=1;
           //perform Body,DoThen
-          if (i<>0) and not((px.Body=0) and (px.DoThen=0)) then
+          if (p=p0) and (i<>0) and
+            (Sphere.r(p,tfBody,r) or Sphere.r(p,tfDoThen,q)) then
            begin
             Push(p,0,0,mp);
-            p:=px.DoThen;
+            p:=q;
            end;
+          vt:=0;
          end;
       ttCast:
         if p1=0 then
-          if px.Target=0 then
-            Sphere.Error(pe,'cast without subject')
-          else
+          if Sphere.r(p,tfTarget,q) then
            begin
-            Push(p,px.Target,0,np);
-            p:=px.Target;
+            Push(p,q,0,np);
+            p:=q;
            end
+          else
+            Sphere.Error(pe,'cast without subject')
         else
           if vt=0 then
             Sphere.Error(pe,'no value to cast')
@@ -1585,7 +1598,8 @@ begin
            begin
             //TODO:
             //see also SameType
-            if (vt=TypeDecl_string) and (px.EvaluatesTo=TypeDecl_number) then
+            q:=Sphere.r(p,tfEvaluatesTo);
+            if (vt=TypeDecl_string) and (q=TypeDecl_number) then
              begin
               Move(FMem[vp],i,SystemWordSize);
               if not TryStrToInt(string(Sphere.GetBinaryData(i)),integer(j)) then
@@ -1595,7 +1609,7 @@ begin
               Move(j,FMem[vp],SystemWordSize);
              end
             else
-            if (vt=TypeDecl_number) and (px.EvaluatesTo=TypeDecl_string) then
+            if (vt=TypeDecl_number) and (q=TypeDecl_string) then
              begin
               Move(FMem[vp],i,SystemWordSize);
               j:=Sphere.AddBinaryData(UTF8String(IntToStr(i)));
@@ -1604,7 +1618,7 @@ begin
               Move(j,FMem[vp],SystemWordSize);
              end
             else
-            if (vt=TypeDecl_bool) and (px.EvaluatesTo=TypeDecl_string) then
+            if (vt=TypeDecl_bool) and (q=TypeDecl_string) then
              begin
               Move(FMem[vp],i,SystemWordSize);
               if i=0 then
@@ -1616,26 +1630,24 @@ begin
               Move(j,FMem[vp],SystemWordSize);
              end
             else
-            if (vt=TypeDecl_number)
-              and (Sphere[px.EvaluatesTo].ThingType=ttEnumeration) then
+            if (vt=TypeDecl_number) and (Sphere.t(q)=ttEnumeration) then
              begin
               Move(FMem[vp],i,SystemWordSize);
               //check enumeration item?
-              vtp(px.EvaluatesTo,np);
+              vtp(q,np);
               inc(np,SystemWordSize);
               Move(i,FMem[vp],SystemWordSize);
              end
             else
-            if (Sphere[vt].ThingType=ttEnumeration)
-              and (px.EvaluatesTo=TypeDecl_number) then
+            if (Sphere.t(vt)=ttEnumeration) and (q=TypeDecl_number) then
              begin
               Move(FMem[vp],i,SystemWordSize);
-              vtp(px.EvaluatesTo,np);
+              vtp(q,np);
               inc(np,SystemWordSize);
               Move(i,FMem[vp],SystemWordSize);
              end
             else
-            if (vt=TypeDecl_number) and (px.EvaluatesTo=TypeDecl_pointer) then
+            if (vt=TypeDecl_number) and (Sphere.t(q)=TypeDecl_pointer) then
              begin
               Move(FMem[vp],i,SystemWordSize);
               //if i<>0 then //TODO: protect against pointer arith
@@ -1645,22 +1657,21 @@ begin
              end
             else
             if (TypeDecl_object<>0) and
-              (Sphere[vt].ThingType=ttClass) and
-              (Sphere[px.EvaluatesTo].ThingType=ttClass) then
+              (Sphere.t(vt)=ttClass) and (Sphere.t(q)=ttClass) then
              begin
               //cast to base class?
-              if vp=0 then q:=vt else
+              if vp=0 then r:=vt else
                begin
                 //dereference
                 Move(FMem[vp],i,SystemWordSize);
                 //assert object._baseclass @-SystemWordSize
-                Move(FMem[i-SystemWordSize],q,SystemWordSize);
+                Move(FMem[i-SystemWordSize],r,SystemWordSize);
                end;
-              while (q<>0) and (q<>px.EvaluatesTo) do q:=Sphere[q].InheritsFrom;
-              if q<>0 then
+              while (r<>0) and (r<>q) do r:=Sphere.r(r,tfInheritsFrom);
+              if r<>0 then
                begin
                 //TODO: check @@._baseclass!
-                vtp(px.EvaluatesTo,vp);
+                vtp(q,vp);
                end
               else
                 //TODO: throw
@@ -1669,25 +1680,25 @@ begin
 
             //TODO: char
             else
-            if (Sphere[vt].ByteSize in [1..8]) //TODO: and numeric?
-              and (px.EvaluatesTo=TypeDecl_string) then
+            if (Sphere.v(vt,tfByteSize) in [1..8]) //TODO: and numeric?
+              and (q=TypeDecl_string) then
              begin
               ii:=0;
-              Move(FMem[vp],ii,Sphere[vt].ByteSize);
+              Move(FMem[vp],ii,Sphere.v(vt,tfByteSize));
               j:=Sphere.AddBinaryData(UTF8String(IntToStr(ii)));
               vtp(TypeDecl_string,np);
               inc(np,SystemWordSize);
               Move(j,FMem[vp],SystemWordSize);
              end
             else
-            if (Sphere[vt].ByteSize in [1..8]) //TODO: and numeric?
-              and (Sphere[px.EvaluatesTo].ByteSize in [1..8]) then //and numeric
+            if (Sphere.v(vt,tfByteSize) in [1..8]) //TODO: and numeric?
+              and (Sphere.v(q,tfByteSize) in [1..8]) then //and numeric
              begin
               ii:=0;
-              Move(FMem[vp],ii,Sphere[vt].ByteSize);
-              vtp(px.EvaluatesTo,np);
-              inc(np,Sphere[px.EvaluatesTo].ByteSize);
-              Move(ii,FMem[vp],Sphere[px.EvaluatesTo].ByteSize);
+              Move(FMem[vp],ii,Sphere.v(vt,tfByteSize));
+              vtp(q,np);
+              inc(np,Sphere.v(q,tfByteSize));
+              Move(ii,FMem[vp],Sphere.v(q,tfByteSize));
              end
 
             else
@@ -1695,13 +1706,13 @@ begin
            end;
 
       ttThrow:
-        if px.Target=0 then //break
+        if not Sphere.r(p,tfTarget,q) then //break
          begin
           BreakLoop;
           vt:=0;
          end
         else
-        if (px.Target=0) or (p=p1) then //throw
+        if (q=0) or (p=p1) then //throw
          begin
           Throw(np,vt,vp);
           vt:=0;
@@ -1709,33 +1720,36 @@ begin
         else //get object to throw
          begin
           Push(p,p,0,np);
-          p:=px.Target;
+          p:=q;
          end;
 
       ttAddressOf:
         if p1=0 then
-          if (Sphere[px.ValueFrom].ThingType=ttThis) and
-            (Sphere[px.ValueFrom].Parent=px.Parent) then
+         begin
+          q:=Sphere.r(p,tfValueFrom);
+          if (Sphere.t(q)=ttThis) and
+            (Sphere.r(q,tfParent)=Sphere.r(p,tfParent)) then
            begin
             //TODO: move with ttThis above?
-            //assert Sphere[qx.Parent].ThingType=ttCodeBlock
+            //assert Sphere.t(q.Parent)=ttCodeBlock
             //assert ttThis is first item and Offset=0
             i:=stackIndex;
-            while (i<>0) and (stack[i-1].p<>px.Parent) do dec(i);
+            while (i<>0) and (stack[i-1].p<>Sphere.r(p,tfParent)) do dec(i);
             if i=0 then
               Sphere.Error(pe,'this unknown')
             else
-              vtp(px.EvaluatesTo,stack[i-1].bp);
+              vtp(Sphere.r(p,tfEvaluatesTo),stack[i-1].bp);
            end
           else
            begin
             Push(p,p,0,np);
-            p:=px.ValueFrom;
+            p:=Sphere.r(p,tfValueFrom);
            end
+         end
         else
          begin
           i:=vp;
-          vtp(px.EvaluatesTo,np);
+          vtp(Sphere.r(p,tfEvaluatesTo),np);
           Move(i,FMem[np],SystemWordSize);
           inc(np,SystemWordSize);
          end;
@@ -1743,18 +1757,18 @@ begin
         if p1=0 then
          begin
           Push(p,p,0,np);
-          p:=px.ValueFrom;
+          p:=Sphere.r(p,tfValueFrom);
          end
         else
          begin
-          vtp(px.EvaluatesTo,vp);
+          vtp(Sphere.r(p,tfEvaluatesTo),vp);
           Move(FMem[vp],vp,SystemWordSize);
           //TODO: access violation? bounds check?
          end;
       ttVarByRef:
        begin
-        q:=px.Parent;//assert code block
-        vp:=px.Offset;
+        q:=Sphere.r(p,tfParent);//assert code block
+        vp:=Sphere.v(p,tfOffset);
         i:=stackIndex;
         while (i<>0) and (stack[i-1].p<>q) do dec(i);
         if i=0 then
@@ -1762,7 +1776,7 @@ begin
         else
           inc(vp,stack[i-1].bp);
         Move(FMem[vp],i,SystemWordSize);
-        vtp(px.EvaluatesTo,i);
+        vtp(Sphere.r(p,tfEvaluatesTo),i);
        end;
 
       ttClass:
@@ -1773,29 +1787,28 @@ begin
        end;
 
       ttPropCall://TODO: un-copy from ttFnCall?
-        if px.Target=0 then
+        if not Sphere.r(p,tfTarget,q) then
           Sphere.Error(pe,'call without function overload')
         else
          begin
-          qx:=Sphere[px.Target];
           //step 0: determine call target
           if p1=0 then
            begin
             r:=0;
             p2:=0;
             mp:=np;
-            case qx.ThingType of
+            case Sphere.t(q) of
               ttPropertyGet,ttPropertySet:
-                r:=qx.Body;
+                r:=Sphere.r(q,tfBody);
               ttVar,ttArrayIndex:
                begin
                 Push(p,IndexStep1,0,mp);
-                p:=px.Target;
+                p:=Sphere.r(p,tfTarget);
                end;
               ttField:
                begin
                 Push(p,IndexStep1,0,mp);
-                p:=qx.Subject
+                p:=Sphere.r(q,tfSubject);
                end;
               //TODO: ttInterface? ttClass?
               else
@@ -1808,16 +1821,16 @@ begin
           if p1=IndexStep1 then
            begin
             q:=0;
-            case qx.ThingType of
+            case Sphere.t(q) of
               ttVar,ttArrayIndex:
                 if vt=0 then
                   Sphere.Error(pe,'unable to resolve call target variable')
                 else
-                  case Sphere[vt].ThingType of
+                  case Sphere.t(vt) of
                     ttClassRef:
                      begin
                       Move(FMem[vp],p2,SystemWordSize);
-                      q:=StratoFnCallFindVirtual(Sphere,p2,px.Target);
+                      q:=StratoFnCallFindVirtual(Sphere,p2,Sphere.r(p,tfTarget));
                      end;
                     else
                       Sphere.Error(pe,'unexpected call target variable type');
@@ -1827,7 +1840,7 @@ begin
                 if (vp=0) or (vt=0) then
                   Sphere.Error(pe,'unable to resolve call target')
                 else
-                  case Sphere[vt].ThingType of
+                  case Sphere.t(vt) of
                     ttClass:
                      begin
                       Move(FMem[vp],vp,SystemWordSize);//dereference first
@@ -1839,28 +1852,28 @@ begin
                     else
                       p2:=vt;//more checks? error?
                   end;
-                q:=StratoFnCallFindVirtual(Sphere,p2,qx.Target);//!
+                q:=StratoFnCallFindVirtual(Sphere,p2,Sphere.r(q,tfTarget));//!
                end;
               else
                 raise Exception.Create('//TODO');
             end;
-            if q=0 then r:=0 else r:=Sphere[q].Body;
+            if q=0 then r:=0 else r:=Sphere.r(q,tfBody);
             if r=0 then
               Sphere.Error(p,'dynamic implementation not found')
             else
-              case Sphere[q].ThingType of
+              case Sphere.t(q) of
                 ttPropertyGet,ttPropertySet:
                  begin
                   //get address for 'this' ("@@")
-                  q:=Sphere[r].FirstItem;
-                  while (q<>0) and (Sphere[q].ThingType<>ttThis) do
-                    q:=Sphere[q].Next;
+                  q:=Sphere.r(r,tfFirstItem);
+                  while (q<>0) and (Sphere.t(q)<>ttThis) do
+                    q:=Sphere.r(q,tfNext);
                   if q=0 then
                     Sphere.Error(pe,'Could not find "@@"')
                   else
                     //TODO: SameType? vt px.Target.Target
                     //not FMem[vp] here! see ttThis under ttVar below
-                    Move(vp,FMem[mp+Sphere[q].Offset],SystemWordSize);
+                    Move(vp,FMem[mp+Sphere.v(q,tfOffset)],SystemWordSize);
                  end;
                 else
                   Sphere.Error(pe,'unexpected virtual call target');
@@ -1870,15 +1883,14 @@ begin
           //found a body, or enumerating arguments?
           if r<>0 then
            begin
-            rx:=Sphere[r];
             //step 2: evaluate arguments
             if p1<>p then
              begin
               //step 2a: start evaluating arguments
-              if (rx.ThingType=ttCodeBlock) and (p1<>IndexStep2) then
+              if (Sphere.t(r)=ttCodeBlock) and (p1<>IndexStep2) then
                begin
-                p1:=px.FirstArgument;
-                p2:=Sphere[rx.Parent].FirstArgument;
+                p1:=Sphere.r(p,tfFirstArgument);
+                p2:=Sphere.rr(r,[tfParent,tfFirstArgument]);
                 if (p1<>0) and (p2=0) then
                   Sphere.Error(pe,'overload without argument values in code block')
                 else
@@ -1887,13 +1899,13 @@ begin
                     //push function's code block (to address variables)
                     Push(r,0,0,np);
                     //start getting the first argument
-                    qx:=Sphere[p1];
                     //TODO: //if qx.ThingType<>ttArgByRef then
-                    if qx.InitialValue<>0 then LiteralToMemory(Sphere,
-                      qx.InitialValue,qx.EvaluatesTo,np+Sphere[p2].Offset);
+                    q:=Sphere.r(p1,tfInitialValue);
+                    if q<>0 then LiteralToMemory(Sphere,q,
+                      Sphere.r(p1,tfEvaluatesTo),np+Sphere.v(p2,tfOffset));
                     Push(p,p1,p2,np);
-                    inc(np,rx.ByteSize);
-                    p:=qx.Target;
+                    inc(np,Sphere.v(r,tfByteSize));
+                    p:=Sphere.r(p1,tfTarget);
                    end;
                end
               else
@@ -1903,42 +1915,41 @@ begin
                 //store argument value
                 if vt=0 then
                   Sphere.Error(pe,'no value for argument "'+
-                    string(Sphere.Dict.Str[Sphere[p1].Name])+'"')
+                    string(Sphere.Dict.Str[Sphere.v(p1,tfName)])+'"')
                 else
                  begin
-                  if Sphere[p2].ThingType=ttVarByRef then
-                    Move(vp,FMem[mp+Sphere[p2].Offset],SystemWordSize)
+                  if Sphere.t(p2)=ttVarByRef then
+                    Move(vp,FMem[mp+Sphere.v(p2,tfOffset)],SystemWordSize)
                   else
                    begin
                     //assert p2.ThingType=ttArgument
                     i:=ByteSize(Sphere,vt);
-                    if i<>0 then Move(FMem[vp],FMem[mp+Sphere[p2].Offset],i);
+                    if i<>0 then Move(FMem[vp],FMem[mp+Sphere.v(p2,tfOffset)],i);
                    end;
                   vt:=0;
                  end;
                 //next argument
-                p1:=Sphere[p1].Next;
-                p2:=Sphere[p2].Next;//assert sequence of arguments correctly added as vars to codeblock
+                p1:=Sphere.r(p1,tfNext);
+                p2:=Sphere.r(p2,tfNext);//assert sequence of arguments correctly added as vars to codeblock
                 np:=mp;
                 if p1=0 then
                  begin
                   Pop(r,p1,p2,xp);
-                  rx:=Sphere[r];
                   //calling property setter: evaluate value to set
-                  if Sphere[rx.Parent].ThingType=ttPropertySet then
+                  if Sphere.t(Sphere.r(r,tfParent))=ttPropertySet then
                    begin
                     Push(p,IndexStep2,r,mp);
-                    np:=mp+rx.ByteSize;
-                    p:=px.EvaluatesTo;
+                    np:=mp+Sphere.v(r,tfByteSize);
+                    p:=Sphere.r(p,tfEvaluatesTo);
                    end;
                  end
                 else
                  begin
-                  qx:=Sphere[p1];
-                  if qx.InitialValue<>0 then LiteralToMemory(Sphere,
-                    qx.InitialValue,qx.EvaluatesTo,mp+Sphere[p2].Offset);
+                  q:=Sphere.r(p1,tfInitialValue);
+                  if q<>0 then LiteralToMemory(Sphere,
+                    q,Sphere.r(p1,tfEvaluatesTo),mp+Sphere.v(p2,tfOffset));
                   Push(p,p1,p2,mp);
-                  p:=qx.Target;
+                  p:=Sphere.r(p1,tfTarget);
                  end;
                end
               //step 2c: calling property setter? store value to set
@@ -1946,12 +1957,13 @@ begin
                begin
                 if vt=0 then
                   Sphere.Error(pe,'no value for property setter "'+
-                    string(Sphere.Dict.Str[Sphere[p].Name])+'"')
+                    string(Sphere.Dict.Str[Sphere.v(p,tfName)])+'"')
                 else
                  begin
-                  q:=Sphere.Lookup(rx.FirstItem,
-                    Sphere[Sphere[rx.Parent].Parent].Name);//ttMember
-                  Move(FMem[vp],FMem[mp+Sphere[q].Offset],ByteSize(Sphere,vt));
+                  q:=Sphere.Lookup(r,tfFirstItem,
+                    Sphere.v(Sphere.rr(r,[tfParent,tfParent]),tfName));//ttMember
+                  Move(FMem[vp],FMem[mp+Sphere.v(q,tfOffset)],
+                    ByteSize(Sphere,vt));
                  end;
                 np:=mp;
                 vt:=0;
@@ -1966,18 +1978,14 @@ begin
              end
             else
             //step 4: output result value
-            if Sphere[rx.Parent].ThingType=ttPropertyGet then
+            if Sphere.t(Sphere.r(r,tfParent))=ttPropertyGet then
              begin
               //assert px.EvaluatesTo<>0
               //assert first value in code block is return value (after this)
-              q:=rx.FirstItem;
-              qx:=Sphere[q];
-              if (q<>0) and (qx.ThingType=ttThis) then
-               begin
-                q:=qx.Next;//assert Sphere[px.Target].ThingType=ttField
-                qx:=Sphere[q];
-               end;
-              vtp(qx.EvaluatesTo,mp+qx.Offset);
+              q:=Sphere.r(r,tfFirstItem);
+              if Sphere.t(q)=ttThis then
+                q:=Sphere.r(q,tfNext);//assert Sphere[px.Target].ThingType=ttField
+              vtp(Sphere.r(q,tfEvaluatesTo),mp+Sphere.v(q,tfOffset));
              end;
            end;
          end;
@@ -1986,7 +1994,7 @@ begin
 
       else
        begin
-        Sphere.Error(pe,Format('unknown logic item %d:%.4x',[p,px.ThingType]));
+        Sphere.Error(pe,Format('unknown logic item %d:%.4x',[p,Sphere.t(p)]));
         p:=0;
        end;
     end;
@@ -2012,35 +2020,39 @@ end;
 procedure TStratoMachine.LiteralToMemory(Sphere:TStratoSphere;
   p,q:TStratoIndex;addr:cardinal);
 var
-  px:PStratoThing;
   i:int64;
+  r:TStratoIndex;
 begin
-  px:=Sphere[p];
-  if px.ThingType<>ttLiteral then
-    Sphere.Error(p,'literal expected '+IntToHex(px.ThingType,4))
+  if Sphere.t(p)<>ttLiteral then
+    Sphere.Error(p,'literal expected '+IntToHex(Sphere.t(p),4))
   else
+   begin
+    r:=Sphere.r(p,tfEvaluatesTo);
     //assert q=0 or Sphere[q].ThingType=ttTypeDecl
-    if (px.EvaluatesTo>=TypeDecl_number) and
-      (px.EvaluatesTo<=TypeDecl_intLast) then
+    if (r>=TypeDecl_number) and (r<=TypeDecl_intLast) then
      begin
-      i:=ParseInteger(string(Sphere.GetBinaryData(px.InitialValue)));
-      Move(i,FMem[addr],Sphere[q].ByteSize);
+      i:=ParseInteger(string(Sphere.GetBinaryData(Sphere.r(p,tfInitialValue))));
+      Move(i,FMem[addr],Sphere.v(q,tfByteSize));
      end
     else
-    if px.EvaluatesTo=TypeDecl_string then
+    if r=TypeDecl_string then
      begin
       //TODO: store strings in conceptual mem (see also stratoRunTime)
-      i:=px.InitialValue;//ttBinaryData
+      i:=Sphere.r(p,tfInitialValue);//ttBinaryData
       Move(i,FMem[addr],SystemWordSize);
      end
     else
-    if px.EvaluatesTo=TypeDecl_bool then
+    if r=TypeDecl_bool then
      begin
-      if Sphere.GetBinaryData(px.InitialValue)='0' then i:=0 else i:=1;
+      if Sphere.GetBinaryData(Sphere.r(p,tfInitialValue))='0' then
+        i:=0
+      else
+        i:=1;
       Move(i,FMem[addr],SystemWordSize);
      end
     else
       Sphere.Error(p,'unsupported literal type');
+   end;
 end;
 
 procedure TStratoMachine.PerformSysCall(Sphere: TStratoSphere;
@@ -2048,13 +2060,13 @@ procedure TStratoMachine.PerformSysCall(Sphere: TStratoSphere;
 var
   i,j,k:cardinal;
 begin
-  case Sphere[Fn].Op of
+  case Sphere.v(Fn,tfOperator) of
 
     stratoSysCall_xinc,stratoSysCall_xdec:
      begin
       Move(FMem[Ptr+SystemWordSize],i,SystemWordSize);
       Move(FMem[i],j,SystemWordSize);
-      case Sphere[Fn].Op of
+      case Sphere.v(Fn,tfOperator) of
         stratoSysCall_xinc:k:=cardinal(InterlockedIncrement(integer(j)));
         stratoSysCall_xdec:k:=cardinal(InterlockedDecrement(integer(j)));
       end;
@@ -2090,7 +2102,8 @@ begin
     //stratoSysCall_realloc:
     //stratoSysCall_mfree:
 
-    else Sphere.Error(Fn,'unknown system call '+IntToStr(Sphere[Fn].Op));
+    else
+      Sphere.Error(Fn,'unknown system call '+IntToStr(Sphere.v(Fn,tfOperator)));
   end;
 end;
 

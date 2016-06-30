@@ -38,6 +38,7 @@ type
     procedure txtBreakPointsExit(Sender: TObject);
     procedure actRunToFocusExecute(Sender: TObject);
     procedure actCopyExecute(Sender: TObject);
+    procedure lvStackDblClick(Sender: TObject);
   private
     FDoNext:integer;
     FBreakAt:array of TStratoIndex;
@@ -182,7 +183,7 @@ begin
         FSrcFile:=0;//in case of error
         //TODO: resolve relative path
         //TODO: cache several?
-        FSrcPath:=s.GetBinaryData(PStratoSourceFile(s[p]).FileName);
+        FSrcPath:=s.GetBinaryData(s.SourceFile(p).FileName);
         //TODO: check signature/timestamp
         FSrcData.LoadFromFile(FSrcPath);
         FSrcFile:=p;
@@ -239,6 +240,7 @@ begin
   Screen.Cursor:=crDefault;
   if Visible then
    begin
+    btnNext.Caption:='(Done)';
     btnNext.Enabled:=false;
     btnRunTo.Enabled:=false;
     btnBreak.Enabled:=false;
@@ -282,6 +284,18 @@ begin
      end;
     //Clipboard.Clear;//?
     Clipboard.AsText:=s;
+   end;
+end;
+
+procedure TfrmDebugView.lvStackDblClick(Sender: TObject);
+var
+  li:TListItem;
+begin
+  li:=lvStack.ItemFocused;//ItemSelected?
+  if li<>nil then
+   begin
+    txtBreakPoints.Text:=li.Caption;
+    btnRunTo.Click;
    end;
 end;
 

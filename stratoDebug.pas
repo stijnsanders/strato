@@ -5,7 +5,7 @@ interface
 uses stratoTokenizer, stratoSphere, stratoDecl;
 
 procedure StratoDumpTokens(const t:TStratoSourceTokenList);
-function StratoDumpThing(s:TStratoSphere;i:TStratoIndex;p:PStratoThing):string;
+function StratoDumpThing(s:TStratoSphere;p:TStratoIndex):string;
 function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
   var q:TStratoIndex;var LineIndex:cardinal):boolean;
 procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
@@ -36,177 +36,306 @@ begin
     [t[i].SrcPos,t[i].Index,t[i].Length,TokenName[t[i].Token]]));
 end;
 
-function StratoDumpThing(s:TStratoSphere;i:TStratoIndex;p:PStratoThing):string;
+function StratoDumpThing(s:TStratoSphere;p:TStratoIndex):string;
 begin
-  if p=nil then Result:='' else
-  case p.ThingType of
+  if p=0 then Result:='' else
+  case s.t(p) of
     ttSourceFile:
       Result:=Format('src  ini=%d fin=%d fn=%d fs=%d',
-        [PStratoSourceFile(p).InitializationCode
-        ,PStratoSourceFile(p).FinalizationCode
-        ,PStratoSourceFile(p).FileName
-        ,PStratoSourceFile(p).FileSize
+        [s.SourceFile(p).InitializationCode
+        ,s.SourceFile(p).FinalizationCode
+        ,s.SourceFile(p).FileName
+        ,s.SourceFile(p).FileSize
         ]);
     ttBinaryData:
-      Result:=Format('"%s"',[s.GetBinaryData(i)]);
+      Result:=Format('"%s"',[s.GetBinaryData(p)]);
     ttNameSpace:
       Result:=Format('ns   %s  ->%d  src=%d ini=%d fin=%d',
-        [s.FQN(i)
-        ,PStratoNameSpaceData(p).FirstItem
-        ,PStratoNameSpaceData(p).SourceFile
-        ,PStratoNameSpaceData(p).FirstInitialization
-        ,PStratoNameSpaceData(p).FirstFinalization
+        [s.FQN(p)
+        ,s.NameSpace(p).FirstItem
+        ,s.NameSpace(p).SourceFile
+        ,s.NameSpace(p).FirstInitialization
+        ,s.NameSpace(p).FirstFinalization
         ]);
     ttTypeDecl:
       Result:=Format('type %s  #%d ->%d',
-        [s.FQN(i),p.ByteSize,p.FirstItem]);
+        [s.FQN(p)
+        ,s.v(p,tfByteSize)
+        ,s.r(p,tfFirstItem)
+        ]);
     ttRecord:
       Result:=Format('rec  %s  #%d ->%d',
-        [s.FQN(i),p.ByteSize,p.FirstItem]);
+        [s.FQN(p)
+        ,s.v(p,tfByteSize)
+        ,s.r(p,tfFirstItem)
+        ]);
     ttEnumeration:
       Result:=Format('enum %s  ->%d',
-        [s.FQN(i),p.FirstItem]);
+        [s.FQN(p)
+        ,s.r(p,tfFirstItem)
+        ]);
     ttLiteral:
       Result:=Format('lit  t=%d v=%d',
-        [p.EvaluatesTo,p.InitialValue]);
+        [s.r(p,tfEvaluatesTo)
+        ,s.r(p,tfInitialValue)
+        ]);
     ttVar:
       Result:=Format('var  %s  @%d t=%d v=%d',
-        [s.FQN(i),integer(p.Offset),p.EvaluatesTo,p.InitialValue]);
+        [s.FQN(p)
+        ,integer(s.v(p,tfOffset))
+        ,s.r(p,tfEvaluatesTo)
+        ,s.r(p,tfInitialValue)
+        ]);
     ttConstant:
       Result:=Format('cons %s  t=%d v=%d',
-        [s.FQN(i),p.EvaluatesTo,p.InitialValue]);
+        [s.FQN(p)
+        ,s.r(p,tfEvaluatesTo)
+        ,s.r(p,tfInitialValue)
+        ]);
     ttCodeBlock:
-      if p.EvaluatesTo=0 then
+      if s.r(p,tfEvaluatesTo)=0 then
         Result:=Format('{}   #%d var->%d cmd->%d',
-          [p.ByteSize,p.FirstItem,p.FirstStatement])
+          [s.v(p,tfByteSize)
+          ,s.r(p,tfFirstItem)
+          ,s.r(p,tfFirstStatement)
+          ])
       else
         Result:=Format('{}:  #%d var->%d cmd->%d t=%d',
-          [p.ByteSize,p.FirstItem,p.FirstStatement,p.EvaluatesTo]);
+          [s.v(p,tfByteSize)
+          ,s.r(p,tfFirstItem)
+          ,s.r(p,tfFirstStatement)
+          ,s.r(p,tfEvaluatesTo)
+          ]);
     ttImport:
       Result:=Format('<<<  %s  %d',
-        [s.FQN(i),p.Target]);
+        [s.FQN(p)
+        ,s.r(p,tfTarget)
+        ]);
     ttAlias:
       Result:=Format('---> %d',
-        [p.Target]);
+        [s.r(p,tfTarget)
+        ]);
     ttGlobal:
       Result:=Format('===> %d  %s',
-        [p.Target,s.FQN(p.Target)]);
+        [s.r(p,tfTarget)
+        ,s.FQN(s.r(p,tfTarget))
+        ]);
     ttSignature:
       Result:=Format('sig  %s  %d.(%d):%d',
-        [s.FQN(i),p.Target,p.FirstArgument,p.EvaluatesTo]);
+        [s.FQN(p)
+        ,s.r(p,tfTarget)
+        ,s.r(p,tfFirstArgument)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttMember:
       Result:=Format('mem  %s  ->%d',
-        [s.FQN(i),p.FirstItem]);
+        [s.FQN(p)
+        ,s.r(p,tfFirstItem)
+        ]);
     ttOverload:
       Result:=Format('fn   %s  %d(%d){%d}',
-        [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
+        [s.FQN(p)
+        ,s.r(p,tfsignature)
+        ,s.r(p,tfFirstArgument)
+        ,s.r(p,tfBody)
+        ]);
     ttFnCall:
-      if p.EvaluatesTo<>0 then
+      if s.r(p,tfEvaluatesTo)<>0 then
         Result:=Format('call %s  %d(%d):%d',
-          [s.Dict[p.Name]
-          ,p.Target,p.FirstArgument,p.EvaluatesTo])
+          [s.Dict[s.v(p,tfName)]
+          ,s.r(p,tfTarget)
+          ,s.r(p,tfFirstArgument)
+          ,s.r(p,tfEvaluatesTo)
+          ])
       else
         Result:=Format('call %s  %d(%d)',
-          [s.Dict[p.Name]//s.FQN(i)
-          ,p.Target,p.FirstArgument]);
+          [s.Dict[s.v(p,tfName)]//s.FQN(p)
+          ,s.r(p,tfTarget)
+          ,s.r(p,tfFirstArgument)
+          ]);
     ttArgument:
       Result:=Format('arg  %s  t=%d d=%d v=%d',
-        [s.FQN(i),p.EvaluatesTo,p.InitialValue,p.Target]);//not ValueFrom!
+        [s.FQN(p)
+        ,s.r(p,tfEvaluatesTo)
+        ,s.r(p,tfInitialValue)
+        ,s.r(p,tfTarget)//not ValueFrom!
+        ]);
     ttAssign:
       Result:=Format(':=   %d %s %d',
-        [p.AssignTo,TokenName[TStratoToken(p.Op)],p.ValueFrom]);
+        [s.r(p,tfAssignTo)
+        ,TokenName[TStratoToken(s.v(p,tfOperator))]
+        ,s.r(p,tfValueFrom)
+        ]);
     ttUnaryOp:
       Result:=Format('_x   %s %d  t=%d',
-        [TokenName[TStratoToken(p.Op)],p.Right,p.EvaluatesTo]);
+        [TokenName[TStratoToken(s.v(p,tfOperator))]
+        ,s.r(p,tfRight)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttBinaryOp:
       Result:=Format('x_x  %d %s %d  t=%d',
-        [p.Left,TokenName[TStratoToken(p.Op)],p.Right,p.EvaluatesTo]);
+        [s.r(p,tfLeft)
+        ,TokenName[TStratoToken(s.v(p,tfOperator))]
+        ,s.r(p,tfRight)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttCast:
       Result:=Format('cast %d into %d',
-        [p.Target,p.EvaluatesTo]);
+        [s.r(p,tfTarget)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttSelection:
       Result:=Format('if   (%d){%d}{%d} t=%d',
-        [p.DoIf,p.DoThen,p.DoElse,p.EvaluatesTo]);
+        [s.r(p,tfDoIf)
+        ,s.r(p,tfDoThen)
+        ,s.r(p,tfDoElse)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttIteration:
       Result:=Format('for  &({%d}%d{%d}){%d}',
-        [p.DoElse,p.DoIf,p.DoThen,p.Body]);
+        [s.r(p,tfDoFirst)
+        ,s.r(p,tfDoIf)
+        ,s.r(p,tfDoThen)
+        ,s.r(p,tfBody)
+        ]);
     ttIterationPE:
       Result:=Format('loop &{%d}({%d}%d{%d})',
-        [p.Body,p.DoElse,p.DoIf,p.DoThen]);
+        [s.r(p,tfBody)
+        ,s.r(p,tfDoFirst)
+        ,s.r(p,tfDoIf)
+        ,s.r(p,tfDoThen)
+        ]);
     ttTry:
-      Result:=Format(':::  ->%d',[p.Target]);
+      Result:=Format(':::  ->%d',[s.r(p,tfTarget)]);
     ttThrow:
-      Result:=Format('!!!  ->%d',[p.Target]);
+      Result:=Format('!!!  ->%d',[s.r(p,tfTarget)]);
     ttDeferred:
-      Result:=Format('>>>  ->%d',[p.Target]);
+      Result:=Format('>>>  ->%d',[s.r(p,tfTarget)]);
     ttCatch:
       Result:=Format('???  t=%d v=%d ->%d',
-        [p.Target,p.FirstArgument,p.Body]);
+        [s.r(p,tfTarget)
+        ,s.r(p,tfFirstArgument)
+        ,s.r(p,tfBody)
+        ]);
     ttSysCall:
-      Result:=Format('sys  %.4x',[p.Op]);
+      Result:=Format('sys  %.4x',[s.v(p,tfOperator)]);
     ttArray:
       Result:=Format('arr  %s  #%d t=%d',
-        [s.FQN(i),p.ByteSize,p.Subject]);
+        [s.FQN(p)
+        ,s.v(p,tfByteSize)
+        ,s.v(p,tfSubject)
+        ]);
     ttArrayIndex:
       Result:=Format('x[]  %d[%d]  t=%d',
-        [p.Target,p.FirstArgument,p.EvaluatesTo]);
+        [s.r(p,tfTarget)
+        ,s.r(p,tfFirstArgument)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttField:
       Result:=Format('x.y  %d.%d  t=%d',
-        [p.Subject,p.Target,p.EvaluatesTo]);
+        [s.r(p,tfSubject)
+        ,s.r(p,tfTarget)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttThis:
       Result:=Format('this @%d t=%d',
-        [p.Offset,p.EvaluatesTo]);
+        [s.v(p,tfOffset)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttPointer:
       Result:=Format('ptr  %s  t=%d',
-        [s.FQN(i),p.EvaluatesTo]);
+        [s.FQN(p)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttAddressOf:
       Result:=Format('addr %d t=%d',
-        [p.ValueFrom,p.EvaluatesTo]);
+        [s.r(p,tfValueFrom)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttDereference:
       Result:=Format('dref %d t=%d',
-        [p.ValueFrom,p.EvaluatesTo]);
+        [s.r(p,tfValueFrom)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttClass:
       Result:=Format('cls  %s  #%d ->%d <-%d',
-        [s.FQN(i),p.ByteSize,p.FirstItem,p.InheritsFrom]);
+        [s.FQN(p)
+        ,s.v(p,tfByteSize)
+        ,s.r(p,tfFirstItem)
+        ,s.r(p,tfInheritsFrom)
+        ]);
     ttConstructors:
       Result:=Format('ctor ->%d',
-        [p.FirstItem]);
+        [s.r(p,tfFirstItem)
+        ]);
     ttConstructor:
       Result:=Format('ctor %d(%d){%d}',
-        [p.Target,p.FirstArgument,p.Body]);
+        [s.r(p,tfSignature)
+        ,s.r(p,tfFirstArgument)
+        ,s.r(p,tfBody)
+        ]);
     ttDestructor:
       Result:=Format('dtor %d: %d(){%d}',
-        [p.Parent,p.Target,p.Body]);
+        [s.r(p,tfParent)
+        ,s.r(p,tfSignature)
+        ,s.r(p,tfBody)
+        ]);
     ttInterface:
       Result:=Format('intf %s  ->%d <-%d',
-        [s.FQN(i),p.FirstItem,p.InheritsFrom]);
+        [s.FQN(p)
+        ,s.r(p,tfFirstItem)
+        ,s.r(p,tfInheritsFrom)
+        ]);
     ttArgByRef:
       Result:=Format('^arg %s  t=%d',
-        [s.FQN(i),p.EvaluatesTo]);
+        [s.FQN(p)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttVarByRef:
       Result:=Format('^var %s  @%d t=%d',
-        [s.FQN(i),integer(p.Offset),p.EvaluatesTo]);
+        [s.FQN(p)
+        ,integer(s.v(p,tfOffset))
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttClassRef:
       Result:=Format('cref %s  t=%d',
-        [s.FQN(i),p.EvaluatesTo]);
+        [s.FQN(p)
+        ,s.r(p,tfEvaluatesTo)
+        ]);
     ttPropertyGet:
       Result:=Format('pget %s  %d[%d]{%d}',
-        [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
+        [s.FQN(p)
+        ,s.r(p,tfSignature)
+        ,s.r(p,tfFirstArgument)
+        ,s.r(p,tfBody)
+        ]);
     ttPropertySet:
       Result:=Format('pset %s  %d[%d]{%d}',
-        [s.FQN(i),p.Target,p.FirstArgument,p.Body]);
+        [s.FQN(p)
+        ,s.r(p,tfSignature)
+        ,s.r(p,tfFirstArgument)
+        ,s.r(p,tfBody)
+        ]);
     ttPropCall:
-      if p.Op=0 then
+      if s.v(p,tfOperator)=0 then
         Result:=Format('prop %s  %d[%d]',
-          [s.FQN(p.Target),p.Target,p.FirstArgument])
+          [s.FQN(s.r(p,tfTarget))
+          ,s.r(p,tfTarget)
+          ,s.r(p,tfFirstArgument)
+          ])
       else
         Result:=Format('prop %s  %d[%d] %s %d',
-          [s.FQN(p.Target),p.Target
-          ,p.FirstArgument,TokenName[TStratoToken(p.Op)],p.EvaluatesTo]);
+          [s.FQN(s.r(p,tfTarget))
+          ,s.r(p,tfTarget)
+          ,s.r(p,tfFirstArgument)
+          ,TokenName[TStratoToken(s.v(p,tfOperator))]
+          ,s.r(p,tfEvaluatesTo)
+          ]);
     else
-      Result:=Format('?    "%s" (%.4x) %d,%d,%d,%d,%d',
-        [s.FQN(i),p.ThingType,p.Name,p.FirstItem
-        ,p.ByteSize,p.EvaluatesTo,p.SrcPos]);
+      Result:=Format('?    "%s" %s',
+        [s.FQN(p)
+        ,s.DebugInfo(p)
+        ]);
   end;
 end;
 
@@ -217,17 +346,17 @@ begin
   //assert Sphere[p].SrcPos<>0
   //assert not Sphere[p].ThingType in [ttHeader,ttSourceFile,ttBinaryData]
   q:=p;
-  while (q<>0) and not(s[q].ThingType in [ttNameSpace,ttOverload,ttConstructor]) do
-    q:=s[q].Parent;
+  while (q<>0) and not(s.t(q) in [ttNameSpace,ttOverload,ttConstructor]) do
+    q:=s.r(q,tfParent);
   if q<>0 then
-    case s[q].ThingType of
-      ttNameSpace:q:=PStratoNameSpaceData(s[q]).SourceFile;
-      ttOverload,ttConstructor:q:=s[q].SourceFile;
+    case s.t(q) of
+      ttNameSpace:q:=s.NameSpace(q).SourceFile;
+      ttOverload,ttConstructor:q:=s.r(q,tfSourceFile);
       else q:=0;//raise?
     end;
   if q=0 then LineIndex:=1 else
    begin
-    LineIndex:=PStratoSourceFile(s[q]).SrcPosLineIndex;
+    LineIndex:=s.SourceFile(q).SrcPosLineIndex;
     if LineIndex=0 then LineIndex:=1;
    end;
   Result:=q<>0;
@@ -236,7 +365,6 @@ end;
 procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
 var
   f:TFileStream;
-  px:PStratoThing;
   p,q:TStratoIndex;
   l:cardinal;
   x:string;
@@ -253,15 +381,14 @@ var
 begin
   f:=TFileStream.Create(fn,fmCreate);
   try
-    px:=PStratoThing(s.Header);
     xx:=Format(
       'Strato v=%.8x ini=%d fin=%d ns=%d global=%d #%d'#13#10,
-      [PStratoHeader(px).Version
-      ,PStratoHeader(px).FirstInitialization
-      ,PStratoHeader(px).FirstFinalization
-      ,PStratoHeader(px).FirstNameSpace
-      ,PStratoHeader(px).FirstGlobalVar
-      ,PStratoHeader(px).GlobalByteSize
+      [s.Header.Version
+      ,s.Header.FirstInitialization
+      ,s.Header.FirstFinalization
+      ,s.Header.FirstNameSpace
+      ,s.Header.FirstGlobalVar
+      ,s.Header.GlobalByteSize
       ])+
       'index   parent  next    source  line :col what info'#13#10;
     f.Write(xx[1],Length(xx));
@@ -269,41 +396,41 @@ begin
     p:=0;
     while s.NextIndex(p) do
      begin
-      px:=s[p];
-      case px.ThingType of
+      case s.t(p) of
         ttBinaryData:
          begin
-          x:=Format('%7d "%s"',[p,s.GetBinaryData(p)]);
-          inc(p,((PStratoBinaryData(px).DataLength+8-1) div SizeOf(TStratoThing)));
+          xx:=s.GetBinaryData(p);
+          x:=Format('%7d "%s"',[p,xx]);
+          inc(p,((Length(xx)+8-1) div SizeOf(TStratoThing)));
          end;
         ttSourceFile:
           x:=Format('%7d %33s ',[p,''])+
-            StratoDumpThing(s,p,px);
+            StratoDumpThing(s,p);
         else
           try
             x:=Format('%7d %33s ',[p,'']);
-            if px.ThingType=ttNameSpace then
+            if s.t(p)=ttNameSpace then
              begin
-              xn(15,px.Parent);
-              xn(23,px.Next);
-              xn(31,PStratoNameSpaceData(px).SourceFile);
+              xn(15,s.r(p,tfParent));
+              xn(23,s.r(p,tfNext));
+              xn(31,s.NameSpace(p).SourceFile);
              end
             else
-            if (px.SrcPos=0) or not(StratoGetSourceFile(s,p,q,l)) then
+            if (s.v(p,tfSrcPos)=0) or not(StratoGetSourceFile(s,p,q,l)) then
              begin
-              xn(15,px.Parent);
-              xn(23,px.Next);
+              xn(15,s.r(p,tfParent));
+              xn(23,s.r(p,tfNext));
              end
             else
              begin
-              xn(15,px.Parent);
-              xn(23,px.Next);
+              xn(15,s.r(p,tfParent));
+              xn(23,s.r(p,tfNext));
               xn(31,q);
-              xn(37,px.SrcPos div l);
+              xn(37,s.v(p,tfSrcPos) div l);
               x[38]:=':';
-              xn(41,px.SrcPos mod l);
+              xn(41,s.v(p,tfSrcPos) mod l);
              end;
-            x:=x+StratoDumpThing(s,p,px);
+            x:=x+StratoDumpThing(s,p);
           except
             on e:Exception do
               x:=Format('%7d ! %s',[p,e.Message]);

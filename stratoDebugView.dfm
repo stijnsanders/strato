@@ -19,7 +19,7 @@ object frmDebugView: TfrmDebugView
     Left = 0
     Top = 0
     Width = 625
-    Height = 529
+    Height = 528
     ActivePage = txContext
     Align = alClient
     TabOrder = 0
@@ -28,7 +28,7 @@ object frmDebugView: TfrmDebugView
       Caption = 'Context'
       DesignSize = (
         609
-        493)
+        492)
       object lblUpNext: TLabel
         Left = 0
         Top = 248
@@ -160,6 +160,7 @@ object frmDebugView: TfrmDebugView
           RowSelect = True
           TabOrder = 0
           ViewStyle = vsReport
+          OnDblClick = lvStackDblClick
         end
       end
       object txtUpNext: TMemo

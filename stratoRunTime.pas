@@ -1,14 +1,5 @@
 unit stratoRunTime;
 
-{
-
-stratoRunTime
-
-declare procedure DefaultTypes that adds basic run-time declarations
-into a TStratoSphere
-
-}
-
 interface
 
 uses stratoSphere, stratoDecl, stratoLogic, stratoFn;
@@ -25,7 +16,6 @@ const
 
 procedure DefaultTypes(Sphere:TStratoSphere);
 
-//TODO: move these into TStratoSpere!
 var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
   TypeDecl_number,TypeDecl_intLast,TypeDecl_variant,TypeDecl_pointer,
@@ -38,19 +28,20 @@ uses SysUtils;
 
 procedure DefaultTypes(Sphere:TStratoSphere);
 var
-  ns:TStratoIndex;
-  p:PStratoThing;
+  ns,nn:TStratoIndex;
 
   function A(const Name:UTF8String;s:integer): TStratoIndex;
-  var
-    q:PStratoThing;
   begin
-    Result:=Sphere.Add(ttTypeDecl,q);
-    q.Name:=Sphere.Dict.StrIdx(Name);
-    q.Parent:=ns;
-    q.ByteSize:=s;
-    if p=nil then Sphere[ns].FirstItem:=Result else p.Next:=Result;
-    p:=q;
+    Result:=Sphere.Add(ttTypeDecl,
+      [tfName,Sphere.Dict.StrIdx(Name)
+      ,tfParent,ns
+      ,tfByteSize,s
+      ]);
+    if nn=0 then
+      Sphere.s(ns,tfFirstItem,Result)
+    else
+      Sphere.s(nn,tfNext,Result);
+    nn:=Result;
   end;
 
   const
@@ -59,103 +50,113 @@ var
   procedure C(const FunctionName,SignatureName:UTF8String;Op:cardinal;
     const Arguments:array of TStratoIndex;ReturnType:TStratoIndex);
   var
-    i:integer;
-    n,n1,p1,p2:TStratoIndex;
-    q,r,s,cx:PStratoThing;
+    i,bs:integer;
+    n,n1,p1,p2,p3,s:TStratoIndex;
   begin
-    //n:=Sphere.Lookup(ns.FirstItem,FunctionName);
-    //if n=0 then
-     begin
-      n1:=Sphere.Add(ttMember,q);
-      q.Name:=Sphere.Dict.StrIdx(FunctionName);
-      q.Parent:=ns;
-      n:=Sphere.Add(ttOverload,q);
-      q.Parent:=n1;
+    n1:=Sphere.Add(ttMember,
+      [tfName,Sphere.Dict.StrIdx(FunctionName)
+      ,tfParent,ns
+      ]);
+    n:=Sphere.Add(ttOverload,
+      [tfParent,n1
+      ]);
+    Sphere.s(n1,tfFirstItem,n);
+    Sphere.s(nn,tfNext,n1);
+    nn:=n1;
 
-      p.Next:=n1;
-      p:=Sphere[n1];
-      p.FirstItem:=n;
-     end;
-
-    q.Target:=Sphere.Add(ttSignature,r);
-    r.Name:=Sphere.Dict.StrIdx(SignatureName);
-    r.Parent:=n;
-    r.EvaluatesTo:=ReturnType;
+    s:=Sphere.Add(ttSignature,
+      [tfName,Sphere.Dict.StrIdx(SignatureName)
+      ,tfParent,n
+      ,tfEvaluatesTo,ReturnType
+      ]);
+    Sphere.s(n,tfSignature,s);
 
     p2:=0;
     for i:=0 to Length(Arguments)-1 do
      begin
-      p1:=Sphere.Add(ttArgument,s);
-      if p2=0 then r.FirstArgument:=p1 else Sphere[p2].Next:=p1;
-      p2:=p1;
-      s.Parent:=q.Target;
       if (Arguments[i] and C_ByRef)=0 then
-        s.EvaluatesTo:=Arguments[i]
+        p1:=Sphere.Add(ttArgument,
+          [tfParent,s
+          ,tfEvaluatesTo,Arguments[i]
+          ])
       else
-       begin
-        s.ThingType:=ttArgByRef;
-        s.EvaluatesTo:=(Arguments[i] xor C_ByRef);
-       end;
+        p1:=Sphere.Add(ttArgByRef,
+          [tfParent,s
+          ,tfEvaluatesTo,Arguments[i] xor C_ByRef
+          ]);
+      if p2=0 then Sphere.s(s,tfFirstArgument,p1) else Sphere.s(p2,tfNext,p1);
+      p2:=p1;
      end;
 
-    q.Body:=Sphere.Add(ttCodeBlock,cx);
-    cx.Parent:=n;
-    cx.FirstStatement:=Sphere.Add(ttSysCall,s);
-    s.Parent:=n;
-    s.Op:=Op;
+    bs:=0;
+    p1:=Sphere.Add(ttCodeBlock,
+      [tfParent,n
+      ]);
+    Sphere.s(n,tfBody,p1);
+    p2:=Sphere.Add(ttSysCall,
+      [tfParent,n
+      ,tfOperator,Op
+      ]);
+    Sphere.s(p1,tfFirstStatement,p2);
 
     if ReturnType<>0 then
      begin
-      p1:=Sphere.Add(ttVar,r);
-      r.Name:=Sphere.Dict.StrIdx(FunctionName);
-      r.Parent:=q.Body;
-      r.EvaluatesTo:=ReturnType;
-      r.Offset:=cx.ByteSize;
-      inc(cx.ByteSize,ByteSize(Sphere,ReturnType));
-      cx.FirstItem:=p1;
+      p2:=Sphere.Add(ttVar,
+        [tfName,Sphere.Dict.StrIdx(FunctionName)
+        ,tfParent,p1
+        ,tfEvaluatesTo,ReturnType
+        ,tfOffset,bs
+        ]);
+      inc(bs,ByteSize(Sphere,ReturnType));
+      Sphere.s(p1,tfFirstItem,p2);
      end
     else
-      p1:=0;
+      p2:=0;
 
-    p2:=p1;
     for i:=0 to Length(Arguments)-1 do
      begin
-      p1:=Sphere.Add(ttVar,r);
-      if p2=0 then
-       begin
-        if cx.FirstItem=0 then
-          cx.FirstItem:=p1;
-       end
-      else
-        Sphere[p2].Next:=p1;
-      p2:=p1;
-      if i=0 then q.FirstArgument:=p1;
-      r.Parent:=q.Body;
-      r.Offset:=cx.ByteSize;
       if (Arguments[i] and C_ByRef)=0 then
        begin
-        r.EvaluatesTo:=Arguments[i];
-        inc(cx.ByteSize,Sphere[Arguments[i]].ByteSize);
+        p3:=Sphere.Add(ttVar,
+           [tfParent,p1
+           ,tfOffset,bs
+           ,tfEvaluatesTo,Arguments[i]
+           ]);
+        inc(bs,Sphere.v(Arguments[i],tfByteSize));
        end
       else
        begin
-        r.ThingType:=ttVarByRef;
-        r.EvaluatesTo:=Arguments[i] xor C_ByRef;
-        inc(cx.ByteSize,SystemWordSize);
+        p3:=Sphere.Add(ttVarByRef,
+           [tfParent,p1
+           ,tfOffset,bs
+           ,tfEvaluatesTo,Arguments[i] xor C_ByRef
+           ]);
+        inc(bs,SystemWordSize);
        end;
+      if p2=0 then
+        Sphere.s(p1,tfFirstItem,p3)
+      else
+        Sphere.s(p2,tfNext,p3);
+      p2:=p3;
+      if i=0 then Sphere.s(n,tfFirstArgument,p3);
      end;
+    Sphere.s(p1,tfByteSize,bs);
 
   end;
   
 begin
   //assert Sphere.Header.FirstNameSpace=0
-  //Sphere.MarkIndex($10000);
+  {$IFDEF DEBUG}
   Sphere.MarkIndex(10000);
-  ns:=Sphere.Add(ttNameSpace,p);
-  p.Name:=Sphere.Dict.StrIdx('Strato');
+  {$ELSE}
+  Sphere.MarkIndex($10000);
+  {$ENDIF}
+  ns:=Sphere.Add(ttNameSpace,
+    [tfName,Sphere.Dict.StrIdx('Strato')
+    ]);
   Sphere.Header.FirstNameSpace:=ns;
 
-  p:=nil;
+  nn:=0;
   TypeDecl_void:=A('void',0);
   TypeDecl_type:=A('type',SystemWordSize);
   TypeDecl_bool:=A('bool',SystemWordSize);

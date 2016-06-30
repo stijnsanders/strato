@@ -65,7 +65,7 @@ type
       Node: TTreeNode; State: TCustomDrawState; var DefaultDraw: Boolean);
   private
     FSphere:TStratoSphere;
-    FSrcFile,FHighLight:TStratoIndex;
+    FSrcFile,FHighLight1,FHighLight2:TStratoIndex;
     FSrcPath,FFilePath,FSignature:string;
     w1,w2:integer;
     procedure LoadFile(const FilePath:string);
@@ -233,7 +233,7 @@ begin
     while p<>0 do
      begin
       BuildNode(n,p);
-      p:=FSphere[p].Next;
+      p:=FSphere.r(p,tfNext);
      end;
 
     n:=TreeView1.Items.AddChild(nil,':GlobalVars #'+
@@ -247,7 +247,7 @@ begin
       BuildNode(n,q);
       }
       BuildNode(n,p);
-      p:=FSphere[p].Next;
+      p:=FSphere.r(p,tfNext);
      end;
 
     n:=TreeView1.Items.AddChild(nil,':Initialization') as TXsTreeNode;
@@ -255,9 +255,9 @@ begin
     while p<>0 do
      begin
       q:=p;
-      while (q<>0) and (FSphere[q].ThingType=ttAlias) do q:=FSphere[q].Target;
+      while (q<>0) and (FSphere.t(q)=ttAlias) do q:=FSphere.r(q,tfTarget);
       BuildNode(n,q);
-      p:=FSphere[p].Next;
+      p:=FSphere.r(p,tfNext);
      end;
 
     n:=TreeView1.Items.AddChild(nil,':Finalization') as TXsTreeNode;
@@ -265,9 +265,9 @@ begin
     while p<>0 do
      begin
       q:=p;
-      while (q<>0) and (FSphere[q].ThingType=ttAlias) do q:=FSphere[q].Target;
+      while (q<>0) and (FSphere.t(q)=ttAlias) do q:=FSphere.r(q,tfTarget);
       BuildNode(n,q);
-      p:=FSphere[p].Next;
+      p:=FSphere.r(p,tfNext);
      end;
 
   finally
@@ -320,7 +320,7 @@ var
   a:array of cardinal;
   i,ai,al:cardinal;
   b:boolean;
-  px:PStratoThing;
+  tt:TStratoThingType;
 begin
   if x<>0 then
    begin
@@ -335,17 +335,13 @@ begin
         inc(al,$400);//grow;
         SetLength(a,al);
        end;
-       px:=FSphere[i];
-       if px=nil then i:=0 else
+       tt:=FSphere.t(i);
+       if tt=0 then i:=0 else
         begin
-         if px.ThingType=ttBinaryData then
-          begin
-           dec(i);
-           px:=FSphere[i];
-          end;
+         if tt=ttBinaryData then dec(i);
          a[ai]:=i;
          inc(ai);
-         i:=px.Parent;
+         i:=FSphere.r(i,tfParent);
         end;
      end;
     n:=TreeView1.Items.GetFirstNode;
@@ -429,11 +425,11 @@ begin
    begin
     Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode;
     b:=false;
-    tt:=FSphere[i].ThingType;
+    tt:=FSphere.t(i);
     if (n<>nil) and (n is TXsTreeNode) then
       if not(tt in [ttVar,ttVarByRef,ttThis]) then
        begin
-        q:=FSphere[i].Parent;
+        q:=FSphere.r(i,tfParent);
         m:=n;
         while not(b) and (m<>nil) do
          begin
@@ -479,8 +475,8 @@ end;
 
 function TfrmXsViewMain.BuildNode(Node:TTreeNode;i:cardinal):TXsTreeNode;
 var
-  p:PStratoThing;
   q:TStratoIndex;
+  tt:TStratoThingType;
   j,k:cardinal;
   n:TXsTreeNode;
   s:string;
@@ -489,154 +485,157 @@ begin
     Result:=nil
   else
    begin
-    p:=FSphere[i];
-    s:=IntToStr(i)+': '+StratoDumpThing(FSphere,i,p);
-    if (p.ThingType<>ttSourceFile) and (p.ThingType<>ttBinaryData)
-      and (p.SrcPos<>0) and StratoGetSourceFile(FSphere,i,q,j) then
+    s:=IntToStr(i)+': '+StratoDumpThing(FSphere,i);
+    tt:=FSphere.t(i);
+    k:=FSphere.v(i,tfSrcPos);
+    if (tt<>ttSourceFile) and (tt<>ttBinaryData)
+      and (k<>0) and StratoGetSourceFile(FSphere,i,q,j) then
       s:=Format('%s  [%s(%d:%d)]',[s
-        ,FSphere.GetBinaryData(PStratoSourceFile(FSphere[q]).FileName)
-        ,p.SrcPos div j
-        ,p.SrcPos mod j
+        ,FSphere.GetBinaryData(FSphere.SourceFile(q).FileName)
+        ,k div j
+        ,k mod j
         ]);
     n:=TreeView1.Items.AddChild(Node,s) as TXsTreeNode;
     n.Index:=i;
     k:=iiDefault;
     j:=0;//set ExpandIndex?
-    case p.ThingType of
+    case tt of
       ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration:
-        j:=p.FirstItem;
+        j:=FSphere.r(i,tfFirstItem);
       ttAlias,ttGlobal,ttImport,ttTry,ttDeferred,ttThrow:
        begin
-        n.JumpIndex:=p.Target;
-        if (p.Target<>0) and (FSphere[p.Target].ThingType=ttField) then
-          BuildNode(n,p.Target);
+        q:=FSphere.r(i,tfTarget);
+        n.JumpIndex:=q;
+        if (q<>0) and (FSphere.t(q)=ttField) then BuildNode(n,q);
        end;
       ttArray:
-        n.JumpIndex:=p.Subject;
+        n.JumpIndex:=FSphere.r(i,tfSubject);
       ttMember,ttConstructors:
-        j:=p.FirstItem;
+        j:=FSphere.r(i,tfFirstItem);
       ttVar,ttConstant,ttLiteral:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        BuildNode(n,p.InitialValue);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        BuildNode(n,FSphere.r(i,tfInitialValue));
        end;
       ttSignature:
        begin
-        JumpNode(n,':obj=',p.Target);
-        ListNode(n,':arg->',p.FirstArgument);
-        JumpNode(n,':res=',p.EvaluatesTo);
+        JumpNode(n,':obj=',FSphere.r(i,tfTarget));
+        ListNode(n,':arg->',FSphere.r(i,tfFirstArgument));
+        JumpNode(n,':res=',FSphere.r(i,tfEvaluatesTo));
        end;
       ttOverload,ttConstructor,ttPropertyGet,ttPropertySet:
        begin
-        JumpNode(n,':sig=',p.Target);
-        JumpNode(n,':arg->',p.FirstArgument);
-        BuildNode(n,p.Body);
+        JumpNode(n,':sig=',FSphere.r(i,tfSignature));
+        JumpNode(n,':arg->',FSphere.r(i,tfFirstArgument));
+        BuildNode(n,FSphere.r(i,tfBody));
        end;
       ttFnCall:
        begin
-        JumpNode(n,':trg=',p.Target);
-        ListNode(n,':arg->',p.FirstArgument);
+        JumpNode(n,':trg=',FSphere.r(i,tfTarget));
+        ListNode(n,':arg->',FSphere.r(i,tfFirstArgument));
         //if Target is ttConstructor?
-        if p.EvaluatesTo<>0 then JumpNode(n,':res->',p.EvaluatesTo);
+        q:=FSphere.r(i,tfEvaluatesTo);
+        if q<>0 then JumpNode(n,':res->',q);
        end;
       ttArgument:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':dft=',p.InitialValue);
-        JumpNode(n,':val=',p.Target);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        JumpNode(n,':dft=',FSphere.r(i,tfInitialValue));
+        JumpNode(n,':val=',FSphere.r(i,tfTarget));
        end;
       ttThis://,ttInherited:
-        n.JumpIndex:=p.EvaluatesTo;
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
       ttArrayIndex:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':arr=',p.Target);
-        ListNode(n,':idx->',p.FirstArgument);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        JumpNode(n,':arr=',FSphere.r(i,tfTarget));
+        ListNode(n,':idx->',FSphere.r(i,tfFirstArgument));
        end;
       ttField:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':sub=',p.Subject);
-        JumpNode(n,':mem=',p.Target);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        JumpNode(n,':sub=',FSphere.r(i,tfSubject));
+        JumpNode(n,':mem=',FSphere.r(i,tfTarget));
        end;
       ttCodeBlock:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        ListNode(n,':var->',p.FirstItem);
-        ListNode(n,':cmd->',p.FirstStatement);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        ListNode(n,':var->',FSphere.r(i,tfFirstItem));
+        ListNode(n,':cmd->',FSphere.r(i,tfFirstStatement));
        end;
       ttAssign:
        begin
-        JumpNode(n,':ValueFrom ',p.ValueFrom);
-        JumpNode(n,':AssignTo ',p.AssignTo);
+        JumpNode(n,':ValueFrom ',FSphere.r(i,tfValueFrom));
+        JumpNode(n,':AssignTo ',FSphere.r(i,tfAssignTo));
        end;
       ttUnaryOp:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':Right ',p.Right);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        JumpNode(n,':Right ',FSphere.r(i,tfRight));
        end;
       ttBinaryOp:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':Left ',p.Left);
-        JumpNode(n,':Right ',p.Right);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        JumpNode(n,':Left ',FSphere.r(i,tfLeft));
+        JumpNode(n,':Right ',FSphere.r(i,tfRight));
        end;
       ttCast:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        JumpNode(n,':sub=',p.Target);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        JumpNode(n,':sub=',FSphere.r(i,tfTarget));
        end;
       ttClass,ttInterface:
        begin
-        n.JumpIndex:=p.InheritsFrom;
-        j:=p.FirstItem;
+        n.JumpIndex:=FSphere.r(i,tfInheritsFrom);
+        j:=FSphere.r(i,tfFirstItem);
        end;
       ttSelection:
        begin
-        JumpNode(n,':If ',p.DoIf);
-        ListNode(n,':Then ',p.DoThen);
-        ListNode(n,':Else ',p.DoElse);
+        JumpNode(n,':If ',FSphere.r(i,tfDoIf));
+        ListNode(n,':Then ',FSphere.r(i,tfDoThen));
+        ListNode(n,':Else ',FSphere.r(i,tfDoElse));
        end;
       ttIteration:
        begin
-        ListNode(n,':First ',p.DoElse);
-        JumpNode(n,':If ',p.DoIf);
-        ListNode(n,':Then ',p.DoThen);
-        BuildNode(n,p.Body);
+        ListNode(n,':First ',FSphere.r(i,tfDoElse));
+        JumpNode(n,':If ',FSphere.r(i,tfDoIf));
+        ListNode(n,':Then ',FSphere.r(i,tfDoThen));
+        BuildNode(n,FSphere.r(i,tfBody));
        end;
       ttIterationPE:
        begin
-        BuildNode(n,p.Body);
-        ListNode(n,':First ',p.DoElse);
-        JumpNode(n,':If ',p.DoIf);
-        ListNode(n,':Then ',p.DoThen);
+        BuildNode(n,FSphere.r(i,tfBody));
+        ListNode(n,':First ',FSphere.r(i,tfDoElse));
+        JumpNode(n,':If ',FSphere.r(i,tfDoIf));
+        ListNode(n,':Then ',FSphere.r(i,tfDoThen));
        end;
       ttCatch:
        begin
-        n.JumpIndex:=p.DoIf;
-        JumpNode(n,':v=',p.FirstItem);
-        BuildNode(n,p.Body);
+        n.JumpIndex:=FSphere.r(i,tfDoIf);
+        JumpNode(n,':v=',FSphere.r(i,tfFirstItem));
+        BuildNode(n,FSphere.r(i,tfBody));
        end;
       ttPointer,ttArgByRef,ttVarByRef,ttClassRef:
-        n.JumpIndex:=p.EvaluatesTo;
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
       ttAddressOf,ttDereference:
        begin
-        n.JumpIndex:=p.EvaluatesTo;
-        BuildNode(n,p.ValueFrom);
+        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
+        BuildNode(n,FSphere.r(i,tfValueFrom));
        end;
       ttDestructor:
        begin
-        JumpNode(n,':sig=',p.Target);
-        BuildNode(n,p.Body);
+        JumpNode(n,':sig=',FSphere.r(i,tfSignature));
+        BuildNode(n,FSphere.r(i,tfBody));
        end;
       ttPropCall:
        begin
-        JumpNode(n,':trg=',p.Target);
-        ListNode(n,':arg->',p.FirstArgument);
-        if p.EvaluatesTo<>0 then JumpNode(n,':val=',p.EvaluatesTo);
+        JumpNode(n,':trg=',FSphere.r(i,tfTarget));
+        ListNode(n,':arg->',FSphere.r(i,tfFirstArgument));
+        q:=FSphere.r(i,tfEvaluatesTo);
+        if q<>0 then JumpNode(n,':val=',q);
        end;
     end;
-    case p.ThingType of
+    case tt of
       ttNameSpace:k:=iiNameSpace;
       ttTypeDecl:k:=iiTypeDecl;
       ttRecord:k:=iiRecord;
@@ -681,7 +680,7 @@ begin
       ttPropertyGet:k:=iiPropertyGet;
       ttPropertySet:k:=iiPropertySet;
       ttPropCall:
-        if p.Op=0 then k:=iiPropCall else k:=iiPropAssign;
+        if FSphere.v(i,tfOperator)=0 then k:=iiPropCall else k:=iiPropAssign;
     end;
     n.ImageIndex:=k;
     n.SelectedIndex:=k;
@@ -711,7 +710,7 @@ begin
         while i<>0 do
          begin
           BuildNode(Node,i);
-          i:=FSphere[i].Next;
+          i:=FSphere.r(i,tfNext);
          end;
     finally
       TreeView1.Items.EndUpdate;
@@ -781,8 +780,8 @@ begin
     JumpTo(p);
     if TreeView1.Selected=nil then
      begin
-      if FSphere[p].ThingType=ttBinaryData then dec(p);
-      p:=FSphere[p].Parent;
+      if FSphere.t(p)=ttBinaryData then dec(p);
+      p:=FSphere.r(p,tfParent);
      end
     else
      begin
@@ -832,34 +831,36 @@ end;
 
 procedure TfrmXsViewMain.TreeView1Change(Sender: TObject; Node: TTreeNode);
 var
-  p,q,h1:TStratoIndex;
-  qx:PStratoThing;
-  pi,Line,Col:cardinal;
+  p,q,h1,h2:TStratoIndex;
+  pi,pj,Line,Col:cardinal;
   si:TScrollInfo;
 begin
   if txtSourceView.Visible then
    begin
-    h1:=FHighLight;
+    h1:=FHighLight1;
+    h2:=FHighLight2;
     if (Node=nil) or not(Node is TXsTreeNode) then
      begin
       txtSourceView.Clear;
       FSrcFile:=0;
-      FHighLight:=0;
+      FHighLight1:=0;
+      FHighLight2:=0;
      end
     else
      begin
       Line:=0;
       Col:=0;
-      q:=(Node as TXsTreeNode).Index;
-      FHighLight:=(Node as TXsTreeNode).JumpIndex;
+      FHighLight1:=(Node as TXsTreeNode).JumpIndex;
+      FHighLight2:=(Node as TXsTreeNode).Index;
+      q:=FHighLight2;
       try
         if (q<>0) then
          begin
-          qx:=FSphere[q];
+          pj:=FSphere.v(q,tfSrcPos);
           if StratoGetSourceFile(FSphere,q,p,pi) then
            begin
-            Line:=qx.SrcPos div pi;
-            Col:=qx.SrcPos mod pi;
+            Line:=pj div pi;
+            Col:=pj mod pi;
            end
           else
             p:=0;
@@ -876,7 +877,7 @@ begin
             FSrcFile:=0;//in case of error
             //TODO: resolve relative path
             //TODO: cache several?
-            FSrcPath:=FSphere.GetBinaryData(PStratoSourceFile(FSphere[p]).FileName);
+            FSrcPath:=FSphere.GetBinaryData(FSphere.SourceFile(p).FileName);
             //TODO: check signature/timestamp
             txtSourceView.Lines.LoadFromFile(FSrcPath);
             FSrcFile:=p;
@@ -905,7 +906,7 @@ begin
          end;
       end;
      end;
-    if FHighLight<>h1 then TreeView1.Invalidate;
+    if (FHighLight1<>h1) or (FHighLight2<>h2) then TreeView1.Invalidate;
    end;
 end;
 
@@ -926,11 +927,23 @@ end;
 
 procedure TfrmXsViewMain.TreeView1CustomDrawItem(Sender: TCustomTreeView;
   Node: TTreeNode; State: TCustomDrawState; var DefaultDraw: Boolean);
+var
+  p:TStratoIndex;
 begin
-  if FHighLight<>0 then
+  if ((FHighLight1<>0) or (FHighLight2<>0)) and not(cdsSelected in State) then
     if Node is TXsTreeNode then
-      if (Node as TXsTreeNode).Index=FHighLight then
-        Sender.Canvas.Brush.Color:=$00CC00;
+     begin
+      p:=(Node as TXsTreeNode).Index;
+      if (FHighLight1<>0) and (p=FHighLight1) then
+        Sender.Canvas.Brush.Color:=$00CCFF //gold
+      else
+      if (FHighLight2<>0) and ((Node as TXsTreeNode).JumpIndex=FHighLight2) then
+        Sender.Canvas.Brush.Color:=$00CC00 //green
+      else
+      if (FHighLight2<>0) and (p=FHighLight2) then
+        Sender.Canvas.Brush.Color:=$FFCC99 //skyblue
+      ;
+     end;
 end;
 
 end.
