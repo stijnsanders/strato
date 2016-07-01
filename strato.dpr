@@ -45,7 +45,7 @@ var
 
 var
   DoRun,DoDebug,DoTokenize,DoRunTime,DoInlineErrors:boolean;
-  DoDump,DoDumpHR:string;
+  DoDump,DoDumpHR,LastFN:string;
 
 begin
   if ParamCount=0 then
@@ -62,6 +62,7 @@ begin
     Writeln('  -I <filename>  import sphere');
     Writeln('  -E             inline errors into sphere as binary entries');
     Writeln('  -D             enable debug viewer');
+    Writeln('  -X             shorthand for -EUHD');
 
     //TODO: export LLVMIR
     //TODO: params from file
@@ -79,6 +80,7 @@ begin
       DoInlineErrors:=false;
       DoDump:='';
       DoDumpHR:='';
+      LastFN:='';
 
       ec:=0;
       n:=TStratoSphere.Create;
@@ -115,6 +117,15 @@ begin
                   DoRunTime:=false;
                  end;
                 'E':DoInlineErrors:=true;
+                'X':
+                 begin
+                  if LastFN='' then
+                    Writeln('write a filename first, then -X');
+                  DoDump:=LastFN+'u';
+                  DoDumpHR:=LastFN+'v';
+                  DoInlineErrors:=true;
+                  DoDebug:=true;
+                 end;
                 else
                   Writeln('unknown switch "'+x[j]+'"');
               end;
@@ -135,6 +146,7 @@ begin
             s:=TStratoSource.Create;
             if DoInlineErrors then s.OnError:=n.InlineError;
             s.LoadFromFile(x);
+            LastFN:=x;//used by -X above
             if DoTokenize then
               StratoDumpTokens(s.Tokens)
             else

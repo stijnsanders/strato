@@ -1,10 +1,16 @@
 TODO
 ====
 
+* lookup b-tree's (instead of linked list)
+* resolve operators just like virtual methods
+* read-only function arguments (or even just read-only) (except by ref)
+* polyvalent by context '=','&','|'
+* interfaces, properties (extensive testing/dogfooding)
+* prevent namespace-crossing (also: ttPrivate)
+
 * heap (malloc, check stack overflow)
 * strings on heap, strings from/to array of chars
 * struct initial values
-* arguments: read-only (except when by ref)
 * infer untyped local when first used as output argument
 * function variable, also as result x(x)(x) etc.
 * JSON, array literals (requires 'standard' key-value storage solution)

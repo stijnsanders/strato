@@ -330,8 +330,8 @@ type
     FileName:TStratoName;
     FileSize:cardinal;
     SrcPosLineIndex:cardinal;
-    xReserved1,//FileCRC32?
-    xReserved2,//FileDate?
+    xReserved1,//FileCRC32?FileDate?
+    SharedScope,
     InitializationCode,
     FinalizationCode:TStratoIndex;
   end;
@@ -619,6 +619,7 @@ begin
   case tt of
     ttNameSpace:
       case f of
+        tfParent:ok:=tc=ttNameSpace;
         tfFirstItem,tfNext:if tc=ttNameSpace then ok:=true else anydecl;
       end;
     ttTypeDecl:

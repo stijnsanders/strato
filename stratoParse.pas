@@ -150,7 +150,6 @@ var
   nn:UTF8String;
   p,q,r:TStratoIndex;
 begin
-  Result:=true;//default
   ID(n,nn,SrcPos);
   p:=0;
   q:=0;
@@ -162,17 +161,18 @@ begin
     p:=ns;
     ns:=Sphere.r(ns,tfNext);
    end;
+  Result:=ns<>0;
   //resolve nested namespaces
   while Source.IsNext([stPeriod,stIdentifier]) do
    begin
     if ns=0 then
      begin
       //not found, create
-      ns:=Sphere.Add(ttNameSpace,[tfName,n]);
-      //tfParent,0
-      //tfSourceFile,src//?
-      //tfSrcPos
-
+      ns:=Sphere.Add(ttNameSpace,
+        [tfName,n
+        ,tfParent,q
+        //,tfSourceFile,src//?
+        ]);
       //p is last in Sphere.Header.FirstNameSpace sequence, see above
       //if p=0 then q is namespace one level up (see below)
       if p=0 then
@@ -191,7 +191,10 @@ begin
          end;
        end
       else
+       begin
         Sphere.s(p,tfNext,ns);
+        p:=0;
+       end;
       Result:=false;
      end;
     ID(n,nn,SrcPos);
@@ -204,7 +207,7 @@ begin
       ns:=Sphere.r(ns,tfNext);
      end;
    end;
-  Result:=Result and (ns<>0);
+  if not(Result) then ns:=q;
 end;
 
 procedure TStratoParserBase.ParseImport;
@@ -1483,22 +1486,38 @@ end;
 
 procedure TStratoParser.ParseHeader;
 var
-  ns,p,q,r:TStratoIndex;
+  ns,p,q,r,scope:TStratoIndex;
   b:boolean;
   n:TStratoName;
   nn:UTF8String;
   sx:PStratoSourceFile;
   SrcPos,SrcPos1:cardinal;
+  nd:PStratoNameSpaceData;
 begin
+  scope:=0;
   //namespace
+  SrcPos:=Source.SrcPos;
   if Source.IsNext([stIdentifier]) then
    begin
     b:=LookUpNameSpace(ns,n,SrcPos);
-    if Source.IsNext([stAt,stNumericLiteral]) then
-     begin
-      mark1:=ParseInteger(string(Source.GetID(SrcPos1)));
-      mark2:=Sphere.MarkIndex(mark1);
-     end;
+    while Source.IsNext([stAt]) do
+      case Source.Token of
+        stNumericLiteral:
+         begin
+          mark1:=ParseInteger(string(Source.GetID(SrcPos1)));
+          mark2:=Sphere.MarkIndex(mark1);
+         end;
+        stIdentifier:
+          if not LookUpNameSpace(scope,n,SrcPos1) then
+            scope:=Sphere.Add(ttNameSpace,
+              [tfName,n
+              ,tfParent,scope
+              ,tfSourceFile,src
+              ,tfSrcPos,SrcPos1
+              ]);
+        else
+          Source.Error('unknown namespace load modifier syntax');
+      end;
     if not b then
      begin
       //create namespace
@@ -1536,6 +1555,7 @@ begin
     n:=Sphere.Dict.StrIdx(nn);
     ns:=Sphere.Add(ttNameSpace,
       [tfName,n
+      ,tfParent,ns //optional value from LookUpNameSpace above
       ,tfSourceFile,src
       ,tfSrcPos,SrcPos
       ]);
@@ -1561,9 +1581,10 @@ begin
   sx.FileName:=Sphere.AddBinaryData(UTF8String(Source.FilePath));
   sx.FileSize:=Source.FileSize;
   //sx.FileDate? checksum?
+  sx.SharedScope:=scope;
   sx.SrcPosLineIndex:=Source.LineIndex;
-  if Sphere.NameSpace(ns).SourceFile=0 then
-    Sphere.NameSpace(ns).SourceFile:=src;
+  nd:=Sphere.NameSpace(ns);
+  if nd.SourceFile=0 then nd.SourceFile:=src;
   FNameSpace:=ns;
   //sx.NameSpace:=ns;//?
   SetLength(Locals,3);
