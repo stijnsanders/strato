@@ -80,7 +80,7 @@ destructor TStratoMachine.Destroy;
 begin
   SetLength(FMem,0);
   FreeAndNil(FDebugView);
-  inherited                                     ;
+  inherited;
 end;
 
 procedure TStratoMachine.Run(Sphere: TStratoSphere);
@@ -90,13 +90,13 @@ begin
   if FDebugView<>nil then FDebugView.Show;
   AllocateGlobals(Sphere);
   //TODO: halt on unhandled exception?
-  p:=Sphere.Header.FirstInitialization;
+  p:=Sphere.r(pHeader,tf_FirstInitialization);
   while p<>0 do
    begin
     Perform(Sphere,p);
     p:=Sphere.r(p,tfNext);
    end;
-  p:=Sphere.Header.FirstFinalization;
+  p:=Sphere.r(pHeader,tf_FirstFinalization);
   while p<>0 do
    begin
     Perform(Sphere,p);
@@ -113,10 +113,10 @@ begin
   //allocate memory
   //FGlobals[].Sphere:=Sphere;//SphereBasePtr
   //FGlobals[].Address:=FMemIndex;
-  inc(FMemIndex,Sphere.Header.GlobalByteSize);
+  inc(FMemIndex,Sphere.v(pHeader,tf_GlobalByteSize));
 
   //initialize
-  p:=Sphere.Header.FirstGlobalVar;
+  p:=Sphere.r(pHeader,tf_FirstGlobalVar);
   while p<>0 do
    begin
     //assert Sphere[p].ThingType=ttGlobal
@@ -408,8 +408,8 @@ var
         pi:=BaseMemPtr;
         k:=0;
         ii:=0;
-        if Sphere.Header.GlobalByteSize=0 then pp:=0 else
-          pp:=Sphere.Header.FirstGlobalVar;
+        if Sphere.v(pHeader,tf_GlobalByteSize)=0 then pp:=0 else
+          pp:=Sphere.v(pHeader,tf_FirstGlobalVar);
         while ((i<FMemIndex) or (i<np)) and (ii<80) do
          begin
           inc(ii);

@@ -183,7 +183,7 @@ begin
         FSrcFile:=0;//in case of error
         //TODO: resolve relative path
         //TODO: cache several?
-        FSrcPath:=s.GetBinaryData(s.SourceFile(p).FileName);
+        FSrcPath:=s.GetBinaryData(s.r(p,tf_SourceFile_FileName));
         //TODO: check signature/timestamp
         FSrcData.LoadFromFile(FSrcPath);
         FSrcFile:=p;
@@ -294,7 +294,7 @@ begin
   li:=lvStack.ItemFocused;//ItemSelected?
   if li<>nil then
    begin
-    txtBreakPoints.Text:=li.Caption;
+    txtBreakPoints.Text:=li.SubItems[0];
     btnRunTo.Click;
    end;
 end;

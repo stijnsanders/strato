@@ -154,7 +154,7 @@ begin
   p:=0;
   q:=0;
   //Sphere.Lookup? take ttNameSpace only
-  ns:=Sphere.Header.FirstNameSpace;
+  ns:=Sphere.r(pHeader,tf_FirstNameSpace);
   while (ns<>0) and
     not((Sphere.t(ns)=ttNameSpace) and (Sphere.v(ns,tfName)=n)) do
    begin
@@ -173,7 +173,7 @@ begin
         ,tfParent,q
         //,tfSourceFile,src//?
         ]);
-      //p is last in Sphere.Header.FirstNameSpace sequence, see above
+      //p is last in tf_FirstNameSpace sequence, see above
       //if p=0 then q is namespace one level up (see below)
       if p=0 then
        begin
@@ -236,8 +236,8 @@ begin
       //TODO: load from standard library !!!
       if LookupNameSpace(ns,n,SrcPos) then
        begin
-        if Sphere.NameSpace(ns).SourceFile=0 then
-          Sphere.NameSpace(ns).SourceFile:=src;
+        if Sphere.r(ns,tf_NameSpace_SourceFile)=0 then
+          Sphere.s(ns,tf_NameSpace_SourceFile,src);
        end
       else
        begin
@@ -334,7 +334,7 @@ begin
       nsx[i]:=Sphere.Lookup(Locals[i],tfFirstItem,n);
     if nsx[i]<>0 then inc(j);
    end;
-  nsx[l]:=Sphere.Lookup(Sphere.Header.FirstNameSpace,0,n);
+  nsx[l]:=Sphere.Lookup(pHeader,tf_FirstNameSpace,n);
   //no inc(j), see below (case j=0)
   while CheckFoundType and
     Source.IsNext([stPeriod,stIdentifier]) do //and (j<>0)? no: makes it greedy
@@ -393,7 +393,7 @@ begin
       inc(i);
      end;
     if p=0 then //still nothing, check namespaces
-      p:=Sphere.Lookup(Sphere.Header.FirstNameSpace,0,n);
+      p:=Sphere.Lookup(pHeader,tf_FirstNameSpace,n);
    end
   else
     if (Sphere.t(p) and tt__Resolvable)<>0 then
@@ -1117,7 +1117,7 @@ begin
       inc(i);
      end;
     if p=0 then //still nothing, check namespaces
-      p:=Sphere.Lookup(Sphere.Header.FirstNameSpace,0,n);
+      p:=Sphere.Lookup(pHeader,tf_FirstNameSpace,n);
    end;
 end;
 
@@ -1486,15 +1486,13 @@ end;
 
 procedure TStratoParser.ParseHeader;
 var
-  ns,p,q,r,scope:TStratoIndex;
+  ns,p,module:TStratoIndex;
   b:boolean;
   n:TStratoName;
   nn:UTF8String;
-  sx:PStratoSourceFile;
   SrcPos,SrcPos1:cardinal;
-  nd:PStratoNameSpaceData;
 begin
-  scope:=0;
+  module:=0;
   //namespace
   SrcPos:=Source.SrcPos;
   if Source.IsNext([stIdentifier]) then
@@ -1508,10 +1506,10 @@ begin
           mark2:=Sphere.MarkIndex(mark1);
          end;
         stIdentifier:
-          if not LookUpNameSpace(scope,n,SrcPos1) then
-            scope:=Sphere.Add(ttNameSpace,
+          if not LookUpNameSpace(module,n,SrcPos1) then
+            module:=Sphere.Add(ttNameSpace,
               [tfName,n
-              ,tfParent,scope
+              ,tfParent,module
               ,tfSourceFile,src
               ,tfSrcPos,SrcPos1
               ]);
@@ -1526,24 +1524,10 @@ begin
         ,tfSrcPos,SrcPos
         ,tfParent,ns
         ]);
-      q:=0;
-      r:=0;
       if ns=0 then
-        if Sphere.Header.FirstNameSpace=0 then
-          Sphere.Header.FirstNameSpace:=p
-        else
-          q:=Sphere.Header.FirstNameSpace
+        Sphere.Append(pHeader,tf_FirstNameSpace,p)
       else
-       begin
-        q:=Sphere.r(ns,tfFirstItem);
-        if q=0 then Sphere.s(ns,tfFirstItem,p);
-       end;
-      while q<>0 do
-       begin
-        r:=q;
-        q:=Sphere.r(q,tfNext);
-       end;
-      if r<>0 then Sphere.s(r,tfNext,p);
+        Sphere.Append(ns,tfFirstItem,p);
       ns:=p;
      end;
    end
@@ -1553,44 +1537,27 @@ begin
     nn:=UTF8String(ChangeFileExt(ExtractFileName(Source.FilePath),''));
       //(''''+StringReplace(Source.FilePath,'''','''''',[rfReplaceAll])+'''');?
     n:=Sphere.Dict.StrIdx(nn);
-    ns:=Sphere.Add(ttNameSpace,
+    if not(Sphere.Add(pHeader,tf_FirstNameSpace,ttNameSpace,
       [tfName,n
-      ,tfParent,ns //optional value from LookUpNameSpace above
+      //,tfParent,?
       ,tfSourceFile,src
       ,tfSrcPos,SrcPos
-      ]);
-    //TODO: split by '.'
-    p:=Sphere.Header.FirstNameSpace;
-    q:=0;
-    while (p<>0) and (Sphere.v(p,tfName)<>n) do
-     begin
-      q:=p;
-      p:=Sphere.r(p,tfNext);
-     end;
-    //assert p<>0 since Sphere.FirstGlobalNameSpace is runtime
-    if p=0 then
-      if q=0 then
-        Sphere.Header.FirstNameSpace:=ns
-      else
-        Sphere.s(q,tfNext,ns)
-    else
-      Source.Error('duplicate namespace "'+string(nn)+'"');
+      ],ns)) then Source.Error('duplicate namespace "'+string(nn)+'"');
    end;
-  src:=Sphere.Add(ttSourceFile,[]);
-  sx:=Sphere.SourceFile(src);
-  sx.FileName:=Sphere.AddBinaryData(UTF8String(Source.FilePath));
-  sx.FileSize:=Source.FileSize;
-  //sx.FileDate? checksum?
-  sx.SharedScope:=scope;
-  sx.SrcPosLineIndex:=Source.LineIndex;
-  nd:=Sphere.NameSpace(ns);
-  if nd.SourceFile=0 then nd.SourceFile:=src;
+  src:=Sphere.Add(ttSourceFile,
+    [tf_SourceFile_FileName,Sphere.AddBinaryData(UTF8String(Source.FilePath))
+    ,tf_SourceFile_FileSize,Source.FileSize
+    //file date?checksum?
+    ,tf_SourceFile_PartOfModule,module
+    ,tf_SourceFile_SrcPosLineIndex,Source.LineIndex
+    ]);
+  if Sphere.r(ns,tf_NameSpace_SourceFile)=0 then
+    Sphere.s(ns,tf_NameSpace_SourceFile,src);
   FNameSpace:=ns;
-  //sx.NameSpace:=ns;//?
   SetLength(Locals,3);
   Locals[0]:=ns;
   Locals[1]:=0;//see stHRule:ttPrivate
-  Locals[2]:=Sphere.Header.FirstNameSpace;//runtime
+  Locals[2]:=Sphere.r(pHeader,tf_FirstNameSpace);//runtime
 end;
 
 procedure TStratoParser.ParseDeclaration;
@@ -2166,58 +2133,26 @@ begin
         [tfParent,ns
         ,tfSrcPos,SrcPos
         ]);
-      if Sphere.SourceFile(src).InitializationCode=0 then
+      if Sphere.r(src,tf_SourceFile_InitializationCode)=0 then
        begin
-        Sphere.SourceFile(src).InitializationCode:=cb;
-        //add to ns.FirstInitialization
-        q:=Sphere.NameSpace(ns).FirstInitialization;
-        r:=0;
-        while q<>0 do
-         begin
-          r:=q;
-          q:=Sphere.r(q,tfNext);
-         end;
-        if r=0 then
-          Sphere.NameSpace(ns).FirstInitialization:=cb
-        else
-          Sphere.s(r,tfNext,cb);
-        //add alias to Header.FirstInitialization
-        p:=Sphere.Add(ttAlias,
+        Sphere.s(src,tf_SourceFile_InitializationCode,cb);
+        Sphere.Append(ns,tf_NameSpace_FirstInitialization,cb);
+        Sphere.Append(pHeader,tf_FirstInitialization,Sphere.Add(ttAlias,
           [tfParent,ns
           ,tfSrcPos,SrcPos
           ,tfTarget,cb
-          ]);
-        q:=Sphere.Header.FirstInitialization;
-        r:=0;
-        while q<>0 do
-         begin
-          r:=q;
-          q:=Sphere.r(q,tfNext);
-         end;
-        if r=0 then
-          Sphere.Header.FirstInitialization:=p
-        else
-          Sphere.s(r,tfNext,p);
+          ]));
        end
       else
-      if Sphere.SourceFile(src).FinalizationCode=0 then
+      if Sphere.r(src,tf_SourceFile_FinalizationCode)=0 then
        begin
-        Sphere.SourceFile(src).FinalizationCode:=cb;
-        //prepend ns.FirstFinalization
-        Sphere.s(cb,tfNext,Sphere.NameSpace(ns).FirstFinalization);
-        Sphere.NameSpace(ns).FirstFinalization:=Sphere.Add(ttAlias,
+        Sphere.s(src,tf_SourceFile_FinalizationCode,cb);
+        Sphere.Prepend(ns,tf_NameSpace_FirstFinalization,cb);
+        Sphere.Prepend(pHeader,tf_FirstFinalization,Sphere.Add(ttAlias,
           [tfParent,ns
           ,tfSrcPos,SrcPos
           ,tfTarget,cb
-          ,tfNext,cb
-          ]);
-        //prepend alias Sphere.Header.FirstFinalization
-        Sphere.Header.FirstFinalization:=Sphere.Add(ttAlias,
-          [tfParent,ns
-          ,tfSrcPos,SrcPos
-          ,tfTarget,cb
-          ,tfNext,Sphere.Header.FirstFinalization
-          ]);
+          ]));
        end
       else
         Source.Error('Initialization and finalization code already declared.');

@@ -42,20 +42,20 @@ begin
   case s.t(p) of
     ttSourceFile:
       Result:=Format('src  ini=%d fin=%d fn=%d fs=%d',
-        [s.SourceFile(p).InitializationCode
-        ,s.SourceFile(p).FinalizationCode
-        ,s.SourceFile(p).FileName
-        ,s.SourceFile(p).FileSize
+        [s.r(p,tf_SourceFile_InitializationCode)
+        ,s.r(p,tf_SourceFile_FinalizationCode)
+        ,s.r(p,tf_SourceFile_FileName)
+        ,s.v(p,tf_SourceFile_FileSize)
         ]);
     ttBinaryData:
       Result:=Format('"%s"',[s.GetBinaryData(p)]);
     ttNameSpace:
       Result:=Format('ns   %s  ->%d  src=%d ini=%d fin=%d',
         [s.FQN(p)
-        ,s.NameSpace(p).FirstItem
-        ,s.NameSpace(p).SourceFile
-        ,s.NameSpace(p).FirstInitialization
-        ,s.NameSpace(p).FirstFinalization
+        ,s.r(p,tfFirstItem)
+        ,s.r(p,tf_NameSpace_SourceFile)
+        ,s.r(p,tf_NameSpace_FirstInitialization)
+        ,s.r(p,tf_NameSpace_FirstFinalization)
         ]);
     ttTypeDecl:
       Result:=Format('type %s  #%d ->%d',
@@ -350,13 +350,13 @@ begin
     q:=s.r(q,tfParent);
   if q<>0 then
     case s.t(q) of
-      ttNameSpace:q:=s.NameSpace(q).SourceFile;
-      ttOverload,ttConstructor:q:=s.r(q,tfSourceFile);
+      ttNameSpace:q:=s.r(q,tf_NameSpace_SourceFile);
+      ttPrivate,ttOverload,ttConstructor,ttPropertyGet,ttPropertySet:q:=s.r(q,tfSourceFile);
       else q:=0;//raise?
     end;
   if q=0 then LineIndex:=1 else
    begin
-    LineIndex:=s.SourceFile(q).SrcPosLineIndex;
+    LineIndex:=s.v(q,tf_SourceFile_SrcPosLineIndex);
     if LineIndex=0 then LineIndex:=1;
    end;
   Result:=q<>0;
@@ -383,12 +383,12 @@ begin
   try
     xx:=Format(
       'Strato v=%.8x ini=%d fin=%d ns=%d global=%d #%d'#13#10,
-      [s.Header.Version
-      ,s.Header.FirstInitialization
-      ,s.Header.FirstFinalization
-      ,s.Header.FirstNameSpace
-      ,s.Header.FirstGlobalVar
-      ,s.Header.GlobalByteSize
+      [s.v(pHeader,tf_Version)
+      ,s.r(pHeader,tf_FirstInitialization)
+      ,s.r(pHeader,tf_FirstFinalization)
+      ,s.r(pHeader,tf_FirstNameSpace)
+      ,s.r(pHeader,tf_FirstGlobalVar)
+      ,s.v(pHeader,tf_GlobalByteSize)
       ])+
       'index   parent  next    source  line :col what info'#13#10;
     f.Write(xx[1],Length(xx));
@@ -413,7 +413,7 @@ begin
              begin
               xn(15,s.r(p,tfParent));
               xn(23,s.r(p,tfNext));
-              xn(31,s.NameSpace(p).SourceFile);
+              xn(31,s.r(p,tf_NameSpace_SourceFile));
              end
             else
             if (s.v(p,tfSrcPos)=0) or not(StratoGetSourceFile(s,p,q,l)) then

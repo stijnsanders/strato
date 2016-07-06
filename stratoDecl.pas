@@ -292,6 +292,29 @@ const
   tfDoElse         =$55;
   tfDoFirst        =$65;
 
+  //header (ttFileMarker)
+  pHeader=cardinal(-5);//see TStratoSphere.GetNode
+  tf_FileMarker           =$00;
+  tf_ThingCount          =$301;
+  tf_Version             =$302;
+  tf_FirstNameSpace      =$203;
+  tf_FirstGlobalVar      =$204;
+  tf_GlobalByteSize      =$305;
+  tf_FirstInitialization =$206;
+  tf_FirstFinalization   =$207;
+
+  //ttSourceFile
+  tf_SourceFile_FileName           =$401;
+  tf_SourceFile_FileSize           =$502;
+  tf_SourceFile_SrcPosLineIndex    =$503;
+  tf_SourceFile_PartOfModule       =$405;
+  tf_SourceFile_InitializationCode =$406;
+  tf_SourceFile_FinalizationCode   =$407;
+
+  //ttNameSpace
+  tf_NameSpace_SourceFile          =$605;
+  tf_NameSpace_FirstInitialization =$606;
+  tf_NameSpace_FirstFinalization   =$607;
 
 {$IFDEF DEBUG}
 function rx(tt:TStratoThingType;f:TStratoField):cardinal;
@@ -302,64 +325,16 @@ type
   TStratoThing=array[0..7] of cardinal;
   PStratoThing=^TStratoThing;//only used by TStratoSphere internally
 
-  TStratoHeader=record
-    FileMarker:TStratoThingType;
-    ThingCount,
-    Version:cardinal;
-    FirstNameSpace,
-    FirstGlobalVar:TStratoIndex;
-    GlobalByteSize:cardinal;
-    FirstInitialization,
-    FirstFinalization:TStratoIndex;
-  end;
-  PStratoHeader=^TStratoHeader;
-
   TStratoBlockHeader=record
     FirstIndex,
     ThingCount,
     xReserved1:cardinal;
     xReserved2,
-    xReserved3:TStratoIndex;
+    Module:TStratoIndex;
     xReserved4:cardinal;
     xReserved5,
     xReserved6:TStratoIndex;
   end;
-
-  TStratoSourceFile=record
-    ThingType:TStratoThingType;//ttSourceFile
-    FileName:TStratoName;
-    FileSize:cardinal;
-    SrcPosLineIndex:cardinal;
-    xReserved1,//FileCRC32?FileDate?
-    SharedScope,
-    InitializationCode,
-    FinalizationCode:TStratoIndex;
-  end;
-  PStratoSourceFile=^TStratoSourceFile;
-
-  TStratoBinaryData=record
-    ThingType:TStratoThingType;//ttBinaryData
-    DataLength,
-    DataStart,
-    xPadding1,
-    xPadding2,
-    xPadding3,
-    xPadding4,
-    xPadding5:cardinal;
-  end;
-  PStratoBinaryData=^TStratoBinaryData;
-
-  TStratoNameSpaceData=record
-    ThingType:TStratoThingType;//ttNameSpace
-    Parent,
-    Next:TStratoIndex;
-    Name:TStratoName;
-    FirstItem,
-    SourceFile:TStratoIndex;
-    FirstInitialization,
-    FirstFinalization:TStratoIndex;
-  end;
-  PStratoNameSpaceData=^TStratoNameSpaceData;
 
 implementation
 
@@ -378,13 +353,34 @@ begin
    begin
     Result:=0;//default
     case tt of
-      ttNameSpace://use PStratoNameSpaceData
+      ttFileMarker:
+        case f of
+          tf_ThingCount,
+          tf_Version,
+          tf_FirstNameSpace,
+          tf_FirstGlobalVar,
+          tf_GlobalByteSize,
+          tf_FirstInitialization,
+          tf_FirstFinalization:
+            Result:=f and $7;
+        end;
+      ttSourceFile:
+        case f of
+          tf_SourceFile_FileName,
+          tf_SourceFile_FileSize,
+          tf_SourceFile_SrcPosLineIndex,
+          tf_SourceFile_PartOfModule,
+          tf_SourceFile_InitializationCode,
+          tf_SourceFile_FinalizationCode:
+            Result:=f and $7;
+        end;
+      ttNameSpace:
         case f of
           tfName:Result:=3;
           tfFirstItem:Result:=4;
-          //tfSourceFile:Result:=5;//!!! use PStratoNameSpaceData
-          //tfFirstInitialization:Result:=6;//!!! use PStratoNameSpaceData
-          //tfFirstFinalization:Result:=7;//!!! use PStratoNameSpaceData
+          tf_NameSpace_SourceFile:Result:=5;
+          tf_NameSpace_FirstInitialization:Result:=6;
+          tf_NameSpace_FirstFinalization:Result:=7;
         end;
       ttTypeDecl,ttRecord,ttEnumeration:
         case f of
@@ -617,10 +613,27 @@ begin
   ok:=false;//default;
   //TODO
   case tt of
+    ttFileMarker:
+      case f of
+        tf_FirstNameSpace:ok:=tc=ttNameSpace;
+        tf_FirstGlobalVar:ok:=tc=ttGlobal;
+        tf_FirstInitialization,
+        tf_FirstFinalization:ok:=tc=ttAlias;//to a ttCodeBlock
+      end;
+    ttSourceFile:
+      case f of
+        tf_SourceFile_FileName:ok:=tc=ttBinaryData;
+        tf_SourceFile_PartOfModule:ok:=tc=ttNameSpace;
+        tf_SourceFile_InitializationCode,
+        tf_SourceFile_FinalizationCode:ok:=tc=ttCodeBlock;
+      end;
     ttNameSpace:
       case f of
         tfParent:ok:=tc=ttNameSpace;
         tfFirstItem,tfNext:if tc=ttNameSpace then ok:=true else anydecl;
+        tf_NameSpace_SourceFile:ok:=tc=ttSourceFile;
+        tf_NameSpace_FirstInitialization,
+        tf_NameSpace_FirstFinalization:ok:=tc=ttCodeBlock;
       end;
     ttTypeDecl:
       case f of

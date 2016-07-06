@@ -195,6 +195,7 @@ end;
 procedure TfrmXsViewMain.LoadFile(const FilePath: string);
 var
   n:TTreeNode;
+  v:cardinal;
   p,q:TStratoIndex;
 begin
   if FSphere<>nil then FSphere.Free;
@@ -224,12 +225,13 @@ begin
     //ListNode(nil,':Initialization->',FSphere.Header.FirstInitialization);
     //ListNode(nil,':Finalization->',FSphere.Header.FirstFinalization);
 
+    v:=FSphere.v(pHeader,tf_Version);
     n:=TreeView1.Items.AddChild(nil,Format(':Namespaces [v%d.%d.%d.%d]',[
-       FSphere.Header.Version shr 24,
-       (FSphere.Header.Version shr 16) and $FF,
-       (FSphere.Header.Version shr 8) and $FF,
-       FSphere.Header.Version and $FF])) as TXsTreeNode;
-    p:=FSphere.Header.FirstNameSpace;
+        v shr 24,
+        (v shr 16) and $FF,
+        (v shr 8) and $FF,
+        v and $FF])) as TXsTreeNode;
+    p:=FSphere.r(pHeader,tf_FirstNameSpace);
     while p<>0 do
      begin
       BuildNode(n,p);
@@ -237,8 +239,8 @@ begin
      end;
 
     n:=TreeView1.Items.AddChild(nil,':GlobalVars #'+
-      IntToStr(FSphere.Header.GlobalByteSize)) as TXsTreeNode;
-    p:=FSphere.Header.FirstGlobalVar;
+      IntToStr(FSphere.v(pHeader,tf_GlobalByteSize))) as TXsTreeNode;
+    p:=FSphere.r(pHeader,tf_FirstGlobalVar);
     while p<>0 do
      begin
       {
@@ -251,7 +253,7 @@ begin
      end;
 
     n:=TreeView1.Items.AddChild(nil,':Initialization') as TXsTreeNode;
-    p:=FSphere.Header.FirstInitialization;
+    p:=FSphere.r(pHeader,tf_FirstInitialization);
     while p<>0 do
      begin
       q:=p;
@@ -261,7 +263,7 @@ begin
      end;
 
     n:=TreeView1.Items.AddChild(nil,':Finalization') as TXsTreeNode;
-    p:=FSphere.Header.FirstFinalization;
+    p:=FSphere.r(pHeader,tf_FirstFinalization);
     while p<>0 do
      begin
       q:=p;
@@ -491,7 +493,7 @@ begin
     if (tt<>ttSourceFile) and (tt<>ttBinaryData)
       and (k<>0) and StratoGetSourceFile(FSphere,i,q,j) then
       s:=Format('%s  [%s(%d:%d)]',[s
-        ,FSphere.GetBinaryData(FSphere.SourceFile(q).FileName)
+        ,FSphere.GetBinaryData(FSphere.r(q,tf_SourceFile_FileName))
         ,k div j
         ,k mod j
         ]);
@@ -877,7 +879,7 @@ begin
             FSrcFile:=0;//in case of error
             //TODO: resolve relative path
             //TODO: cache several?
-            FSrcPath:=FSphere.GetBinaryData(FSphere.SourceFile(p).FileName);
+            FSrcPath:=FSphere.GetBinaryData(FSphere.r(p,tf_SourceFile_FileName));
             //TODO: check signature/timestamp
             txtSourceView.Lines.LoadFromFile(FSrcPath);
             FSrcFile:=p;

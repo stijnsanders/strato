@@ -81,14 +81,10 @@ begin
       while (q<>0) and (Sphere.t(q)<>ttConstructors) do
         q:=Sphere.r(q,tfNext);
       if q=0 then
-       begin
-        q:=Sphere.Add(ttConstructors,
+        q:=Sphere.Prepend(Fn,tfFirstItem,Sphere.Add(ttConstructors,
           [tfName,0
           ,tfParent,Fn
-          ,tfNext,Sphere.r(Fn,tfFirstItem)
-          ]);
-        Sphere.s(Fn,tfFirstItem,q);//prepend
-       end;
+          ]));
      end;
     //ttDestructor? doesn't do overloads, just add (unique)
     else q:=0;

@@ -145,7 +145,7 @@ var
   end;
   
 begin
-  //assert Sphere.Header.FirstNameSpace=0
+  //assert Sphere.r(pHeader,tf_FirstNameSpace)=0
   {$IFDEF DEBUG}
   Sphere.MarkIndex(10000);
   {$ELSE}
@@ -154,7 +154,7 @@ begin
   ns:=Sphere.Add(ttNameSpace,
     [tfName,Sphere.Dict.StrIdx('Strato')
     ]);
-  Sphere.Header.FirstNameSpace:=ns;
+  Sphere.s(pHeader,tf_FirstNameSpace,ns);
 
   nn:=0;
   TypeDecl_void:=A('void',0);
