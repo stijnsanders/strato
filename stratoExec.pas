@@ -335,8 +335,8 @@ var
   function RefreshDebugView: boolean;
   var
     li,li1:TListItem;
-    pp:TStratoIndex;
-    pi,ii,jj:cardinal;
+    pp,q1,q2:TStratoIndex;
+    py,px,ii,jj:cardinal;
   begin
     //TODO: move this to other unit
     inc(OpCount);
@@ -405,7 +405,7 @@ var
       try
         FDebugView.lvMem.Items.Clear;
         i:=BaseMemPtr;
-        pi:=BaseMemPtr;
+        px:=BaseMemPtr;
         k:=0;
         ii:=0;
         if Sphere.v(pHeader,tf_GlobalByteSize)=0 then pp:=0 else
@@ -428,30 +428,30 @@ var
               if (p<>0) and (Sphere.t(p)=ttCodeBlock) then
                begin
                 pp:=Sphere.r(p,tfFirstItem);
-                pi:=mp;
+                px:=mp;
                end
               else
                 pp:=0
             else
              begin
               pp:=Sphere.r(stack[k].p,tfFirstItem);
-              pi:=stack[k].bp;
+              px:=stack[k].bp;
              end;
            end;
-          if (pp=0) or (pi>i) then
+          if (pp=0) or (px>i) then
            begin
             li1.SubItems.Add('');
             jj:=4;
            end
           else
            begin
-            //TODO: accurately keep pi+.Offset equal to i !!!
+            //TODO: accurately keep px+.Offset equal to i !!!
             if Sphere.t(pp)=ttGlobal then
              begin
               li1.SubItems.Add(Format('%d: %s',[pp,
                 StratoDumpThing(Sphere,Sphere.r(pp,tfTarget))]));
               jj:=ByteSize(Sphere,Sphere.rr(pp,[tfTarget,tfEvaluatesTo]));
-              while (pp<>0) and (pi+Sphere.v(Sphere.r(pp,tfTarget),tfOffset)<=i) do
+              while (pp<>0) and (px+Sphere.v(Sphere.r(pp,tfTarget),tfOffset)<=i) do
                 pp:=Sphere.r(pp,tfNext);
              end
             else
@@ -459,7 +459,7 @@ var
               li1.SubItems.Add(Format('%d:%d: %s',[Sphere.r(pp,tfParent),pp,
                 StratoDumpThing(Sphere,pp)]));
               jj:=ByteSize(Sphere,Sphere.r(pp,tfEvaluatesTo));
-              while (pp<>0) and (pi+Sphere.v(pp,tfOffset)<=i) do
+              while (pp<>0) and (px+Sphere.v(pp,tfOffset)<=i) do
                 pp:=Sphere.r(pp,tfNext);
              end;
            end;
@@ -521,10 +521,8 @@ var
         FDebugView.txtUpNext.Lines.EndUpdate;
       end;
       try
-        if (pe<>0) and StratoGetSourceFile(Sphere,pe,pp,pi) then
-          FDebugView.ShowSource(Sphere,pp,
-            Sphere.v(pe,tfSrcPos) div pi,
-            Sphere.v(pe,tfSrcPos) mod pi)
+        if (pe<>0) and StratoGetSourceFile(Sphere,pe,pp,py,px,q1,q2) then
+          FDebugView.ShowSource(Sphere,pp,py,px)
         else
           FDebugView.txtSourceView.Clear;
       except
@@ -1179,7 +1177,8 @@ begin
                   //assert _basetype@-SystemWordSize
                   Move(FMem[r-SystemWordSize],r,SystemWordSize);
                 q:=Sphere.Add(ttClassRef,
-                  [tfByteSize,SystemWordSize
+                  [tfParent,Sphere.r(r,tfParent)
+                  ,tfByteSize,SystemWordSize
                   ,tfEvaluatesTo,r
                   ]);
                 vtp(q,np);

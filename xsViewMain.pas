@@ -556,8 +556,8 @@ begin
       ttField:
        begin
         n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        JumpNode(n,':sub=',FSphere.r(i,tfSubject));
-        JumpNode(n,':mem=',FSphere.r(i,tfTarget));
+        JumpNode(n,':x=',FSphere.r(i,tfSubject));
+        JumpNode(n,':y=',FSphere.r(i,tfTarget));
        end;
       ttCodeBlock:
        begin

@@ -148,66 +148,49 @@ function TStratoParserBase.LookUpNameSpace(var ns:TStratoIndex;
   var n:TStratoName;var SrcPos:cardinal):boolean;
 var
   nn:UTF8String;
-  p,q,r:TStratoIndex;
+  p:TStratoIndex;
 begin
   ID(n,nn,SrcPos);
-  p:=0;
-  q:=0;
   //Sphere.Lookup? take ttNameSpace only
-  ns:=Sphere.r(pHeader,tf_FirstNameSpace);
-  while (ns<>0) and
-    not((Sphere.t(ns)=ttNameSpace) and (Sphere.v(ns,tfName)=n)) do
+  ns:=Sphere.Lookup(pHeader,tf_FirstNameSpace,n);
+  if not Sphere.t(ns) in [0,ttNameSpace] then
    begin
-    p:=ns;
-    ns:=Sphere.r(ns,tfNext);
+    Source.Error('"'+nn+'" is not a namespace');
+    ns:=0;
    end;
   Result:=ns<>0;
   //resolve nested namespaces
+  p:=0;
   while Source.IsNext([stPeriod,stIdentifier]) do
    begin
     if ns=0 then
      begin
       //not found, create
-      ns:=Sphere.Add(ttNameSpace,
-        [tfName,n
-        ,tfParent,q
-        //,tfSourceFile,src//?
-        ]);
-      //p is last in tf_FirstNameSpace sequence, see above
-      //if p=0 then q is namespace one level up (see below)
-      if p=0 then
+      if ns=0 then
        begin
-        r:=Sphere.r(q,tfFirstItem);
-        if r=0 then
-          Sphere.s(q,tfFirstItem,ns)
+        ns:=Sphere.Add(ttNameSpace,
+          [tfName,n
+          ,tfParent,p
+          ,tf_NameSpace_SourceFile,src//?
+          ,tfSrcPos,SrcPos//?
+          ]);
+        if p=0 then
+          Sphere.Append(pHeader,tf_FirstNameSpace,ns)
         else
-         begin
-          while r<>0 do
-           begin
-            q:=r;
-            r:=Sphere.r(r,tfNext);
-           end;
-          Sphere.s(q,tfNext,ns);
-         end;
-       end
-      else
-       begin
-        Sphere.s(p,tfNext,ns);
-        p:=0;
+          Sphere.Append(p,tfFirstItem,ns);
        end;
+      p:=ns;
       Result:=false;
      end;
     ID(n,nn,SrcPos);
-    q:=ns;
-    ns:=Sphere.r(ns,tfFirstItem);
-    while (ns<>0)
-      and not((Sphere.t(ns)=ttNameSpace) and (Sphere.v(ns,tfName)=n)) do
+    ns:=Sphere.Lookup(p,tfFirstItem,n);
+    if not Sphere.t(ns) in [0,ttNameSpace] then
      begin
-      p:=ns;
-      ns:=Sphere.r(ns,tfNext);
+      Source.Error('"'+nn+'" is not a namespace');
+      ns:=0;
      end;
    end;
-  if not(Result) then ns:=q;
+  if not(Result) then ns:=p; 
 end;
 
 procedure TStratoParserBase.ParseImport;
@@ -406,7 +389,7 @@ begin
     if Sphere.Add(ns,tfFirstItem,ttNameSpace,
       [tfName,n
       ,tfParent,ns
-      ,tfSourceFile,src
+      ,tf_NameSpace_SourceFile,src
       //,tfSrcPos
       ],p) then
       isNew:=p
@@ -1277,7 +1260,8 @@ begin
           Sphere.s(p,tfRight,q);
           if (r<>0) and (Sphere.t(r)=ttClass) then
             q:=Sphere.Add(ttClassRef,
-              [tfByteSize,SystemWordSize
+              [tfParent,cb
+              ,tfByteSize,SystemWordSize
               ,tfEvaluatesTo,r
               ])
           else
@@ -1510,7 +1494,7 @@ begin
             module:=Sphere.Add(ttNameSpace,
               [tfName,n
               ,tfParent,module
-              ,tfSourceFile,src
+              ,tf_NameSpace_SourceFile,src
               ,tfSrcPos,SrcPos1
               ]);
         else
@@ -1521,8 +1505,8 @@ begin
       //create namespace
       p:=Sphere.Add(ttNameSpace,
         [tfName,n
-        ,tfSrcPos,SrcPos
         ,tfParent,ns
+        ,tfSrcPos,SrcPos
         ]);
       if ns=0 then
         Sphere.Append(pHeader,tf_FirstNameSpace,p)
@@ -1540,7 +1524,7 @@ begin
     if not(Sphere.Add(pHeader,tf_FirstNameSpace,ttNameSpace,
       [tfName,n
       //,tfParent,?
-      ,tfSourceFile,src
+      ,tf_NameSpace_SourceFile,src
       ,tfSrcPos,SrcPos
       ],ns)) then Source.Error('duplicate namespace "'+string(nn)+'"');
    end;
@@ -2136,23 +2120,13 @@ begin
       if Sphere.r(src,tf_SourceFile_InitializationCode)=0 then
        begin
         Sphere.s(src,tf_SourceFile_InitializationCode,cb);
-        Sphere.Append(ns,tf_NameSpace_FirstInitialization,cb);
-        Sphere.Append(pHeader,tf_FirstInitialization,Sphere.Add(ttAlias,
-          [tfParent,ns
-          ,tfSrcPos,SrcPos
-          ,tfTarget,cb
-          ]));
+        Sphere.Append(pHeader,tf_FirstInitialization,cb);
        end
       else
       if Sphere.r(src,tf_SourceFile_FinalizationCode)=0 then
        begin
         Sphere.s(src,tf_SourceFile_FinalizationCode,cb);
-        Sphere.Prepend(ns,tf_NameSpace_FirstFinalization,cb);
-        Sphere.Prepend(pHeader,tf_FirstFinalization,Sphere.Add(ttAlias,
-          [tfParent,ns
-          ,tfSrcPos,SrcPos
-          ,tfTarget,cb
-          ]));
+        Sphere.Prepend(pHeader,tf_FirstFinalization,cb);
        end
       else
         Source.Error('Initialization and finalization code already declared.');
@@ -2376,7 +2350,7 @@ begin
           //TODO: silence further errors
           p:=Sphere.Add(ttNameSpace,//silence further errors
             [tfName,Sphere.Dict.StrIdx('!!!'+nn)//n
-            ,tfSourceFile,src
+            ,tf_NameSpace_SourceFile,src
             ,tfSrcPos,SrcPos
             ]);
          end;
@@ -2455,7 +2429,7 @@ begin
           //TODO: silence further errors
           p:=Sphere.Add(ttNameSpace,//silence further errors
             [tfName,Sphere.Dict.StrIdx('!!!'+nn)//n
-            ,tfSourceFile,src
+            ,tf_NameSpace_SourceFile,src
             ,tfSrcPos,SrcPos
             ]);
          end;
@@ -3077,8 +3051,9 @@ begin
           if q=0 then
             Source.Error('unable to determine destructor');
           //then call it
-          p:=Sphere.Add(ttFnCall,
-            [tfParent,cb
+          p:=stack[stackIndex-1].t;
+          Sphere.s(p,[tfThingType,ttFnCall
+            ,tfParent,cb
             ,tfSrcPos,Source.SrcPos
             ,tfTarget,q
             ]);
@@ -3185,7 +3160,7 @@ begin
         Sphere.s(q,tfFirstArgument,r);
         Source.Skip(stColon);
         Sphere.s(q,tfTarget,LookUpType('catch filter'));
-        Sphere.s(r,tfEvaluatesTo,Sphere.r(q,tfDoIf));
+        Sphere.s(r,tfEvaluatesTo,Sphere.r(q,tfTarget));
         Sphere.s(r,tfOffset,Sphere.v(cb,tfByteSize));//?
         Source.Skip(stPClose);//TODO: enforce
         //TODO: check type is by reference (or SystemWordSize?)

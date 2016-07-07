@@ -57,7 +57,8 @@ begin
         //TODO: ttAlias?
         ttClass:
           Result:=Sphere.Add(ttClassRef,
-            [tfByteSize,SystemWordSize
+            [tfParent,Sphere.r(p,tfParent)
+            ,tfByteSize,SystemWordSize
             ,tfEvaluatesTo,p
             ]);
         //TODO: ttMember:

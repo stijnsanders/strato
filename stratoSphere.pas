@@ -73,6 +73,9 @@ type
     property BasePath:string read FBasePath;
   end;
 
+function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
+  var q:TStratoIndex;var srcLine,srcColumn:cardinal;var p1,p2:TStratoIndex):boolean;
+
 implementation
 
 uses Windows, stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
@@ -204,14 +207,14 @@ var
   i,j:cardinal;
 begin
   q:=p;
-  while (q<>0) and not(t(q) in
-    [ttNameSpace,ttPrivate,ttOverload,ttConstructor]) do
+  while (q<>0) and not(t(q) in [ttNameSpace,ttPrivate,ttOverload,
+    ttConstructor,ttPropertyGet,ttPropertySet]) do
     q:=r(q,tfParent);
   if q<>0 then
     case t(q) of
       ttNameSpace:
         q:=r(q,tf_NameSpace_SourceFile);
-      ttOverload,ttConstructor,ttPrivate:
+      ttOverload,ttConstructor,ttPrivate,ttPropertyGet,ttPropertySet:
         q:=r(q,tfSourceFile);
       else
         q:=0;//raise?
@@ -285,7 +288,7 @@ begin
   Result:=FBlock[FBlockIndex].First+i;
   pp:=@(PStratoSphereDataBlock(FBlock[FBlockIndex].Data)[i]);
   //ZeroMemory(q^?
-  pp[tfThingType]:=ThingType;
+  pp[0]:=ThingType;//tfThingType
   i:=0;
   while (i<l) do
    begin
@@ -293,8 +296,7 @@ begin
     q:=Values[i+1];
     inc(i,2);
     {$IFDEF DEBUG}
-    pp[rx(ThingType,f)]:=q;
-    if ((f and $100)=0) and (q<>0) then rxc(ThingType,f,t(q));
+    pp[rx(ThingType,f,t,q)]:=q;
     {$ELSE}
     pp[f and $07]:=q;
     {$ENDIF}
@@ -447,7 +449,7 @@ end;
 
 function TStratoSphere.t(p: TStratoIndex): TStratoThingType;
 begin
-  if p=0 then Result:=0 else Result:=GetNode(p)[tfThingType];
+  if p=0 then Result:=0 else Result:=GetNode(p)[0];//tfThingtype
 end;
 
 function TStratoSphere.r(p: TStratoIndex; f: TStratoField): TStratoIndex;
@@ -455,14 +457,14 @@ function TStratoSphere.r(p: TStratoIndex; f: TStratoField): TStratoIndex;
 var
   pp:PStratoThing;
 begin
-  if (f and $100)<>0 then
+  if (f and tf__IsValue)<>0 then
     raise Exception.Create('Use Sphere.v to request value');
   if p=0 then
     Result:=0//raise?
   else
    begin
     pp:=GetNode(p);
-    Result:=pp[rx(pp[tfThingType],f)];
+    Result:=pp[rx(pp[0],f,t,pp[f and $07])];
    end;
 {$ELSE}
 begin
@@ -497,14 +499,14 @@ function TStratoSphere.v(p: TStratoIndex; f: TStratoField): cardinal;
 var
   pp:PStratoThing;
 begin
-  if (f and $100)=0 then
+  if (f and tf__IsValue)=0 then
     raise Exception.Create('Use Sphere.r to request reference');
   if p=0 then
     Result:=0//raise?
   else
    begin
     pp:=GetNode(p);
-    Result:=pp[rx(pp[tfThingType],f)];
+    Result:=pp[rx(pp[0],f,nil,0)];
    end;
 {$ELSE}
 begin
@@ -518,8 +520,7 @@ var
   pp:PStratoThing;
 begin
   pp:=GetNode(p);
-  pp[rx(pp[tfThingType],f)]:=q;
-  if ((f and $100)=0) and (q<>0) then rxc(pp[tfThingType],f,t(q));
+  pp[rx(pp[0],f,t,q)]:=q;
 {$ELSE}
 begin
   GetNode(p)[f and $07]:=q;
@@ -544,8 +545,7 @@ begin
     q:=Values[i+1];
     inc(i,2);
     {$IFDEF DEBUG}
-    pp[rx(pp[tfThingType],f)]:=q;
-    if ((f and $100)=0) and (q<>0) then rxc(pp[tfThingType],f,t(q));
+    pp[rx(pp[0],f,t,q)]:=q;
     {$ELSE}
     pp[f and $07]:=q;
     {$ENDIF}
@@ -832,6 +832,50 @@ procedure TStratoSphere.InlineError(Sender: TObject; Line, LPos: cardinal;
 begin
   AddBinaryData(Format('### %s(%d:%d): %s',
     [(Sender as TStratoSource).FilePath,Line,LPos,ErrorMsg]));
+end;
+
+{ StratoGetSourceFile }
+
+function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
+  var q:TStratoIndex;var srcLine,srcColumn:cardinal;var p1,p2:TStratoIndex):boolean;
+var
+  pp:PStratoThing;
+  x,l:cardinal;
+begin
+  //previously in stratoDebug.pas
+  //assert p<>0
+  //assert Sphere[p].SrcPos<>0
+  //assert not Sphere[p].ThingType in [ttHeader,ttSourceFile,ttBinaryData]
+  q:=p;
+  while (q<>0) and not(s.t(q) in [ttNameSpace,ttPrivate,ttOverload,
+    ttConstructor,ttPropertyGet,ttPropertySet]) do
+    q:=s.r(q,tfParent);
+  if q<>0 then
+    case s.t(q) of
+      ttNameSpace:
+        q:=s.r(q,tf_NameSpace_SourceFile);
+      ttPrivate,ttOverload,
+      ttConstructor,ttPropertyGet,ttPropertySet:
+        q:=s.r(q,tfSourceFile);
+      else
+        q:=0;//raise?
+    end;
+  pp:=s.GetNode(p);
+  p1:=pp[1];//tfParent
+  p2:=pp[2];//tfNext
+  srcLine:=0;//default
+  srcColumn:=0;//default
+  if q<>0 then
+   begin
+    l:=s.v(q,tf_SourceFile_SrcPosLineIndex);
+    x:=pp[tfSrcPos and $07];//p:=s.v(p,tfSrcPos);
+    if l<>0 then
+     begin
+      srcLine:=x div l;
+      srcColumn:=x mod l;
+     end;
+   end;
+  Result:=q<>0;
 end;
 
 end.

@@ -6,8 +6,6 @@ uses stratoTokenizer, stratoSphere, stratoDecl;
 
 procedure StratoDumpTokens(const t:TStratoSourceTokenList);
 function StratoDumpThing(s:TStratoSphere;p:TStratoIndex):string;
-function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
-  var q:TStratoIndex;var LineIndex:cardinal):boolean;
 procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
 
 implementation
@@ -50,12 +48,10 @@ begin
     ttBinaryData:
       Result:=Format('"%s"',[s.GetBinaryData(p)]);
     ttNameSpace:
-      Result:=Format('ns   %s  ->%d  src=%d ini=%d fin=%d',
+      Result:=Format('ns   %s  ->%d  src=%d',
         [s.FQN(p)
         ,s.r(p,tfFirstItem)
         ,s.r(p,tf_NameSpace_SourceFile)
-        ,s.r(p,tf_NameSpace_FirstInitialization)
-        ,s.r(p,tf_NameSpace_FirstFinalization)
         ]);
     ttTypeDecl:
       Result:=Format('type %s  #%d ->%d',
@@ -173,7 +169,7 @@ begin
         ,s.r(p,tfEvaluatesTo)
         ]);
     ttBinaryOp:
-      Result:=Format('x_x  %d %s %d  t=%d',
+      Result:=Format('x_y  %d %s %d  t=%d',
         [s.r(p,tfLeft)
         ,TokenName[TStratoToken(s.v(p,tfOperator))]
         ,s.r(p,tfRight)
@@ -339,34 +335,11 @@ begin
   end;
 end;
 
-function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
-  var q:TStratoIndex;var LineIndex:cardinal):boolean;
-begin
-  //assert p<>0
-  //assert Sphere[p].SrcPos<>0
-  //assert not Sphere[p].ThingType in [ttHeader,ttSourceFile,ttBinaryData]
-  q:=p;
-  while (q<>0) and not(s.t(q) in [ttNameSpace,ttOverload,ttConstructor]) do
-    q:=s.r(q,tfParent);
-  if q<>0 then
-    case s.t(q) of
-      ttNameSpace:q:=s.r(q,tf_NameSpace_SourceFile);
-      ttPrivate,ttOverload,ttConstructor,ttPropertyGet,ttPropertySet:q:=s.r(q,tfSourceFile);
-      else q:=0;//raise?
-    end;
-  if q=0 then LineIndex:=1 else
-   begin
-    LineIndex:=s.v(q,tf_SourceFile_SrcPosLineIndex);
-    if LineIndex=0 then LineIndex:=1;
-   end;
-  Result:=q<>0;
-end;
-
 procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
 var
   f:TFileStream;
-  p,q:TStratoIndex;
-  l:cardinal;
+  p,q,p1,p2:TStratoIndex;
+  py,px:cardinal;
   x:string;
   xx:AnsiString;
   procedure xn(zz,z:cardinal);
@@ -416,19 +389,19 @@ begin
               xn(31,s.r(p,tf_NameSpace_SourceFile));
              end
             else
-            if (s.v(p,tfSrcPos)=0) or not(StratoGetSourceFile(s,p,q,l)) then
+            if (s.v(p,tfSrcPos)=0) or not(StratoGetSourceFile(s,p,q,py,px,p1,p2)) then
              begin
-              xn(15,s.r(p,tfParent));
-              xn(23,s.r(p,tfNext));
+              xn(15,p1);
+              xn(23,p2);
              end
             else
              begin
-              xn(15,s.r(p,tfParent));
-              xn(23,s.r(p,tfNext));
+              xn(15,p1);
+              xn(23,p2);
               xn(31,q);
-              xn(37,s.v(p,tfSrcPos) div l);
+              xn(37,py);
               x[38]:=':';
-              xn(41,s.v(p,tfSrcPos) mod l);
+              xn(41,px);
              end;
             x:=x+StratoDumpThing(s,p);
           except
