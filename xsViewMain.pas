@@ -477,9 +477,9 @@ end;
 
 function TfrmXsViewMain.BuildNode(Node:TTreeNode;i:cardinal):TXsTreeNode;
 var
-  q:TStratoIndex;
+  q,p1,p2:TStratoIndex;
   tt:TStratoThingType;
-  j,k:cardinal;
+  j,k,sy,sx:cardinal;
   n:TXsTreeNode;
   s:string;
 begin
@@ -489,13 +489,12 @@ begin
    begin
     s:=IntToStr(i)+': '+StratoDumpThing(FSphere,i);
     tt:=FSphere.t(i);
-    k:=FSphere.v(i,tfSrcPos);
     if (tt<>ttSourceFile) and (tt<>ttBinaryData)
-      and (k<>0) and StratoGetSourceFile(FSphere,i,q,j) then
+      and StratoGetSourceFile(FSphere,i,q,sy,sx,p1,p2) then
       s:=Format('%s  [%s(%d:%d)]',[s
         ,FSphere.GetBinaryData(FSphere.r(q,tf_SourceFile_FileName))
-        ,k div j
-        ,k mod j
+        ,sy
+        ,sx
         ]);
     n:=TreeView1.Items.AddChild(Node,s) as TXsTreeNode;
     n.Index:=i;
@@ -833,8 +832,8 @@ end;
 
 procedure TfrmXsViewMain.TreeView1Change(Sender: TObject; Node: TTreeNode);
 var
-  p,q,h1,h2:TStratoIndex;
-  pi,pj,Line,Col:cardinal;
+  p,q,h1,h2,p1,p2:TStratoIndex;
+  i,Line,Col:cardinal;
   si:TScrollInfo;
 begin
   if txtSourceView.Visible then
@@ -858,14 +857,7 @@ begin
       try
         if (q<>0) then
          begin
-          pj:=FSphere.v(q,tfSrcPos);
-          if StratoGetSourceFile(FSphere,q,p,pi) then
-           begin
-            Line:=pj div pi;
-            Col:=pj mod pi;
-           end
-          else
-            p:=0;
+          if not StratoGetSourceFile(FSphere,q,p,Line,Col,p1,p2) then p:=0;
          end;
         if (p=0) or (Line=0) then
          begin
@@ -895,8 +887,8 @@ begin
                txtSourceView.Perform(EM_LINESCROLL,0,(integer(Line)-7)-si.nPos);
            end
           else;
-          pi:=txtSourceView.Perform(EM_LINEINDEX,Line-1,0)+integer(Col)-1;
-          txtSourceView.Perform(EM_SETSEL,pi,pi+1);
+          i:=txtSourceView.Perform(EM_LINEINDEX,Line-1,0)+integer(Col)-1;
+          txtSourceView.Perform(EM_SETSEL,i,i+1);
           //txtSourceView.Perform(EM_SCROLLCARET,0,0);
          end;
 
