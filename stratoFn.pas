@@ -8,7 +8,7 @@ interface
 uses stratoDecl, stratoSphere, stratoSource;
 
 function StratoFnAdd(Sphere:TStratoSphere;Source:TStratoSource;
-  MethodType:TStratoThingType;Fn,Signature,SourceFile:TStratoIndex;
+  MethodType:TStratoThingType;Fn,Signature:TStratoIndex;
   SrcPos:cardinal):TStratoIndex;
 function StratoFnOvlCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
   FnOvl:TStratoIndex):TStratoIndex;
@@ -63,7 +63,7 @@ begin
 end;
 
 function StratoFnAdd(Sphere:TStratoSphere;Source:TStratoSource;
-  MethodType:TStratoThingType;Fn,Signature,SourceFile:TStratoIndex;
+  MethodType:TStratoThingType;Fn,Signature:TStratoIndex;
   SrcPos:cardinal):TStratoIndex;
 var
   p,q,fn1:TStratoIndex;
@@ -131,7 +131,6 @@ begin
   Sphere.s(p,
     [tfParent,fn1
     ,tfSignature,Signature
-    ,tfSourceFile,SourceFile
     ,tfSrcPos,SrcPos
     ]);
 end;
@@ -155,7 +154,7 @@ begin
   if Sphere.r(Signature,tfTarget,p) then
    begin
     q:=Sphere.Add(ttThis,
-      [tfName,Sphere.Dict.StrIdx('@@')
+      [tfName,Sphere.Store.Dict.StrIdx('@@')
       ,tfParent,Result//CodeBlock
       ,tfSrcPos,Source.SrcPos
       ,tfOffset,bs
@@ -171,7 +170,7 @@ begin
      begin
       //with a constructor, store the effective class type here
       q:=Sphere.Add(ttVar,
-        [tfName,Sphere.Dict.StrIdx('?@@')
+        [tfName,Sphere.Store.Dict.StrIdx('?@@')
         ,tfParent,Result//CodeBlock
         ,tfSrcPos,Source.SrcPos
         ,tfOffset,bs
@@ -205,7 +204,8 @@ begin
       ,tfOffset,bs
       ,tfEvaluatesTo,r
       ],q) then
-      Source.Error('duplicate identifier "'+string(Sphere.Dict.Str[Sphere.v(p,tfName)])+'"');
+      Source.Error('duplicate identifier "'+string(
+        Sphere.Store.Dict.Str[Sphere.v(p,tfName)])+'"');
     if tt=ttVarByRef then
       inc(bs,SystemWordSize)
     else
@@ -482,7 +482,7 @@ begin
   if (ThisType<>0) and (Sphere.t(ThisType)<>ttNameSpace) then
    begin
     Sphere.Add(Result,tfFirstItem,ttThis,
-      [tfName,Sphere.Dict.StrIdx('@@')
+      [tfName,Sphere.Store.Dict.StrIdx('@@')
       ,tfParent,Result
       ,tfSrcPos,SrcPos
       ,tfOffset,bs

@@ -14,7 +14,7 @@ const
   stratoSysCall_mfree=$102;
   stratoSysCall_writeln=$200;
 
-procedure DefaultTypes(Sphere:TStratoSphere);
+procedure DefaultTypes(Store:TStratoStore);
 
 var
   TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
@@ -24,16 +24,18 @@ var
 
 implementation
 
-uses SysUtils;
+uses SysUtils, stratoSource;
 
-procedure DefaultTypes(Sphere:TStratoSphere);
+procedure DefaultTypes(Store:TStratoStore);
 var
+  Source:TStratoSource;
+  Sphere:TStratoSphere;
   ns,nn:TStratoIndex;
 
   function A(const Name:UTF8String;s:integer): TStratoIndex;
   begin
     Result:=Sphere.Add(ttTypeDecl,
-      [tfName,Sphere.Dict.StrIdx(Name)
+      [tfName,Store.Dict.StrIdx(Name)
       ,tfParent,ns
       ,tfByteSize,s
       ]);
@@ -54,7 +56,7 @@ var
     n,n1,p1,p2,p3,s:TStratoIndex;
   begin
     n1:=Sphere.Add(ttMember,
-      [tfName,Sphere.Dict.StrIdx(FunctionName)
+      [tfName,Store.Dict.StrIdx(FunctionName)
       ,tfParent,ns
       ]);
     n:=Sphere.Add(ttOverload,
@@ -65,7 +67,7 @@ var
     nn:=n1;
 
     s:=Sphere.Add(ttSignature,
-      [tfName,Sphere.Dict.StrIdx(SignatureName)
+      [tfName,Store.Dict.StrIdx(SignatureName)
       ,tfParent,n
       ,tfEvaluatesTo,ReturnType
       ]);
@@ -102,7 +104,7 @@ var
     if ReturnType<>0 then
      begin
       p2:=Sphere.Add(ttVar,
-        [tfName,Sphere.Dict.StrIdx(FunctionName)
+        [tfName,Store.Dict.StrIdx(FunctionName)
         ,tfParent,p1
         ,tfEvaluatesTo,ReturnType
         ,tfOffset,bs
@@ -145,56 +147,55 @@ var
   end;
   
 begin
-  //assert Sphere.r(pHeader,tf_FirstNameSpace)=0
-  {$IFDEF DEBUG}
-  Sphere.MarkIndex(10000);
-  {$ELSE}
-  Sphere.MarkIndex($10000);
-  {$ENDIF}
-  ns:=Sphere.Add(ttNameSpace,
-    [tfName,Sphere.Dict.StrIdx('Strato')
-    ]);
-  Sphere.s(pHeader,tf_FirstNameSpace,ns);
+  Source:=TStratoSource.Create;//pro-forma
+  Sphere:=TStratoSphere.Create(Store,Source);
+  try
+    ns:=Sphere.Add(ttNameSpace,
+      [tfName,Store.Dict.StrIdx('Strato')
+      ]);
+    Sphere.s(Sphere.Module,tf_Module_FirstNameSpace,ns);
 
-  nn:=0;
-  TypeDecl_void:=A('void',0);
-  TypeDecl_type:=A('type',SystemWordSize);
-  TypeDecl_bool:=A('bool',SystemWordSize);
-  TypeDecl_string:=A('string',SystemWordSize);
-  TypeDecl_variant:=A('variant',16);//TODO: OLE compatible variants
-  TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
-  A('i8',1);
-  A('i16',2);
-  A('i32',4);
-  A('i64',8);
-  A('u8',1);
-  A('u16',2);
-  A('u32',4);
-  TypeDecl_intLast:=A('u64',8);
-  A('f32',4);//TODO: floating-point support
-  A('f64',8);
-  TypeDecl_object:=0;//see StratoParseSource: allow only one object()={}
-  TypeDecl_hash:=A('hash',SystemWordSize);//TODO:
-  TypeDecl_pointer:=A('pointer',SystemWordSize);
+    nn:=0;
+    TypeDecl_void:=A('void',0);
+    TypeDecl_type:=A('type',SystemWordSize);
+    TypeDecl_bool:=A('bool',SystemWordSize);
+    TypeDecl_string:=A('string',SystemWordSize);
+    TypeDecl_variant:=A('variant',16);//TODO: OLE compatible variants
+    TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
+    A('i8',1);
+    A('i16',2);
+    A('i32',4);
+    A('i64',8);
+    A('u8',1);
+    A('u16',2);
+    A('u32',4);
+    TypeDecl_intLast:=A('u64',8);
+    A('f32',4);//TODO: floating-point support
+    A('f64',8);
+    TypeDecl_object:=0;//see StratoParseSource: allow only one object()={}
+    TypeDecl_hash:=A('hash',SystemWordSize);//TODO:
+    TypeDecl_pointer:=A('pointer',SystemWordSize);
 
-  C('__xinc','__xinc(^number)',
-    stratoSysCall_xinc,[TypeDecl_number or C_ByRef],TypeDecl_number);
-  C('__xdec','__xdec(^number)',
-    stratoSysCall_xdec,[TypeDecl_number or C_ByRef],TypeDecl_number);
-  C('__writeln','__writeln(string)',
-    stratoSysCall_writeln,[TypeDecl_string],0);
-  C('__malloc','__malloc(number)',
-    stratoSysCall_malloc,[TypeDecl_number],TypeDecl_pointer);
-  C('__realloc','__realloc(pointer,number)',
-    stratoSysCall_realloc,[TypeDecl_pointer,TypeDecl_number],TypeDecl_pointer);
-  C('__mfree','__mfree(pointer)',
-    stratoSysCall_mfree,[TypeDecl_pointer],0);
+    C('__xinc','__xinc(^number)',
+      stratoSysCall_xinc,[TypeDecl_number or C_ByRef],TypeDecl_number);
+    C('__xdec','__xdec(^number)',
+      stratoSysCall_xdec,[TypeDecl_number or C_ByRef],TypeDecl_number);
+    C('__writeln','__writeln(string)',
+      stratoSysCall_writeln,[TypeDecl_string],0);
+    C('__malloc','__malloc(number)',
+      stratoSysCall_malloc,[TypeDecl_number],TypeDecl_pointer);
+    C('__realloc','__realloc(pointer,number)',
+      stratoSysCall_realloc,[TypeDecl_pointer,TypeDecl_number],TypeDecl_pointer);
+    C('__mfree','__mfree(pointer)',
+      stratoSysCall_mfree,[TypeDecl_pointer],0);
 
-  //TODO: exitcode (and all system things)
-  //TODO: objects with reference counting
-  //TODO: strings with reference counting, copy-on-write, etc
-
-  Sphere.MarkIndex(0);
+    //TODO: exitcode (and all system things)
+    //TODO: objects with reference counting
+    //TODO: strings with reference counting, copy-on-write, etc
+  finally
+    Sphere.Free;
+    Source.Free;
+  end;
 end;
 
 end.

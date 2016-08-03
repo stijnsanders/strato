@@ -9,10 +9,10 @@ type
   private
     FMem:array of byte; //TODO: array of cardinal?int64? or other way to force alignment?
     FMemSize,FMemIndex,FMemAllocIndex:cardinal;
-    //FGlobals:array of Sphere:TStratoSphere; Address:cardinal; end;?
+    FGlobals:array of TStratoIndex;
+    FGlobalsSize,FGlobalsIndex:cardinal;
     FDebugView:TfrmDebugView;
     FDebugCount:integer;
-    procedure AllocateGlobals(Sphere:TStratoSphere);
     procedure Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
     procedure LiteralToMemory(Sphere:TStratoSphere;p,q:TStratoIndex;addr:cardinal);
     procedure PerformSysCall(Sphere:TStratoSphere;Fn:TStratoIndex;Ptr:cardinal);
@@ -36,8 +36,6 @@ const
   FirstAllocMemPtr=$10000;
   {$ENDIF}
   MaxStackMemPtr=FirstAllocMemPtr-$10;
-
-  SphereBasePtr=BaseMemPtr;//TODO: replace with lookup in TStratoMachine.FGlobals
 
 {$IFDEF DEBUG}
 type
@@ -68,6 +66,8 @@ begin
   SetLength(FMem,FMemSize);
   FMemIndex:=BaseMemPtr;
   FMemAllocIndex:=FirstAllocMemPtr;
+  FGlobalsSize:=0;
+  FGlobalsIndex:=0;
   FDebugCount:=0;
   //TODO: restore previous position
   if DoDebug then
@@ -85,48 +85,78 @@ end;
 
 procedure TStratoMachine.Run(Sphere: TStratoSphere);
 var
-  p:TStratoName;
+  p,p1,p2:TStratoIndex;
+  q:array of TStratoIndex;
+  qi,ql:cardinal;
 begin
-  if FDebugView<>nil then FDebugView.Show;
-  AllocateGlobals(Sphere);
-  //TODO: halt on unhandled exception?
-  p:=Sphere.r(pHeader,tf_FirstInitialization);
-  while p<>0 do
+  qi:=0;
+  ql:=0;
+  p:=0;
+  while Sphere.Store.NextModule(p) do
    begin
-    Perform(Sphere,p);
-    p:=Sphere.r(p,tfNext);
+    if qi=ql then
+     begin
+      inc(ql,$20);//grow
+      SetLength(q,ql);
+     end;
+    q[qi]:=p;
+    inc(qi);
    end;
-  p:=Sphere.r(pHeader,tf_FirstFinalization);
-  while p<>0 do
+  ql:=qi;
+
+  if FDebugView<>nil then FDebugView.Show;
+
+  //allocate globals
+  FGlobalsIndex:=0;
+  qi:=0;
+  while qi<ql do
    begin
-    Perform(Sphere,p);
-    p:=Sphere.r(p,tfNext);
+    p:=Sphere.r(q[qi],tf_Module_FirstGlobalVar);
+    while p<>0 do
+     begin
+      //list for debug
+      if FGlobalsIndex=FGlobalsSize then
+       begin
+        inc(FGlobalsSize,$100);//grow
+        SetLength(FGlobals,FGlobalsSize);
+       end;
+      FGlobals[FGlobalsIndex]:=p;
+      inc(FGlobalsIndex);
+
+      //set offset, value
+      p1:=Sphere.r(p,tfSubject);
+      Sphere.s(p1,tfOffset,FMemIndex);
+      p2:=Sphere.r(p1,tfInitialValue);
+      if p2<>0 then
+        LiteralToMemory(Sphere,p2,Sphere.r(p2,tfEvaluatesTo),FMemIndex);
+      inc(FMemIndex,Sphere.v(p,tfByteSize));
+      p:=Sphere.r(p,tfNext);
+     end;
+    inc(qi);
+   end;
+
+  //TODO: halt on unhandled exception?
+  //TODO: re-construct correct order based on dependencies?
+
+  //initialization
+  qi:=ql;
+  while qi<>0 do
+   begin
+    dec(qi);
+    p:=Sphere.r(q[qi],tf_Module_Initialization);
+    if p<>0 then Perform(Sphere,p);
+   end;
+
+  //finalization
+  qi:=0;
+  while qi<ql do
+   begin
+    p:=Sphere.r(q[qi],tf_Module_Finalization);
+    if p<>0 then Perform(Sphere,p);
+    inc(qi);
    end;
 
   if FDebugView<>nil then FDebugView.Done;
-end;
-
-procedure TStratoMachine.AllocateGlobals(Sphere: TStratoSphere);
-var
-  p,q,r:TStratoIndex;
-begin
-  //allocate memory
-  //FGlobals[].Sphere:=Sphere;//SphereBasePtr
-  //FGlobals[].Address:=FMemIndex;
-  inc(FMemIndex,Sphere.v(pHeader,tf_GlobalByteSize));
-
-  //initialize
-  p:=Sphere.r(pHeader,tf_FirstGlobalVar);
-  while p<>0 do
-   begin
-    //assert Sphere[p].ThingType=ttGlobal
-    q:=Sphere.r(p,tfTarget);
-    //assert Sphere[q].ThingType=ttVar
-    r:=Sphere.r(q,tfInitialValue);
-    if r<>0 then LiteralToMemory(Sphere,r,
-      Sphere.r(q,tfEvaluatesTo),SphereBasePtr+Sphere.v(q,tfOffset));
-    p:=Sphere.r(p,tfNext);
-   end;
 end;
 
 procedure TStratoMachine.Perform(Sphere:TStratoSphere;Entry:TStratoIndex);
@@ -336,7 +366,7 @@ var
   var
     li,li1:TListItem;
     pp,q1,q2:TStratoIndex;
-    py,px,ii,jj:cardinal;
+    gi,py,px,ii,jj:cardinal;
   begin
     //TODO: move this to other unit
     inc(OpCount);
@@ -408,8 +438,8 @@ var
         px:=BaseMemPtr;
         k:=0;
         ii:=0;
-        if Sphere.v(pHeader,tf_GlobalByteSize)=0 then pp:=0 else
-          pp:=Sphere.v(pHeader,tf_FirstGlobalVar);
+        gi:=0;
+        if gi<FGlobalsIndex then pp:=FGlobals[0] else pp:=0;
         while ((i<FMemIndex) or (i<np)) and (ii<80) do
          begin
           inc(ii);
@@ -446,13 +476,16 @@ var
           else
            begin
             //TODO: accurately keep px+.Offset equal to i !!!
-            if Sphere.t(pp)=ttGlobal then
+            if gi<FGlobalsIndex then
              begin
               li1.SubItems.Add(Format('%d: %s',[pp,
-                StratoDumpThing(Sphere,Sphere.r(pp,tfTarget))]));
-              jj:=ByteSize(Sphere,Sphere.rr(pp,[tfTarget,tfEvaluatesTo]));
-              while (pp<>0) and (px+Sphere.v(Sphere.r(pp,tfTarget),tfOffset)<=i) do
-                pp:=Sphere.r(pp,tfNext);
+                StratoDumpThing(Sphere,Sphere.r(pp,tfSubject))]));
+              jj:=Sphere.v(pp,tfByteSize);
+              inc(gi);
+              while (gi<FGlobalsIndex) and
+                (Sphere.v(Sphere.r(FGlobals[gi],tfSubject),tfOffset)<=i) do
+                inc(gi);
+              if gi<FGlobalsIndex then pp:=FGlobals[gi] else pp:=0;
              end
             else
              begin
@@ -743,7 +776,7 @@ begin
                 //store argument value
                 if vt=0 then
                   Sphere.Error(pe,'no value for argument "'+
-                    string(Sphere.Dict.Str[Sphere.v(p1,tfName)])+'"')
+                    string(Sphere.Store.Dict.Str[Sphere.v(p1,tfName)])+'"')
                 else
                  begin
                   if Sphere.t(p2)=ttVarByRef then
@@ -938,7 +971,7 @@ begin
 
             ttNameSpace://global var
              begin
-              inc(vp,SphereBasePtr);
+              //inc(vp,0);
               q:=0;//end loop
              end;
 
@@ -1914,7 +1947,7 @@ begin
                 //store argument value
                 if vt=0 then
                   Sphere.Error(pe,'no value for argument "'+
-                    string(Sphere.Dict.Str[Sphere.v(p1,tfName)])+'"')
+                    string(Sphere.Store.Dict.Str[Sphere.v(p1,tfName)])+'"')
                 else
                  begin
                   if Sphere.t(p2)=ttVarByRef then
@@ -1956,7 +1989,7 @@ begin
                begin
                 if vt=0 then
                   Sphere.Error(pe,'no value for property setter "'+
-                    string(Sphere.Dict.Str[Sphere.v(p,tfName)])+'"')
+                    string(Sphere.Store.Dict.Str[Sphere.v(p,tfName)])+'"')
                 else
                  begin
                   q:=Sphere.Lookup(r,tfFirstItem,

@@ -1,4 +1,4 @@
-oo @ 8000
+oo
 
 object:={
 	_basetype:?object@-@?0;//class

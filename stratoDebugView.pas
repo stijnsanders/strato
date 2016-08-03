@@ -183,7 +183,8 @@ begin
         FSrcFile:=0;//in case of error
         //TODO: resolve relative path
         //TODO: cache several?
-        FSrcPath:=s.GetBinaryData(s.r(p,tf_SourceFile_FileName));
+        FSrcPath:=s.Store.ResolvePath(
+          s.GetBinaryData(s.r(p,tf_SourceFile_FileName)));
         //TODO: check signature/timestamp
         FSrcData.LoadFromFile(FSrcPath);
         FSrcFile:=p;

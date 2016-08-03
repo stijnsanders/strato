@@ -6,7 +6,7 @@ uses stratoTokenizer, stratoSphere, stratoDecl;
 
 procedure StratoDumpTokens(const t:TStratoSourceTokenList);
 function StratoDumpThing(s:TStratoSphere;p:TStratoIndex):string;
-procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
+procedure StratoDumpSphereData(t:TStratoStore; const fn:string);
 
 implementation
 
@@ -39,19 +39,30 @@ begin
   if p=0 then Result:='' else
   case s.t(p) of
     ttSourceFile:
-      Result:=Format('src  ini=%d fin=%d fn=%d fs=%d',
-        [s.r(p,tf_SourceFile_InitializationCode)
-        ,s.r(p,tf_SourceFile_FinalizationCode)
-        ,s.r(p,tf_SourceFile_FileName)
+      Result:=Format('src  fn=%d fs=%d mod=%d dep=%d',
+        [s.r(p,tf_SourceFile_FileName)
         ,s.v(p,tf_SourceFile_FileSize)
+        ,s.r(p,tf_SourceFile_Module)
+        ,s.r(p,tf_SourceFile_FirstDependency)
+        ]);
+    ttModule:
+      Result:=Format('mod  ns=%d var=%d ini=%d fin=%d',
+        [s.r(p,tf_Module_FirstNameSpace)
+        ,s.r(p,tf_Module_FirstGlobalVar)
+        ,s.r(p,tf_Module_Initialization)
+        ,s.r(p,tf_Module_Finalization)
+        ]);
+    ttDependency:
+      Result:=Format('dep  src=%d "%s"',
+        [s.r(p,tfTarget)
+        ,s.GetBinaryData(s.rr(p,[tfTarget,tf_SourceFile_FileName]))
         ]);
     ttBinaryData:
       Result:=Format('"%s"',[s.GetBinaryData(p)]);
     ttNameSpace:
-      Result:=Format('ns   %s  ->%d  src=%d',
+      Result:=Format('ns   %s  ->%d',
         [s.FQN(p)
         ,s.r(p,tfFirstItem)
-        ,s.r(p,tf_NameSpace_SourceFile)
         ]);
     ttTypeDecl:
       Result:=Format('type %s  #%d ->%d',
@@ -112,9 +123,10 @@ begin
         [s.r(p,tfTarget)
         ]);
     ttGlobal:
-      Result:=Format('===> %d  %s',
-        [s.r(p,tfTarget)
-        ,s.FQN(s.r(p,tfTarget))
+      Result:=Format('glob %d #%d  %s',
+        [s.r(p,tfSubject)
+        ,s.v(p,tfByteSize)
+        ,s.FQN(s.r(p,tfSubject))
         ]);
     ttSignature:
       Result:=Format('sig  %s  %d.(%d):%d',
@@ -138,14 +150,14 @@ begin
     ttFnCall:
       if s.r(p,tfEvaluatesTo)<>0 then
         Result:=Format('call %s  %d(%d):%d',
-          [s.Dict[s.v(p,tfName)]
+          [s.Store.Dict.Str[s.v(p,tfName)]
           ,s.r(p,tfTarget)
           ,s.r(p,tfFirstArgument)
           ,s.r(p,tfEvaluatesTo)
           ])
       else
         Result:=Format('call %s  %d(%d)',
-          [s.Dict[s.v(p,tfName)]//s.FQN(p)
+          [s.Store.Dict.Str[s.v(p,tfName)]//s.FQN(p)
           ,s.r(p,tfTarget)
           ,s.r(p,tfFirstArgument)
           ]);
@@ -328,15 +340,13 @@ begin
           ,s.r(p,tfEvaluatesTo)
           ]);
     else
-      Result:=Format('?    "%s" %s',
-        [s.FQN(p)
-        ,s.DebugInfo(p)
-        ]);
+      Result:='?    '+s.DebugInfo(p);
   end;
 end;
 
-procedure StratoDumpSphereData(s:TStratoSphere; const fn:string);
+procedure StratoDumpSphereData(t:TStratoStore; const fn:string);
 var
+  s:TStratoSphere;
   f:TFileStream;
   p,q,p1,p2:TStratoIndex;
   py,px:cardinal;
@@ -352,22 +362,16 @@ var
      end;
   end;
 begin
+  s:=TStratoSphere.Create(t,nil);//TODO: readonly?
   f:=TFileStream.Create(fn,fmCreate);
   try
-    xx:=Format(
-      'Strato v=%.8x ini=%d fin=%d ns=%d global=%d #%d'#13#10,
-      [s.v(pHeader,tf_Version)
-      ,s.r(pHeader,tf_FirstInitialization)
-      ,s.r(pHeader,tf_FirstFinalization)
-      ,s.r(pHeader,tf_FirstNameSpace)
-      ,s.r(pHeader,tf_FirstGlobalVar)
-      ,s.v(pHeader,tf_GlobalByteSize)
-      ])+
+    xx:=
+      //'Strato v=?
       'index   parent  next    source  line :col what info'#13#10;
     f.Write(xx[1],Length(xx));
 
     p:=0;
-    while s.NextIndex(p) do
+    while t.NextIndex(p) do
      begin
       case s.t(p) of
         ttBinaryData:
@@ -382,14 +386,8 @@ begin
         else
           try
             x:=Format('%7d %33s ',[p,'']);
-            if s.t(p)=ttNameSpace then
-             begin
-              xn(15,s.r(p,tfParent));
-              xn(23,s.r(p,tfNext));
-              xn(31,s.r(p,tf_NameSpace_SourceFile));
-             end
-            else
-            if (s.v(p,tfSrcPos)=0) or not(StratoGetSourceFile(s,p,q,py,px,p1,p2)) then
+            if (s.v(p,tfSrcPos)=0) or
+              not(StratoGetSourceFile(s,p,q,py,px,p1,p2)) then
              begin
               xn(15,p1);
               xn(23,p2);
@@ -414,6 +412,7 @@ begin
      end;
   finally
     f.Free;
+    s.Free;
   end;
 end;
 

@@ -19,9 +19,11 @@ const
   //are in use for each ThingType
   //constant values here are carefully chosen to be binary relevant (see bitmasks) and not to overlap
 
-  ttFileMarker   = $00727453;//'Str'#0;
-  ttSourceFile   = $0100;
+  ttFileMarker   = $00727453;//'Str'#0 see pHeader below
   ttBinaryData   = $0200;
+  ttSourceFile   = $0201;   //only at start of block
+  ttModule       = $0202;
+  ttDependency   = $0203;
 
   tt__Resolvable = $0010;   //bitmask: things that use FirstItem
   tt__Typed      = $0020;   //bitmask: things that use EvaluateTo
@@ -41,7 +43,7 @@ const
 
   ttImport       = $0081;
   ttAlias        = $0082;
-  ttGlobal       = $0083;   //see pHeader tf_FirstGlobalVar,tf_GlobalByteSize
+  ttGlobal       = $0083;   //see tf_Module_FirstGlobalVar
   ttPrivate      = $0091;
   ttSignature    = $00E0;
   ttMember       = $0001;
@@ -100,7 +102,7 @@ const
   tfOperator       = $C33;//TStratoToken (stOp*)
   tfLeft           = $834;
   tfRight          = $835;
-  tfSourceFile     = $843;
+//  tfSourceFile     = $843;
   tfFirstArgument  = $844;
   tfSignature      = $845;
   tfBody           = $846;
@@ -110,26 +112,23 @@ const
   tfDoElse         = $855;
   tfDoFirst        = $865;
 
-  //header (ttFileMarker)
-  pHeader=cardinal(-5);//see TStratoSphere.GetNode
-  tf_ThingCount          =$D01;
-  tf_Version             =$D02;
-  tf_FirstNameSpace      =$903;
-  tf_FirstGlobalVar      =$904;
-  tf_GlobalByteSize      =$D05;
-  tf_FirstInitialization =$906;
-  tf_FirstFinalization   =$907;
-
   //ttSourceFile
-  tf_SourceFile_FileName           =$A01;
-  tf_SourceFile_FileSize           =$E02;
-  tf_SourceFile_SrcPosLineIndex    =$E03;
-  tf_SourceFile_PartOfModule       =$A05;
-  tf_SourceFile_InitializationCode =$A06;
-  tf_SourceFile_FinalizationCode   =$A07;
+  tf_SourceFile_FileName        =$901;//ttBinary
+  tf_SourceFile_FileSize        =$C02;
+  tf_SourceFile_SrcPosLineIndex =$D03;
+  tf_SourceFile_FirstDependency =$B04;
+  tf_SourceFile_Module          =$B05;
 
+  //ttModule
+  tf_Module_FirstNameSpace  =$A04;
+  tf_Module_FirstGlobalVar  =$A05;
+  tf_Module_Initialization  =$A06;
+  tf_Module_Finalization    =$A07;
+
+{
   //ttNameSpace
-  tf_NameSpace_SourceFile          =$B05;
+  tf_NameSpace_Master          =$?05;
+}
 
 {$IFDEF DEBUG}
 type
@@ -140,14 +139,14 @@ function rx(tt:TStratoThingType;f:TStratoField;t:rxt;q:TStratoIndex):cardinal;
 
 type
   TStratoBlockHeader=record
-    FirstIndex,
+    Marker:TStratoThingType;
+    SourceFile:TStratoIndex;
     ThingCount,
-    xReserved1:cardinal;
+    NextBlock:cardinal;
+    xReserved1,
     xReserved2,
-    Module:TStratoIndex;
-    xReserved4:cardinal;
-    xReserved5,
-    xReserved6:TStratoIndex;
+    xReserved3,
+    xReserved4:TStratoIndex;
   end;
 
 implementation
@@ -175,36 +174,38 @@ var
   end;
 begin
   if ((f and tf__IsValue)=0) and (q<>0) and (@t<>nil) then tc:=t(q) else tc:=0;
-  if (f=tfSrcPos) and (tt<>ttSourceFile) then Result:=7 else
+  if f=tfSrcPos then Result:=7 else
    begin
     ok:=false;//default
     case tt of
-      ttFileMarker:
-        case f of
-          tf_ThingCount,
-          tf_Version:ok:=true;
-          tf_FirstNameSpace:ok:=(q=0) or (tc=ttNameSpace);
-          tf_FirstGlobalVar:ok:=(q=0) or (tc=ttGlobal);
-          tf_GlobalByteSize:ok:=true;
-          tf_FirstInitialization,
-          tf_FirstFinalization:ok:=(q=0) or (tc=ttCodeBlock);
-        end;
       ttSourceFile:
         case f of
-          tf_SourceFile_FileName:ok:=tc=ttBinaryData;
+          tf_SourceFile_FileName:ok:=(q=0) or (tc=ttBinaryData);
           tf_SourceFile_FileSize:ok:=true;
-          tf_SourceFile_SrcPosLineIndex:ok:=true;
-          tf_SourceFile_PartOfModule:ok:=(q=0) or (tc=ttNameSpace);
-          tf_SourceFile_InitializationCode,
-          tf_SourceFile_FinalizationCode:ok:=(q=0) or (tc=ttCodeBlock);
           //TODO: FileCRC32,FileDate
+          tf_SourceFile_SrcPosLineIndex:ok:=true;
+          tf_SourceFile_FirstDependency:ok:=(q=0) or (tc=ttDependency);
+          tf_SourceFile_Module:ok:=(q=0) or (tc=ttModule);
+        end;
+      ttModule:
+        case f of
+          tf_Module_FirstNameSpace:ok:=(q=0) or (tc=ttNameSpace);
+          tf_Module_FirstGlobalVar:ok:=(q=0) or (tc=ttGlobal);
+          tf_Module_Initialization,
+          tf_Module_Finalization:ok:=(q=0) or (tc=ttCodeBlock);
+        end;
+      ttDependency:
+        case f of
+          tfParent:ok:=tc=ttSourceFile;
+          tfNext:ok:=(q=0) or (tc=ttDependency);
+          tfTarget:ok:=tc=ttSourceFile;
         end;
       ttNameSpace:
         case f of
           tfParent:ok:=(q=0) or (tc=ttNameSpace);
           tfName:ok:=true;
           tfFirstItem,tfNext:if tc=ttNameSpace then ok:=true else anydecl;
-          tf_NameSpace_SourceFile:ok:=(q=0) or (tc=ttSourceFile);
+          tfTarget:ok:=(q=0) or (tc=ttNameSpace);//master namespace
         end;
       ttTypeDecl,ttRecord,ttEnumeration:
         case f of
@@ -281,14 +282,15 @@ begin
         end;
       ttGlobal:
         case f of
+          tfParent:ok:=tc=ttNameSpace;
           tfNext:ok:=tc in [0,ttGlobal];
-          tfTarget:ok:=tc=ttVar;
+          tfSubject:ok:=tc=ttVar;
+          tfByteSize:ok:=true;
         end;
       ttPrivate:
         case f of
           tfParent:ok:=tc=ttNameSpace;
           tfNext:anydecl;
-          tfSourceFile:ok:=tc=ttSourceFile;
           tfFirstItem:anydecl;
           tfTarget:ok:=tc=ttNameSpace;
         end;
@@ -312,7 +314,6 @@ begin
         case f of
           tfParent:ok:=tc=ttMember;
           tfNext:ok:=tc in [0,ttOverload,ttPropertyGet,ttPropertySet];
-          tfSourceFile:ok:=tc=ttSourceFile;
           tfFirstArgument:ok:=tc in [0,ttVar,ttVarByRef];
           tfSignature:ok:=tc=ttSignature;
           tfBody:ok:=tc=ttCodeBlock;//ttSysCall?
@@ -503,7 +504,6 @@ begin
         case f of
           tfParent:ok:=tc=ttConstructors;
           tfNext:ok:=(q=0) or (tc=ttConstructor);
-          tfSourceFile:ok:=tc=ttSourceFile;
           tfSignature:ok:=tc=ttSignature;
           tfBody:ok:=tc=ttCodeBlock;
           tfFirstArgument:ok:=tc in [0,ttVar,ttVarByRef];

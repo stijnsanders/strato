@@ -20,9 +20,10 @@ uses
   stratoDebugView in 'stratoDebugView.pas' {frmDebugView};
 
 var
-  n:TStratoSphere;
+  n:TStratoStore;
   s:TStratoSource;
   m:TStratoMachine;
+  p:TStratoSphere;
   i,j,k,l,ec:integer;
   x:string;
 
@@ -66,7 +67,7 @@ begin
 
     //TODO: export LLVMIR
     //TODO: params from file
-    //TODO: basepath (or add include search path)
+    //TODO: define path(s)
     //TODO: arguments to program
 
    end
@@ -83,7 +84,7 @@ begin
       LastFN:='';
 
       ec:=0;
-      n:=TStratoSphere.Create;
+      n:=TStratoStore.Create;
       try
         //settings
         n.ReadSettings(ChangeFileExt(ParamStr(0),'.ini'));
@@ -144,14 +145,13 @@ begin
 
             //do file
             s:=TStratoSource.Create;
-            if DoInlineErrors then s.OnError:=n.InlineError;
             s.LoadFromFile(x);
             LastFN:=x;//used by -X above
             if DoTokenize then
               StratoDumpTokens(s.Tokens)
             else
              begin
-              StratoParseSource(n,s);
+              StratoParseSource(n,s,DoInlineErrors);
               inc(ec,s.ErrorCount);
              end;
             //TODO: free s?
@@ -168,11 +168,13 @@ begin
           if ec=0 then
            begin
 
+            p:=TStratoSphere.Create(n,nil);
             m:=TStratoMachine.Create(DoDebug);
             try
-              m.Run(n);
+              m.Run(p);
             finally
               m.Free;
+              p.Free;
             end;
 
            end

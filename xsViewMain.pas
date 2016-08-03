@@ -64,6 +64,7 @@ type
     procedure TreeView1CustomDrawItem(Sender: TCustomTreeView;
       Node: TTreeNode; State: TCustomDrawState; var DefaultDraw: Boolean);
   private
+    FStore:TStratoStore;
     FSphere:TStratoSphere;
     FSrcFile,FHighLight1,FHighLight2:TStratoIndex;
     FSrcPath,FFilePath,FSignature:string;
@@ -173,6 +174,7 @@ end;
 procedure TfrmXsViewMain.DoCreate;
 begin
   inherited;
+  FStore:=nil;
   FSphere:=nil;
   Application.OnActivate:=AppActivate;
   FSrcPath:='';
@@ -185,6 +187,7 @@ procedure TfrmXsViewMain.DoDestroy;
 begin
   inherited;
   FreeAndNil(FSphere);
+  FreeAndNil(FStore);
 end;
 
 procedure TfrmXsViewMain.Open1Click(Sender: TObject);
@@ -194,13 +197,14 @@ end;
 
 procedure TfrmXsViewMain.LoadFile(const FilePath: string);
 var
-  n:TTreeNode;
-  v:cardinal;
-  p,q:TStratoIndex;
+  p:TStratoIndex;
 begin
-  if FSphere<>nil then FSphere.Free;
-  FSphere:=TStratoSphere.Create;
-  FSphere.LoadFromFile(FilePath);
+  FreeAndNil(FSphere);
+  FreeAndNil(FStore);
+
+  FStore:=TStratoStore.Create;
+  FStore.LoadFromFile(FilePath);
+  FSphere:=TStratoSphere.Create(FStore,nil);
 
   FFilePath:=FilePath;
   FSignature:=FileSignature(FilePath);
@@ -220,11 +224,14 @@ begin
   try
     TreeView1.Items.Clear;
 
+    while FStore.NextModule(p) do BuildNode(nil,p);
+
     //ListNode(nil,':Namespaces->',FSphere.Header.FirstNameSpace);
     //ListNode(nil,':GlobalVars->',FSphere.Header.FirstGlobalVar);
     //ListNode(nil,':Initialization->',FSphere.Header.FirstInitialization);
     //ListNode(nil,':Finalization->',FSphere.Header.FirstFinalization);
 
+{
     v:=FSphere.v(pHeader,tf_Version);
     n:=TreeView1.Items.AddChild(nil,Format(':Namespaces [v%d.%d.%d.%d]',[
         v shr 24,
@@ -239,21 +246,16 @@ begin
      end;
 
     n:=TreeView1.Items.AddChild(nil,':GlobalVars #'+
-      IntToStr(FSphere.v(pHeader,tf_GlobalByteSize))) as TXsTreeNode;
-    p:=FSphere.r(pHeader,tf_FirstGlobalVar);
+      IntToStr(FSphere.v(pIndexes,tf_GlobalByteSize))) as TXsTreeNode;
+    p:=FSphere.r(pIndexes,tf_FirstGlobalVar);
     while p<>0 do
      begin
-      {
-      q:=p;
-      if (q<>0) and (FSphere[q].ThingType=ttGlobal) then q:=FSphere[q].Target;
-      BuildNode(n,q);
-      }
       BuildNode(n,p);
       p:=FSphere.r(p,tfNext);
      end;
 
     n:=TreeView1.Items.AddChild(nil,':Initialization') as TXsTreeNode;
-    p:=FSphere.r(pHeader,tf_FirstInitialization);
+    p:=FSphere.r(pIndexes,tf_FirstInitialization);
     while p<>0 do
      begin
       q:=p;
@@ -263,7 +265,7 @@ begin
      end;
 
     n:=TreeView1.Items.AddChild(nil,':Finalization') as TXsTreeNode;
-    p:=FSphere.r(pHeader,tf_FirstFinalization);
+    p:=FSphere.r(pIndexes,tf_FirstFinalization);
     while p<>0 do
      begin
       q:=p;
@@ -271,6 +273,7 @@ begin
       BuildNode(n,q);
       p:=FSphere.r(p,tfNext);
      end;
+}
 
   finally
     TreeView1.Items.EndUpdate;
@@ -343,7 +346,10 @@ begin
          if tt=ttBinaryData then dec(i);
          a[ai]:=i;
          inc(ai);
-         i:=FSphere.r(i,tfParent);
+         if tt=ttSourceFile then
+           i:=FSphere.r(i,tf_SourceFile_Module)
+         else
+           i:=FSphere.r(i,tfParent);
         end;
      end;
     n:=TreeView1.Items.GetFirstNode;
@@ -501,6 +507,25 @@ begin
     k:=iiDefault;
     j:=0;//set ExpandIndex?
     case tt of
+      ttSourceFile:
+       begin
+        n.Text:=Format('%d: "%s" #%d',
+          [i
+          ,FSphere.GetBinaryData(FSphere.v(i,tf_SourceFile_FileName))
+          ,FSphere.v(i,tf_SourceFile_FileSize)
+          ]);
+        ListNode(n,':Dependencies->',FSphere.r(i,tf_SourceFile_FirstDependency));
+       end;
+      ttModule:
+       begin
+        BuildNode(n,FStore.SourceFile(i));
+        ListNode(n,':Namespaces->',FSphere.r(i,tf_Module_FirstNameSpace));
+        ListNode(n,':GlobalVars->',FSphere.r(i,tf_Module_FirstGlobalVar));
+        ListNode(n,':Initialization->',FSphere.r(i,tf_Module_Initialization));
+        ListNode(n,':Finalization->',FSphere.r(i,tf_Module_Finalization));
+       end;
+      ttDependency:
+        n.JumpIndex:=FSphere.r(i,tfTarget);
       ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration:
         j:=FSphere.r(i,tfFirstItem);
       ttAlias,ttGlobal,ttImport,ttTry,ttDeferred,ttThrow:
@@ -806,9 +831,10 @@ begin
    begin
     txtDictLookup.SelectAll;
     if TryStrToInt(txtDictLookup.Text,i) then
-      lblDictName.Caption:=FSphere.Dict[i]
+      lblDictName.Caption:=FStore.Dict[i]
     else
-      lblDictName.Caption:=Format('%d/%d',[FSphere.Dict.StrIdx(txtDictLookup.Text),FSphere.Dict.StrCount]);
+      lblDictName.Caption:=Format('%d/%d',
+        [FStore.Dict.StrIdx(txtDictLookup.Text),FStore.Dict.StrCount]);
    end;
 end;
 

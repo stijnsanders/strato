@@ -51,3 +51,6 @@
 0123 ttSelection
 0131 ttCodeBlock
 0200 ttBinaryData
+0201 ttSourceFile
+0202 ttModule
+0203 ttDependency

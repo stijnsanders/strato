@@ -4,8 +4,8 @@ interface
 
 uses stratoDecl, stratoSphere, stratoSource;
 
-function StratoParseSource(Sphere: TStratoSphere;
-  Source: TStratoSource): TStratoIndex;
+function StratoParseSource(Store: TStratoStore;
+  Source: TStratoSource; InlineErrors: boolean): TStratoIndex;
 
 implementation
 
@@ -49,16 +49,16 @@ type
 type
   TStratoParserBase=class(TObject)
   protected
+    Store: TStratoStore;
     Sphere: TStratoSphere;
     Source: TStratoSource;
     FNameSpace: TStratoIndex;
+    FInlineErrors: boolean;
 
     Locals:array of TStratoIndex;
-    src:TStratoIndex;
 
     procedure ID(var n:TStratoName;var nn:UTF8String;var SrcPos:cardinal);
-    function LookUpNameSpace(var ns:TStratoIndex;var n:TStratoName;
-      var SrcPos: cardinal):boolean;
+    function LookUpNameSpace(var ns:TStratoIndex;var n:TStratoName):boolean;
     procedure ParseImport;
     function LookUpID(StopAtType:boolean=false):TStratoIndex;
     procedure LookUpNext(n:TStratoName;const nn:UTF8String;
@@ -86,7 +86,6 @@ type
     end;
     cb,rd:TStratoIndex;
     cbInhCalled:boolean;
-    mark1,mark2:TStratoIndex;
 
     procedure Push(p:TPrecedence;t:TStratoIndex);
     procedure CodeLookup(n:TStratoName;var p:TStratoIndex;SrcPos:cardinal);
@@ -103,18 +102,19 @@ type
     function CbStart(pp: TStratoIndex): TStratoIndex;
     procedure CbAdd(p:TStratoIndex);
   public
-    constructor Create(ASphere: TStratoSphere; ASource: TStratoSource);
+    constructor Create(AStore: TStratoStore; ASource: TStratoSource;
+      InlineErrors: boolean);
     procedure Parse;
   end;
 
-function StratoParseSource(Sphere: TStratoSphere;
-  Source: TStratoSource): TStratoIndex;
+function StratoParseSource(Store: TStratoStore;
+  Source: TStratoSource; InlineErrors: boolean): TStratoIndex;
 var
   p:TStratoParser;
 begin
   if Source.Done then Result:=0 else
    begin
-    p:=TStratoParser.Create(Sphere,Source);
+    p:=TStratoParser.Create(Store,Source,InlineErrors);
     try
       p.Parse;
       Result:=p.NameSpace;
@@ -141,18 +141,22 @@ procedure TStratoParserBase.ID(var n:TStratoName;var nn:UTF8String;
   var SrcPos:cardinal);
 begin
   nn:=Source.GetID(SrcPos);
-  n:=Sphere.Dict.StrIdx(nn);
+  n:=Store.Dict.StrIdx(nn);
 end;
 
 function TStratoParserBase.LookUpNameSpace(var ns:TStratoIndex;
-  var n:TStratoName;var SrcPos:cardinal):boolean;
+  var n:TStratoName):boolean;
 var
   nn:UTF8String;
   p:TStratoIndex;
+  SrcPos:cardinal;
 begin
   ID(n,nn,SrcPos);
   //Sphere.Lookup? take ttNameSpace only
-  ns:=Sphere.Lookup(pHeader,tf_FirstNameSpace,n);
+  ns:=0;
+  p:=0;
+  while Store.NextModule(p) and (ns=0) do
+    ns:=Sphere.Lookup(p,tf_Module_FirstNameSpace,n);
   if not Sphere.t(ns) in [0,ttNameSpace] then
    begin
     Source.Error('"'+nn+'" is not a namespace');
@@ -171,11 +175,9 @@ begin
         ns:=Sphere.Add(ttNameSpace,
           [tfName,n
           ,tfParent,p
-          ,tf_NameSpace_SourceFile,src//?
-          ,tfSrcPos,SrcPos//?
           ]);
         if p=0 then
-          Sphere.Append(pHeader,tf_FirstNameSpace,ns)
+          Sphere.Append(Sphere.Module,tf_Module_FirstNameSpace,ns)
         else
           Sphere.Append(p,tfFirstItem,ns);
        end;
@@ -201,7 +203,7 @@ var
   alias:UTF8String;
   fn:string;
   i,l:integer;
-  SrcPos,SrcPos1:cardinal;
+  SrcPos:cardinal;
 begin
   ns:=0;//default
   fn:='';//default;
@@ -216,19 +218,13 @@ begin
   case Source.Token of
     stIdentifier:
      begin
-      //TODO: load from standard library !!!
-      if LookupNameSpace(ns,n,SrcPos) then
-       begin
-        if Sphere.r(ns,tf_NameSpace_SourceFile)=0 then
-          Sphere.s(ns,tf_NameSpace_SourceFile,src);
-       end
-      else
+      if not LookupNameSpace(ns,n) then
        begin
         //Sphere.Add(ttNameSpace here? see StratoParseSource below
         fn:=string(Sphere.FQN(ns));
         if fn<>'' then fn:=fn+'.';
-        fn:=Sphere.BasePath+fn+Sphere.Dict[n]+'.xs';
-        if not FileExists(fn) then
+        fn:=fn+Store.Dict.Str[n]+'.xs';
+        if not Store.FindFile(fn) then
          begin
           fn:='';
           Source.Error('unknown namespace "'+string(Sphere.FQN(ns))+'"');
@@ -243,21 +239,21 @@ begin
      end;
     else Source.Error('unsupported import subject syntax');
   end;
+{
   if Source.IsNext([stAt,stNumericLiteral]) then
     i:=ParseInteger(string(Source.GetID(SrcPos1)))
   else
     i:=0;
+}
   Source.Skip(stSemiColon);
   //load and parse
   if fn<>'' then
    begin
-    if i=0 then l:=0 else l:=Sphere.MarkIndex(i);
     ss:=TStratoSource.Create;
     ss.OnError:=Source.OnError;//?
-    ss.LoadFromFile(fn);
-    ns:=StratoParseSource(Sphere,ss);
+    ss.LoadFromFile(Store.ResolvePath(fn));
+    ns:=StratoParseSource(Store,ss,FInlineErrors);
     Source.ErrorCount:=Source.ErrorCount+ss.ErrorCount;
-    if i<>0 then Sphere.MarkIndex(l);
    end;
   //TODO: if (fn='') and (q<>0) then 'already loaded at...'?
   //register
@@ -265,7 +261,7 @@ begin
     if alias<>'' then //alias
      begin
       if not Sphere.Add(Locals[0],tfFirstItem,ttImport,
-        [tfName,Sphere.Dict.StrIdx(alias)
+        [tfName,Store.Dict.StrIdx(alias)
         ,tfSrcPos,SrcPos
         ,tfParent,Locals[0]
         ,tfTarget,ns
@@ -293,6 +289,7 @@ var
   nn:UTF8String;
   nsx:array of TStratoIndex;
   SrcPos:cardinal;
+  p:TStratoIndex;
   function CheckFoundType: boolean;
   begin
     Result:=true;//default
@@ -317,7 +314,10 @@ begin
       nsx[i]:=Sphere.Lookup(Locals[i],tfFirstItem,n);
     if nsx[i]<>0 then inc(j);
    end;
-  nsx[l]:=Sphere.Lookup(pHeader,tf_FirstNameSpace,n);
+  p:=0;
+  nsx[l]:=0;
+  while Store.NextModule(p) and (nsx[l]=0) do
+    nsx[l]:=Sphere.Lookup(p,tf_Module_FirstNameSpace,n);
   //no inc(j), see below (case j=0)
   while CheckFoundType and
     Source.IsNext([stPeriod,stIdentifier]) do //and (j<>0)? no: makes it greedy
@@ -363,6 +363,7 @@ procedure TStratoParserBase.LookUpNext(n:TStratoName;const nn:UTF8String;
   var p,ns,isNew:TStratoIndex);
 var
   i,l:integer;
+  q:TStratoIndex;
 begin
   isNew:=0;//default
   if p=0 then
@@ -376,7 +377,11 @@ begin
       inc(i);
      end;
     if p=0 then //still nothing, check namespaces
-      p:=Sphere.Lookup(pHeader,tf_FirstNameSpace,n);
+     begin
+      q:=0;
+      while Store.NextModule(q) and (p=0) do
+        p:=Sphere.Lookup(q,tf_Module_FirstNameSpace,n);
+     end;
    end
   else
     if (Sphere.t(p) and tt__Resolvable)<>0 then
@@ -389,8 +394,6 @@ begin
     if Sphere.Add(ns,tfFirstItem,ttNameSpace,
       [tfName,n
       ,tfParent,ns
-      ,tf_NameSpace_SourceFile,src
-      //,tfSrcPos
       ],p) then
       isNew:=p
     else
@@ -800,7 +803,7 @@ var
     if byref then tt:=ttArgByRef else tt:=ttArgument;
     byref:=false;
     if Sphere.Add(Signature,tfFirstArgument,tt,
-      [tfName,Sphere.Dict.StrIdx(argName)
+      [tfName,Store.Dict.StrIdx(argName)
       ,tfParent,Signature
       ,tfSrcPos,SrcPos
       ,tfEvaluatesTo,p
@@ -816,7 +819,7 @@ var
 begin
   //assert one past token stPOpen
   Signature:=Sphere.Add(ttSignature,
-    [tfName,Sphere.Dict.StrIdx(name)
+    [tfName,Store.Dict.StrIdx(name)
     ,tfParent,ns
     ,tfSrcPos,SrcPos
     ]);
@@ -950,7 +953,7 @@ begin
             end;
           stPOpen://signature
             StratoFnAdd(Sphere,Source,ttOverload,Fn(x,n,nn,SrcPos),
-              ParseSignature(x,nn,stPClose,SrcPos),src,SrcPos);
+              ParseSignature(x,nn,stPClose,SrcPos),SrcPos);
           else Source.Error('unsupported interface field syntax');
         end;
         Source.Skip(stSemiColon);
@@ -962,16 +965,15 @@ end;
 
 { TStratoParser }
 
-constructor TStratoParser.Create(ASphere: TStratoSphere;
-  ASource: TStratoSource);
+constructor TStratoParser.Create(AStore: TStratoStore;
+  ASource: TStratoSource; InlineErrors: boolean);
 begin
   inherited Create;
-  Sphere:=ASphere;
+  Store:=AStore;
+  Sphere:=nil;//see ParseHeader
   Source:=ASource;
+  FInlineErrors:=InlineErrors;
   FNameSpace:=0;//default
-  mark1:=0;
-  mark2:=0;
-  src:=0;//moved to ParseHeader
 end;
 
 const
@@ -996,8 +998,7 @@ begin
       ParseLogic;
   if stackIndex<>0 then
     Source.Error('unexpected end of source ('+IntToStr(stackIndex)+')');
-  if mark1<>0 then
-    Sphere.MarkIndex(mark2);
+  FreeAndNil(Sphere);
 end;
 
 procedure TStratoParser.Push(p:TPrecedence;t:TStratoIndex);
@@ -1100,7 +1101,11 @@ begin
       inc(i);
      end;
     if p=0 then //still nothing, check namespaces
-      p:=Sphere.Lookup(pHeader,tf_FirstNameSpace,n);
+     begin
+      q:=0;
+      while Store.NextModule(q) and (p=0) do
+        p:=Sphere.Lookup(q,tf_Module_FirstNameSpace,n);
+     end;
    end;
 end;
 
@@ -1470,25 +1475,25 @@ end;
 
 procedure TStratoParser.ParseHeader;
 var
-  ns,p,module:TStratoIndex;
+  ns,p:TStratoIndex;
   b:boolean;
   n:TStratoName;
   nn:UTF8String;
-  SrcPos,SrcPos1:cardinal;
+  SrcPos:cardinal;
 begin
-  module:=0;
+  Sphere:=TStratoSphere.Create(Store,Source);
+  if FInlineErrors then Source.OnError:=Sphere.InlineError;
+
   //namespace
-  SrcPos:=Source.SrcPos;
   if Source.IsNext([stIdentifier]) then
    begin
-    b:=LookUpNameSpace(ns,n,SrcPos);
+    SrcPos:=Source.SrcPos;
+    b:=LookUpNameSpace(ns,n);
+{
     while Source.IsNext([stAt]) do
       case Source.Token of
         stNumericLiteral:
-         begin
-          mark1:=ParseInteger(string(Source.GetID(SrcPos1)));
-          mark2:=Sphere.MarkIndex(mark1);
-         end;
+          Sphere.MarkIndex(ParseInteger(string(Source.GetID(SrcPos1))))
         stIdentifier:
           if not LookUpNameSpace(module,n,SrcPos1) then
             module:=Sphere.Add(ttNameSpace,
@@ -1500,6 +1505,7 @@ begin
         else
           Source.Error('unknown namespace load modifier syntax');
       end;
+}
     if not b then
      begin
       //create namespace
@@ -1509,7 +1515,7 @@ begin
         ,tfSrcPos,SrcPos
         ]);
       if ns=0 then
-        Sphere.Append(pHeader,tf_FirstNameSpace,p)
+        Sphere.Append(Sphere.Module,tf_Module_FirstNameSpace,p)
       else
         Sphere.Append(ns,tfFirstItem,p);
       ns:=p;
@@ -1520,28 +1526,23 @@ begin
     //default: use file name
     nn:=UTF8String(ChangeFileExt(ExtractFileName(Source.FilePath),''));
       //(''''+StringReplace(Source.FilePath,'''','''''',[rfReplaceAll])+'''');?
-    n:=Sphere.Dict.StrIdx(nn);
-    if not(Sphere.Add(pHeader,tf_FirstNameSpace,ttNameSpace,
+    n:=Store.Dict.StrIdx(nn);
+    //TODO: proper detect duplicate!
+    if not(Sphere.Add(Sphere.Module,tf_Module_FirstNameSpace,ttNameSpace,
       [tfName,n
       //,tfParent,?
-      ,tf_NameSpace_SourceFile,src
-      ,tfSrcPos,SrcPos
+      ,tfSrcPos,Source.SrcPos
       ],ns)) then Source.Error('duplicate namespace "'+string(nn)+'"');
    end;
-  src:=Sphere.Add(ttSourceFile,
-    [tf_SourceFile_FileName,Sphere.AddBinaryData(UTF8String(Source.FilePath))
-    ,tf_SourceFile_FileSize,Source.FileSize
-    //file date?checksum?
-    ,tf_SourceFile_PartOfModule,module
-    ,tf_SourceFile_SrcPosLineIndex,Source.LineIndex
-    ]);
-  if Sphere.r(ns,tf_NameSpace_SourceFile)=0 then
-    Sphere.s(ns,tf_NameSpace_SourceFile,src);
   FNameSpace:=ns;
   SetLength(Locals,3);
   Locals[0]:=ns;
   Locals[1]:=0;//see stHRule:ttPrivate
-  Locals[2]:=Sphere.r(pHeader,tf_FirstNameSpace);//runtime
+  p:=0;
+  if Store.NextModule(p) then
+    Locals[2]:=Sphere.r(p,tf_Module_FirstNameSpace)//runtime
+  else
+    Locals[2]:=0;
 end;
 
 procedure TStratoParser.ParseDeclaration;
@@ -1581,7 +1582,7 @@ begin
         LookUpNext(n,nn,p,ns,r);
         //ID(n,nn); but with GetStr:
         nn:=Source.GetStr;
-        n:=Sphere.Dict.StrIdx(nn);
+        n:=Store.Dict.StrIdx(nn);
        end;
 
       st:=Source.Token;
@@ -1605,7 +1606,7 @@ begin
                   ,tfSrcPos,SrcPos
                   ]);
                 r:=StratoFnAdd(Sphere,Source,ttPropertyGet,
-                  Fn(ns,n,nn,SrcPos),r,src,SrcPos);
+                  Fn(ns,n,nn,SrcPos),r,SrcPos);
                 if Source.IsNext([stAClose]) then
                  begin
                   //forward only
@@ -1655,7 +1656,12 @@ begin
                  begin
                   case Sphere.t(ns) of
                     ttNameSpace:
-                      Sphere.AddGlobalVar(p);//sets px.Offset
+                      Sphere.Append(Sphere.Module,
+                        tf_Module_FirstGlobalVar,Sphere.Add(ttGlobal,
+                          [tfParent,ns
+                          ,tfSubject,p
+                          ,tfByteSize,ByteSize(Sphere,q)
+                          ]));
                     ttClass,ttRecord:
                      begin
                       //TODO: support @ offset
@@ -1889,7 +1895,7 @@ begin
               else
                 case Sphere.t(q) of
                   ttMember:
-                    StratoFnAdd(Sphere,Source,ttOverload,q,p,src,SrcPos);
+                    StratoFnAdd(Sphere,Source,ttOverload,q,p,SrcPos);
                   ttSignature:
                    begin
                     //another forward signature? create ttMember here
@@ -1899,8 +1905,8 @@ begin
                       ,tfSrcPos,SrcPos
                       ]);
                     ReplaceNode(Sphere,ns,q,r);
-                    StratoFnAdd(Sphere,Source,ttOverload,r,q,src,Sphere.v(q,tfSrcPos));
-                    StratoFnAdd(Sphere,Source,ttOverload,r,p,src,SrcPos);
+                    StratoFnAdd(Sphere,Source,ttOverload,r,q,Sphere.v(q,tfSrcPos));
+                    StratoFnAdd(Sphere,Source,ttOverload,r,p,SrcPos);
                    end
                   else
                     Source.Error('duplicate identifier "'+nn+'"');
@@ -1911,25 +1917,25 @@ begin
               q:=Sphere.Lookup(ns,tfFirstItem,n);
               if q=0 then
                 p:=StratoFnAdd(Sphere,Source,ttOverload,
-                  Fn(ns,n,nn,SrcPos),p,src,SrcPos)
+                  Fn(ns,n,nn,SrcPos),p,SrcPos)
               else
                 case Sphere.t(q) of
                   ttMember:
-                    p:=StratoFnAdd(Sphere,Source,ttOverload,q,p,src,SrcPos);
+                    p:=StratoFnAdd(Sphere,Source,ttOverload,q,p,SrcPos);
                   ttSignature://signature forwarded, replace with ttMember
                    begin
                     r:=Fn(ns,n,nn,SrcPos);
                     ReplaceNode(Sphere,ns,q,r);
                     //StratoFnAdd checks for SameType(p,q):
                     StratoFnAdd(Sphere,Source,ttOverload,r,q,
-                      src,Sphere.v(q,tfSrcPos));
-                    p:=StratoFnAdd(Sphere,Source,ttOverload,r,p,src,SrcPos);
+                      Sphere.v(q,tfSrcPos));
+                    p:=StratoFnAdd(Sphere,Source,ttOverload,r,p,SrcPos);
                    end;
                   ttClass://constructor
                    begin
                     //Sphere.s(p,tfEvaluatesTo,q);
                     Sphere.s(p,tfTarget,q);
-                    p:=StratoFnAdd(Sphere,Source,ttConstructor,q,p,src,SrcPos);
+                    p:=StratoFnAdd(Sphere,Source,ttConstructor,q,p,SrcPos);
                    end;
                   else
                    begin
@@ -1939,7 +1945,7 @@ begin
                       ,tfParent,ns
                       ,tfSrcPos,SrcPos
                       ]);
-                    p:=StratoFnAdd(Sphere,Source,ttOverload,q,p,src,SrcPos);
+                    p:=StratoFnAdd(Sphere,Source,ttOverload,q,p,SrcPos);
                    end;
                 end;
               if p<>0 then CbStart(StratoFnOvlCodeBlock(Sphere,Source,p));
@@ -1962,7 +1968,7 @@ begin
             if TypeDecl_object=0 then
              begin
               TypeDecl_object:=p;
-              Name_Inherited:=Sphere.Dict.StrIdx('@@@');
+              Name_Inherited:=Store.Dict.StrIdx('@@@');
              end
             else
               Source.Error('only one master base class allowed');
@@ -1974,7 +1980,7 @@ begin
         stBOpen:
          begin
           q:=StratoFnAdd(Sphere,Source,ttPropertyGet,Fn(ns,n,nn,SrcPos),
-            ParseSignature(ns,nn,stBClose,SrcPos),src,SrcPos);
+            ParseSignature(ns,nn,stBClose,SrcPos),SrcPos);
           if Source.IsNext([stAOpen]) then
             Sphere.s(q,tfBody,CbStart(StratoFnOvlCodeBlock(Sphere,Source,q)));
          end;
@@ -2117,19 +2123,14 @@ begin
         [tfParent,ns
         ,tfSrcPos,SrcPos
         ]);
-      if Sphere.r(src,tf_SourceFile_InitializationCode)=0 then
-       begin
-        Sphere.s(src,tf_SourceFile_InitializationCode,cb);
-        Sphere.Append(pHeader,tf_FirstInitialization,cb);
-       end
+      p:=Sphere.Module;
+      if Sphere.r(p,tf_Module_Initialization)=0 then
+        Sphere.s(p,tf_Module_Initialization,cb)
       else
-      if Sphere.r(src,tf_SourceFile_FinalizationCode)=0 then
-       begin
-        Sphere.s(src,tf_SourceFile_FinalizationCode,cb);
-        Sphere.Prepend(pHeader,tf_FirstFinalization,cb);
-       end
-      else
-        Source.Error('Initialization and finalization code already declared.');
+      if Sphere.r(p,tf_Module_Finalization)=0 then
+        Sphere.s(p,tf_Module_Finalization,cb)
+      else Source.Error(
+        'Initialization and finalization code already declared.');
       p:=0;
      end;
 
@@ -2140,7 +2141,6 @@ begin
         Locals[1]:=Sphere.Add(ns,tfFirstItem,ttPrivate,
           [tfName,0
           ,tfParent,ns
-          ,tfSourceFile,src
           //,tfFirstItem:=//see Lookup
           ,tfTarget,ns
           ,tfSrcPos,Source.SrcPos
@@ -2199,7 +2199,7 @@ begin
           stAOpen:
            begin
             p:=Sphere.Add(ttRecord,
-              [tfName,Sphere.Dict.StrIdx(fn)
+              [tfName,Store.Dict.StrIdx(fn)
               ,tfParent,rd
               ,tfSrcPos,SrcPos
               ]);
@@ -2229,7 +2229,7 @@ begin
             stIdentifier:
              begin
               q:=Sphere.Lookup(rd,tfFirstItem,
-                Sphere.Dict.StrIdx(Source.GetID(SrcPos1)));
+                Store.Dict.StrIdx(Source.GetID(SrcPos1)));
               if q=0 then
                 Source.Error('record field not found')
               else
@@ -2269,7 +2269,7 @@ begin
       Source.Skip(stSemiColon);
 
       //register field with record
-      n:=Sphere.Dict.StrIdx(fn);
+      n:=Store.Dict.StrIdx(fn);
       if not Sphere.Add(rd,tfFirstItem,ttVar,
         [tfName,n
         ,tfParent,rd
@@ -2328,11 +2328,6 @@ var
   i,j,k,SrcPos,bi:cardinal;
 begin
   SrcPos:=Source.SrcPos;//default
-  {$IFDEF DEBUG}
-  bi:=Sphere.MarkIndex(40000);
-  {$ELSE}
-  bi:=Sphere.MarkIndex($40000);
-  {$ENDIF}
   while (cb<>0) and Source.NextToken(st) do
   case st of
 
@@ -2349,8 +2344,7 @@ begin
           Source.Error('undeclared identifier "'+string(fqn)+'"');
           //TODO: silence further errors
           p:=Sphere.Add(ttNameSpace,//silence further errors
-            [tfName,Sphere.Dict.StrIdx('!!!'+nn)//n
-            ,tf_NameSpace_SourceFile,src
+            [tfName,Store.Dict.StrIdx('!!!'+nn)//n
             ,tfSrcPos,SrcPos
             ]);
          end;
@@ -2428,8 +2422,7 @@ begin
           Source.Error('undeclared identifier "'+string(fqn)+'"');
           //TODO: silence further errors
           p:=Sphere.Add(ttNameSpace,//silence further errors
-            [tfName,Sphere.Dict.StrIdx('!!!'+nn)//n
-            ,tf_NameSpace_SourceFile,src
+            [tfName,Store.Dict.StrIdx('!!!'+nn)//n
             ,tfSrcPos,SrcPos
             ]);
          end;
@@ -2590,7 +2583,7 @@ begin
             (stack[stackIndex-1].t=p) then
            begin
             Source.Error('unknown function "'+
-              string(Sphere.Dict[Sphere.v(p,tfName)])+'"');
+              string(Store.Dict.Str[Sphere.v(p,tfName)])+'"');
             dec(stackIndex);
            end
           else
@@ -2780,7 +2773,7 @@ begin
               //TODO: construct setter signature? (use the same for now)
               q:=StratoFnAdd(Sphere,Source,ttPropertySet,
                 Sphere.r(r,tfParent),Sphere.r(r,tfSignature),
-                src,Source.SrcPos);//rx.Parent.SrcPos?
+                Source.SrcPos);//rx.Parent.SrcPos?
               CbStart(StratoFnOvlCodeBlock(Sphere,Source,q));
              end
             else
@@ -3015,7 +3008,7 @@ begin
       p:=0;
       while (q<>0) and (p=0) do
        begin
-        p:=Sphere.Lookup(q,tfFirstItem,Sphere.Dict.StrIdx('@@'));
+        p:=Sphere.Lookup(q,tfFirstItem,Store.Dict.StrIdx('@@'));
         if p=0 then
          begin
           q:=Sphere.r(q,tfParent);
@@ -3026,7 +3019,7 @@ begin
        begin
         Source.Error('"@@" undefined');
         p:=Sphere.Add(ttThis,//add anyway to avoid further errors
-          [tfName,Sphere.Dict.StrIdx('@@')
+          [tfName,Store.Dict.StrIdx('@@')
           ,tfParent,cb
           ,tfSrcPos,Source.SrcPos
           ]);
@@ -3088,7 +3081,7 @@ begin
        begin
         Source.Error('"??" undefined');
         p:=Sphere.Add(ttVar,//add anyway to avoid further errors
-          [tfName,Sphere.Dict.StrIdx('??')
+          [tfName,Store.Dict.StrIdx('??')
           ,tfParent,cb
           ,tfSrcPos,Source.SrcPos
           ]);
@@ -3274,7 +3267,6 @@ begin
 
     else Source.Error('unsupported syntax');//'unexpected token');
   end;
-  Sphere.MarkIndex(bi);
 end;
 
 function TStratoParserBase.Fn(x:TStratoIndex;n:TStratoName;const nn:UTF8String;

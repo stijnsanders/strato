@@ -1,4 +1,4 @@
-shell @8000
+shell
 
 shell={}
 
