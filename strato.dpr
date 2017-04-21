@@ -106,6 +106,7 @@ begin
                 'T':
                  begin
                   DoTokenize:=true;
+                  DoRunTime:=false;
                   DoRun:=false;
                  end;
                 'C':DoRun:=false;
@@ -139,7 +140,7 @@ begin
             //run-time
             if DoRunTime then
              begin
-              DefaultTypes(n);
+              DefaultTypes(n,DoInlineErrors,ec);
               DoRunTime:=false;
              end;
 

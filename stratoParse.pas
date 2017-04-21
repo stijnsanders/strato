@@ -1539,10 +1539,9 @@ begin
   Locals[0]:=ns;
   Locals[1]:=0;//see stHRule:ttPrivate
   p:=0;
-  if Store.NextModule(p) then
-    Locals[2]:=Sphere.r(p,tf_Module_FirstNameSpace)//runtime
-  else
-    Locals[2]:=0;
+  if Store.NextModule(p) then p:=Sphere.r(p,tf_Module_FirstNameSpace);//runtime
+  if p=ns then p:=0;
+  Locals[2]:=p;
 end;
 
 procedure TStratoParser.ParseDeclaration;
@@ -2148,6 +2147,21 @@ begin
        end
       else
         Source.Error('already in private visibility');
+
+    stColon:
+     begin
+      ID(n,nn,SrcPos);
+      p:=Sphere.Add(Locals[0],tfFirstItem,ttTypeDecl,
+        [tfName,n
+        ,tfParent,Locals[0]
+        //,tfByteSize,
+        ,tfSrcPos,SrcPos
+        ]);
+      if Source.IsNext([stAt,stNumericLiteral]) then
+        Sphere.s(p,tfByteSize,ParseInteger(string(Source.GetID(SrcPos))));
+      Source.Skip(stSemiColon);
+      p:=0;
+     end;
 
     stSemiColon://;//stray semicolon? ignore
       if Source.IsNext([stSemiColon,stSemiColon]) then

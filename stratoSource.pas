@@ -2,6 +2,9 @@ unit stratoSource;
 
 interface
 
+{$D-}
+{$L-}
+
 uses SysUtils, Classes, stratoTokenizer;
 
 type

@@ -155,9 +155,6 @@ uses SysUtils;
 
 {$IFDEF DEBUG}
 
-{xx$D-}
-{xx$L-}
-
 function rx(tt:TStratoThingType;f:TStratoField;t:rxt;q:TStratoIndex):cardinal;
 var
   ok:boolean;
@@ -456,7 +453,10 @@ begin
         end;
       ttPointer:
         case f of
-          tfParent:ok:=tc=ttCodeBlock;
+          tfParent:
+            case tc of
+              ttCodeBlock,ttNameSpace,ttSignature:ok:=true;
+            end;
           tfByteSize:ok:=true;//ok:=q=SystemWordSize;
           tfEvaluatesTo:ok:=tc in [ttClass,ttTypeDecl];
         end;

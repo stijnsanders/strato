@@ -2,8 +2,8 @@ unit stratoFn;
 
 interface
 
-{xx$D-}
-{xx$L-}
+{$D-}
+{$L-}
 
 uses stratoDecl, stratoSphere, stratoSource;
 
@@ -54,7 +54,7 @@ begin
       p0:=0;//not OK, break loop
     if p0<>0 then
      begin
-      p0:=Sphere.r(p1,tfNext);
+      p0:=Sphere.r(p0,tfNext);
       p1:=Sphere.r(p1,tfNext);
      end;
    end;

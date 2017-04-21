@@ -14,19 +14,21 @@ const
   stratoSysCall_mfree=$102;
   stratoSysCall_writeln=$200;
 
-procedure DefaultTypes(Store:TStratoStore);
+procedure DefaultTypes(Store:TStratoStore;InlineErrors:boolean;
+  var ErrorCount:integer);
 
 var
-  TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
-  TypeDecl_number,TypeDecl_intLast,TypeDecl_variant,TypeDecl_pointer,
-  TypeDecl_hash,TypeDecl_object:TStratoIndex;
+  TypeDecl_void,TypeDecl_type,TypeDecl_number,TypeDecl_intLast,
+  TypeDecl_pointer,TypeDecl_bool,TypeDecl_string,TypeDecl_variant,
+  TypeDecl_object,TypeDecl_hash:TStratoIndex;
   Name_Inherited:TStratoName;
 
 implementation
 
-uses SysUtils, stratoSource;
+uses SysUtils, stratoSource, stratoParse;
 
-procedure DefaultTypes(Store:TStratoStore);
+procedure DefaultTypes(Store:TStratoStore;InlineErrors:boolean;
+  var ErrorCount:integer);
 var
   Source:TStratoSource;
   Sphere:TStratoSphere;
@@ -145,11 +147,25 @@ var
     Sphere.s(p1,tfByteSize,bs);
 
   end;
-  
+
+var
+  p:TStratoIndex;
+  function pp(const Name:UTF8String):TStratoIndex;
+  begin
+    Result:=Sphere.Lookup(p,tfFirstItem,Store.Dict.StrIdx(Name));
+    if Result=0 then
+      raise Exception.Create('Run-time library missing "'+Name+'"');
+  end;
 begin
   Source:=TStratoSource.Create;//pro-forma
   Sphere:=TStratoSphere.Create(Store,Source);
   try
+    {
+    Source.LoadFromFile(Store.ResolvePath('$compiler\Strato.xs'));
+    p:=StratoParseSource(Store,Source,InlineErrors);
+    inc(ErrorCount,Source.ErrorCount);
+    }
+
     ns:=Sphere.Add(ttNameSpace,
       [tfName,Store.Dict.StrIdx('Strato')
       ]);
@@ -158,10 +174,11 @@ begin
     nn:=0;
     TypeDecl_void:=A('void',0);
     TypeDecl_type:=A('type',SystemWordSize);
+    TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
+    TypeDecl_pointer:=A('pointer',SystemWordSize);
     TypeDecl_bool:=A('bool',SystemWordSize);
     TypeDecl_string:=A('string',SystemWordSize);
     TypeDecl_variant:=A('variant',16);//TODO: OLE compatible variants
-    TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
     A('i8',1);
     A('i16',2);
     A('i32',4);
@@ -174,7 +191,6 @@ begin
     A('f64',8);
     TypeDecl_object:=0;//see StratoParseSource: allow only one object()={}
     TypeDecl_hash:=A('hash',SystemWordSize);//TODO:
-    TypeDecl_pointer:=A('pointer',SystemWordSize);
 
     C('__xinc','__xinc(^number)',
       stratoSysCall_xinc,[TypeDecl_number or C_ByRef],TypeDecl_number);
