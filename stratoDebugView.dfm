@@ -1,7 +1,7 @@
 object frmDebugView: TfrmDebugView
-  Left = 192
-  Top = 124
-  Width = 641
+  Left = 337
+  Top = 165
+  Width = 640
   Height = 567
   Caption = 'Strato Debug View'
   Color = clBtnFace
@@ -18,7 +18,7 @@ object frmDebugView: TfrmDebugView
   object PageControl1: TPageControl
     Left = 0
     Top = 0
-    Width = 625
+    Width = 624
     Height = 528
     ActivePage = txContext
     Align = alClient
@@ -27,7 +27,7 @@ object frmDebugView: TfrmDebugView
       BorderWidth = 4
       Caption = 'Context'
       DesignSize = (
-        609
+        608
         492)
       object lblUpNext: TLabel
         Left = 0
@@ -47,25 +47,25 @@ object frmDebugView: TfrmDebugView
       end
       object btnNext: TButton
         Left = 0
-        Top = 468
+        Top = 470
         Width = 81
-        Height = 25
+        Height = 21
         Action = actNext
         Anchors = [akLeft, akBottom]
-        TabOrder = 0
+        TabOrder = 5
       end
       object Panel1: TPanel
         Left = 0
         Top = 0
-        Width = 609
+        Width = 608
         Height = 241
         Anchors = [akLeft, akTop, akRight, akBottom]
         BevelOuter = bvNone
-        TabOrder = 4
+        TabOrder = 0
         object Splitter1: TSplitter
           Left = 0
           Top = 145
-          Width = 609
+          Width = 608
           Height = 4
           Cursor = crVSplit
           Align = alTop
@@ -73,7 +73,7 @@ object frmDebugView: TfrmDebugView
         object lvMem: TListView
           Left = 0
           Top = 149
-          Width = 609
+          Width = 608
           Height = 92
           Align = alClient
           Columns = <
@@ -111,7 +111,7 @@ object frmDebugView: TfrmDebugView
         object lvStack: TListView
           Left = 0
           Top = 0
-          Width = 609
+          Width = 608
           Height = 145
           Align = alTop
           Columns = <
@@ -123,28 +123,7 @@ object frmDebugView: TfrmDebugView
             end
             item
               Alignment = taRightJustify
-              Caption = 'p'
-              Width = -1
-              WidthType = (
-                -1)
-            end
-            item
-              Alignment = taRightJustify
-              Caption = 'p1'
-              Width = -1
-              WidthType = (
-                -1)
-            end
-            item
-              Alignment = taRightJustify
-              Caption = 'p2'
-              Width = -1
-              WidthType = (
-                -1)
-            end
-            item
-              Alignment = taRightJustify
-              Caption = 'bp'
+              Caption = 'ip'
               Width = -1
               WidthType = (
                 -1)
@@ -166,7 +145,7 @@ object frmDebugView: TfrmDebugView
       object txtUpNext: TMemo
         Left = 0
         Top = 263
-        Width = 609
+        Width = 608
         Height = 90
         Anchors = [akLeft, akRight, akBottom]
         HideSelection = False
@@ -178,58 +157,131 @@ object frmDebugView: TfrmDebugView
           'vp')
         ReadOnly = True
         ScrollBars = ssHorizontal
-        TabOrder = 6
+        TabOrder = 3
         WordWrap = False
       end
       object btnRunTo: TButton
         Left = 88
-        Top = 468
+        Top = 470
         Width = 81
-        Height = 25
+        Height = 21
         Action = actRunTo
         Anchors = [akLeft, akBottom]
-        TabOrder = 1
+        TabOrder = 6
       end
       object txtBreakPoints: TEdit
         Left = 176
         Top = 470
-        Width = 401
+        Width = 400
         Height = 21
         Anchors = [akLeft, akRight, akBottom]
-        TabOrder = 2
+        TabOrder = 7
         OnEnter = txtBreakPointsEnter
         OnExit = txtBreakPointsExit
       end
       object txtSourceView: TMemo
         Left = 0
         Top = 375
-        Width = 609
+        Width = 608
         Height = 90
         Anchors = [akLeft, akRight, akBottom]
         HideSelection = False
         ReadOnly = True
         ScrollBars = ssHorizontal
-        TabOrder = 7
+        TabOrder = 4
         WordWrap = False
       end
       object btnBreak: TButton
-        Left = 583
-        Top = 468
+        Left = 582
+        Top = 470
         Width = 25
-        Height = 25
+        Height = 21
         Anchors = [akRight, akBottom]
         Caption = '!'
-        TabOrder = 3
+        TabOrder = 8
         OnClick = btnBreakClick
       end
       object cbKeepTrail: TCheckBox
-        Left = 72
+        Left = 200
         Top = 248
-        Width = 121
+        Width = 113
         Height = 13
         Anchors = [akLeft, akBottom]
         Caption = 'Keep Trail'
-        TabOrder = 5
+        TabOrder = 2
+      end
+      object cbStackTrace: TCheckBox
+        Left = 80
+        Top = 248
+        Width = 113
+        Height = 13
+        Anchors = [akLeft, akBottom]
+        Caption = 'Trace Stack'
+        TabOrder = 1
+      end
+    end
+    object tsStackTrace: TTabSheet
+      BorderWidth = 4
+      Caption = 'Trace'
+      ImageIndex = 2
+      object lvStackTrace: TListView
+        Left = 0
+        Top = 0
+        Width = 609
+        Height = 493
+        Align = alClient
+        Columns = <
+          item
+            Caption = 'sp'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Alignment = taRightJustify
+            Caption = 'ip'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Caption = 'What'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Caption = 'Parent'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Caption = 'Source'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Alignment = taRightJustify
+            Caption = 'x'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Alignment = taRightJustify
+            Caption = 'y'
+            Width = -1
+            WidthType = (
+              -1)
+          end>
+        HideSelection = False
+        MultiSelect = True
+        ReadOnly = True
+        RowSelect = True
+        TabOrder = 0
+        ViewStyle = vsReport
       end
     end
     object tsTrail: TTabSheet
@@ -251,7 +303,7 @@ object frmDebugView: TfrmDebugView
           end
           item
             Alignment = taRightJustify
-            Caption = 'p'
+            Caption = 'ip'
             Width = -1
             WidthType = (
               -1)
@@ -265,54 +317,39 @@ object frmDebugView: TfrmDebugView
           end
           item
             Alignment = taRightJustify
-            Caption = 'p2'
+            Caption = 't1'
             Width = -1
             WidthType = (
               -1)
           end
           item
             Alignment = taRightJustify
-            Caption = 'mp'
+            Caption = 'bp'
             Width = -1
             WidthType = (
               -1)
           end
           item
             Alignment = taRightJustify
-            Caption = 'np'
+            Caption = 'cp'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Caption = 'ep'
+            Width = -1
+            WidthType = (
+              -1)
+          end
+          item
+            Caption = 'sp'
             Width = -1
             WidthType = (
               -1)
           end
           item
             Caption = 'What'
-            Width = -1
-            WidthType = (
-              -1)
-          end
-          item
-            Alignment = taRightJustify
-            Caption = 'vt'
-            Width = -1
-            WidthType = (
-              -1)
-          end
-          item
-            Alignment = taRightJustify
-            Caption = 'vp'
-            Width = -1
-            WidthType = (
-              -1)
-          end
-          item
-            Caption = 'x'
-            Width = -1
-            WidthType = (
-              -1)
-          end
-          item
-            Alignment = taRightJustify
-            Caption = 'v'
             Width = -1
             WidthType = (
               -1)
@@ -349,6 +386,10 @@ object frmDebugView: TfrmDebugView
       Caption = 'Copy'
       ShortCut = 16451
       OnExecute = actCopyExecute
+    end
+    object actRefresh: TAction
+      Caption = 'Refresh'
+      ShortCut = 116
     end
   end
 end

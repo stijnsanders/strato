@@ -9,15 +9,15 @@ object:={
 object_base_size=@?0*2;
 
 object(){
-	@ @@:pointer:=__malloc(@?@@+object_base_size);
-	@ @@:number+=object_base_size;
+	@@:pointer:=__malloc(@?@@+object_base_size);
+	@@:number+=object_base_size;
 	_basetype:=?@@;
 	_refcount:=0;
 }
 
 -object(){
 	//assert _refcount=0
-	:x:pointer:=@ @@:pointer;
+	:x:=@@:pointer;
 	x:number-=object_base_size;
 	__mfree(x);
 }

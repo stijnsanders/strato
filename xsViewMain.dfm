@@ -75,7 +75,7 @@ object frmXsViewMain: TfrmXsViewMain
     TabOrder = 2
     Visible = False
     object lblDictName: TLabel
-      Left = 224
+      Left = 248
       Top = 12
       Width = 103
       Height = 14
@@ -84,14 +84,14 @@ object frmXsViewMain: TfrmXsViewMain
     object txtGoTo: TEdit
       Left = 8
       Top = 8
-      Width = 57
+      Width = 73
       Height = 25
       AutoSize = False
       TabOrder = 0
       OnKeyPress = txtGoToKeyPress
     end
     object btnGoTo: TButton
-      Left = 72
+      Left = 88
       Top = 8
       Width = 75
       Height = 25
@@ -100,9 +100,9 @@ object frmXsViewMain: TfrmXsViewMain
       OnClick = btnGoToClick
     end
     object txtDictLookup: TEdit
-      Left = 160
+      Left = 168
       Top = 8
-      Width = 57
+      Width = 73
       Height = 25
       AutoSize = False
       TabOrder = 2

@@ -30,6 +30,10 @@ type
     lvTrail: TListView;
     cbKeepTrail: TCheckBox;
     actCopy: TAction;
+    tsStackTrace: TTabSheet;
+    lvStackTrace: TListView;
+    actRefresh: TAction;
+    cbStackTrace: TCheckBox;
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure btnNextClick(Sender: TObject);
     procedure btnRunToClick(Sender: TObject);
@@ -41,8 +45,8 @@ type
     procedure lvStackDblClick(Sender: TObject);
   private
     FDoNext:integer;
-    FBreakAt:array of TStratoIndex;
-    FSrcFile:TStratoIndex;
+    FBreakAt:array of xItem;
+    FSrcFile:PxSourceFile;
     FSrcPath:string;
     FSrcData:TStringList;
     FTrailSuspended:boolean;
@@ -51,8 +55,8 @@ type
     procedure DoDestroy; override;
   public
     function WaitNext:boolean;
-    function CheckBreakPoint(p:TStratoIndex):boolean;
-    procedure ShowSource(s:TStratoSphere;p:TStratoIndex;Line,Col:cardinal);
+    function CheckBreakPoint(p:xItem):boolean;
+    procedure ShowSource(s:TStratoSphere;p:PxSourceFile;Line,Col:cardinal);
     procedure Done;
   end;
 
@@ -100,7 +104,7 @@ procedure TfrmDebugView.btnRunToClick(Sender: TObject);
 var
   s:string;
   i,j,l:integer;
-  k:TStratoIndex;
+  k:cardinal;
 const
   MaxBreakPoints=$100;
 begin
@@ -116,14 +120,17 @@ begin
     while (i<=l) do
      begin
       k:=0;
-      while (i<=l) and (s[i] in ['0'..'9']) do
+      while (i<=l) and (s[i] in ['0'..'9','A'..'F']) do
        begin
-        k:=k*10+(byte(s[i]) and $F);
+        if (byte(s[i]) and $F0)=$30 then
+          k:=(k shl 4)+(byte(s[i]) and $F)
+        else
+          k:=(k shl 4)+(byte(s[i]) and $F)+9;
         inc(i);
        end;
       if j=MaxBreakPoints then
         raise Exception.Create('Maximum breakpoints exceeded');
-      FBreakAt[j]:=k;
+      FBreakAt[j]:=xItem(k);
       inc(j);
       while (i<=l) and not(s[i] in ['0'..'9']) do inc(i);
      end;
@@ -140,7 +147,7 @@ begin
    end;
 end;
 
-function TfrmDebugView.CheckBreakPoint(p: TStratoIndex): boolean;
+function TfrmDebugView.CheckBreakPoint(p: xItem): boolean;
 var
   i,l:integer;
 begin
@@ -160,31 +167,30 @@ begin
   inherited;
   FSrcData:=TStringList.Create;
   FSrcPath:='';
-  FSrcFile:=0;
+  FSrcFile:=nil;
   FTrailSuspended:=false;
 end;
 
-procedure TfrmDebugView.ShowSource(s: TStratoSphere; p: TStratoIndex; Line,
+procedure TfrmDebugView.ShowSource(s: TStratoSphere; p: PxSourceFile; Line,
   Col: cardinal);
 var
   i,j,k:integer;
   ss:string;
 begin
   try
-    if (p=0) or (Line=0) then
+    if (p=nil) or (Line=0) then
      begin
-      lblFileName.Caption:=Format('[%d] %d:%d',[p,Line,Col]);
+      lblFileName.Caption:=Format('[?] %d:%d',[Line,Col]);
       txtSourceView.Text:=#13#10#13#10'?????';
      end
     else
      begin
       if (p<>FSrcFile) then
        begin
-        FSrcFile:=0;//in case of error
+        FSrcFile:=nil;//in case of error
         //TODO: resolve relative path
         //TODO: cache several?
-        FSrcPath:=s.Store.ResolvePath(
-          s.GetBinaryData(s.r(p,tf_SourceFile_FileName)));
+        FSrcPath:=s.Store.ResolvePath(s.GetBinaryData(p.FileName));
         //TODO: check signature/timestamp
         FSrcData.LoadFromFile(FSrcPath);
         FSrcFile:=p;
@@ -241,6 +247,7 @@ begin
   Screen.Cursor:=crDefault;
   if Visible then
    begin
+    txtUpNext.Lines.Text:='(Done)';
     btnNext.Caption:='(Done)';
     btnNext.Enabled:=false;
     btnRunTo.Enabled:=false;

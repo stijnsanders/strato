@@ -2,569 +2,617 @@ unit stratoFn;
 
 interface
 
-{$D-}
-{$L-}
+{xx$D-}
+{xx$L-}
 
 uses stratoDecl, stratoSphere, stratoSource;
 
 function StratoFnAdd(Sphere:TStratoSphere;Source:TStratoSource;
-  MethodType:TStratoThingType;Fn,Signature:TStratoIndex;
-  SrcPos:cardinal):TStratoIndex;
+  MethodType:xTypeNr;Member,Signature:xItem;SrcPos:xSrcPos):xItem;
 function StratoFnOvlCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
-  FnOvl:TStratoIndex):TStratoIndex;
-function StratoFnCallAddArgument(Sphere:TStratoSphere;
-  FnCall,Value:TStratoIndex):TStratoIndex;
-function StratoFnCallFindSignature(Sphere:TStratoSphere;
-  FnCall:TStratoIndex;ThingType:TStratoThingType):boolean;
-function StratoFnCallFindInherited(Sphere:TStratoSphere;
-  MethodType:TStratoThingType;MethodParent,Signature:TStratoIndex;
-  Name:TStratoName):TStratoIndex;
+  FnOvl:xItem):xItem;
+procedure StratoFnCallAddArgument(Sphere:TStratoSphere;
+  var ListTail:xItem;Value:xItem;SrcPos:xSrcPos);
+function StratoFnCallBySignature(Sphere:TStratoSphere;
+  MethodType:xTypeNr;Subject,Arguments,Parent:xItem;SrcPos:xSrcPos):xItem;
 function StratoFnCallFindVirtual(Sphere:TStratoSphere;
-  ImplClass,Target:TStratoIndex):TStratoIndex;
+  FnCall,SubjectType:xItem;SubjectData:PxValue):xItem;
+function StratoFnCallDestructor(Sphere:TStratoSphere;Source:TStratoSource;
+  CodeBlock:xItem):xItem;
 function StratoFnCodeBlock(Sphere:TStratoSphere;
-  Parent,ThisType,ValueType:TStratoIndex;
-  ValueName:TStratoName;SrcPos:cardinal):TStratoIndex;
+  Parent,ThisType,ValueType:xItem;ValueName:xName;SrcPos:xSrcPos):xItem;
 procedure StratoFnArgByValues(Sphere:TStratoSphere;
-  FnCall,FirstArg,FirstValue:TStratoIndex);
-function StratoFindPropertySet(Sphere:TStratoSphere;
-  AssignTo,PropCall:TStratoIndex;Op,SrcPos:cardinal):boolean;
+  FnCall,ArgsFrom,ValuesFrom:xItem);
+//function StratoFindPropertySet(Sphere:TStratoSphere;
+//  AssignTo,PropCall:xItem;Op:cardinal;SrcPos:xSrcPos):boolean;
 function StratoCheckMemberNoArguments(Sphere:TStratoSphere;
-  Field,Target:TStratoIndex):TStratoIndex;
+  Field,Target,Parent:xItem;SrcPos:xSrcPos):xItem;
 
 implementation
 
 uses stratoLogic, stratoRunTime, stratoTokenizer;
 
-function StratoFnArgListsMatch(Sphere:TStratoSphere;
-  x0,x1:TStratoIndex):boolean;
+function StratoFnArgListsMatch(Sphere:TStratoSphere;Signature,Arguments:xItem):boolean;
 var
-  p0,p1:TStratoIndex;
+  p,p0,q,q0:xItem;
 begin
-  p0:=Sphere.r(x0,tfFirstArgument);
-  p1:=Sphere.r(x1,tfFirstArgument);
-  //TODO: default argument values
-  while (p0<>0) and (p1<>0) do
+  Sphere.First(Signature,fArguments,p,p0);
+  //Sphere.First(,fArguments,q,q0);
+  q0:=Arguments;//assert pointer to last in cyclic list
+  q:=Sphere.n(q0,fNext)^;
+  Result:=true;//default
+  while not((p=0) and (q=0)) do
    begin
-    if SameType(Sphere,Sphere.r(p0,tfEvaluatesTo),Sphere.r(p1,tfEvaluatesTo)) then
+    if SameType(Sphere,Sphere.n(p,fTypeDecl)^,Sphere.n(q,fTypeDecl)^) then
      begin
-      if Sphere.t(p0)=ttArgByRef then
-        IsAddressable(Sphere,Sphere.r(p1,tfTarget));//TODO: check not read-only
+      //TODO: default argument values
+      if Sphere.n(p,vTypeNr)^=nArgByRef then
+        IsAddressable(Sphere,Sphere.n(q,fValue)^);//TODO: check not read-only
+
+      //next
+      Sphere.Next(p,p0);
+      Sphere.Next(q,q0);
      end
     else
-      p0:=0;//not OK, break loop
-    if p0<>0 then
      begin
-      p0:=Sphere.r(p0,tfNext);
-      p1:=Sphere.r(p1,tfNext);
+      p:=0;//not OK, break loop
+      q:=0;
+      Result:=false;
      end;
    end;
-  //found or not?
-  Result:=(p0=0) and (p1=0);
 end;
 
 function StratoFnAdd(Sphere:TStratoSphere;Source:TStratoSource;
-  MethodType:TStratoThingType;Fn,Signature:TStratoIndex;
-  SrcPos:cardinal):TStratoIndex;
+  MethodType:xTypeNr;Member,Signature:xItem;SrcPos:xSrcPos):xItem;
 var
-  p,q,fn1:TStratoIndex;
+  p,q,q0,m:xItem;
 begin
   //assert Signature<>0
   //assert Fn<>0
   case MethodType of
-    ttOverload,ttPropertySet,ttPropertyGet:
-      q:=Fn;
-    ttConstructor:
+    nOverload,nPropertyGet,nPropertySet:
+      m:=Member;
+    nConstructor:
      begin
-      //assert sx.EvaluatesTo=0
-      Sphere.s(Signature,tfEvaluatesTo,Fn);
-      q:=Sphere.r(Fn,tfFirstItem);
-      while (q<>0) and (Sphere.t(q)<>ttConstructors) do
-        q:=Sphere.r(q,tfNext);
+      //assert Signature.Returns=nil
+      Sphere.n(Signature,fReturnType)^:=Member;//n(Member,vTypeNr)=nClass
+      Sphere.First(Member,fItems,q,q0);
+      while (q<>0) and (Sphere.n(q,vTypeNr)^<>nConstructors) do
+        Sphere.Next(q,q0);
       if q=0 then
-        q:=Sphere.Prepend(Fn,tfFirstItem,Sphere.Add(ttConstructors,
-          [tfName,0
-          ,tfParent,Fn
-          ]));
+       begin
+        //prepend
+        m:=Sphere.Add(nConstructors,Member,Source.SrcPos,[]);
+        Sphere.Prepend(Member,fItems,m);
+       end
+      else
+        m:=q;
      end;
-    //ttDestructor? doesn't do overloads, just add (unique)
-    else q:=0;
+    //nDestructor? doesn't do overloads, just add (unique)
+    else
+      m:=0;
   end;
-  if q=0 then
+  if m=0 then
    begin
     Source.Error('unexpected overload subject');
-    p:=Sphere.Add(MethodType,[]);
-    fn1:=Fn;//?
+    Result:=Sphere.Add(MethodType,Member,0,[]);//pro-forma
    end
   else
    begin
     p:=0;
-    fn1:=q;
-    q:=Sphere.r(q,tfFirstItem);
+    Sphere.First(Member,fItems,q,q0);
     while q<>0 do
-     begin
-      if (Sphere.t(q)=MethodType) and
-        SameType(Sphere,Sphere.r(q,tfSignature),Signature) then
+      if (Sphere.n(q,vTypeNr)^=MethodType) and SameType(Sphere,Sphere.n(q,fSignature)^,Signature) then
        begin
-        if Sphere.r(q,tfBody)=0 then //forward! fill in CB
+        if Sphere.n(q,fBody)^=0 then //forward! fill in CB
           p:=q //TODO: delete/avoid superfluous Signature?
         else
           Source.Error('duplicate overload');
         q:=0;
        end
       else
-      if (Sphere.t(q)=MethodType) and
-        StratoFnArgListsMatch(Sphere,q,Signature) then
+      if (Sphere.n(q,vTypeNr)^=MethodType) and
+        StratoFnArgListsMatch(Sphere,Signature,Sphere.n(q,fArguments)^) then
        begin
         q:=0;
         Source.Error('duplicate overload with equivalent arguments');
        end
       else
-        q:=Sphere.r(q,tfNext);
-     end;
+        Sphere.Next(q,q0);
     if p=0 then
-     begin
-      p:=Sphere.Add(MethodType,[]);
-      Sphere.Append(fn1,tfFirstItem,p);
-     end;
-   end;
-  Result:=p;
-  Sphere.s(p,
-    [tfParent,fn1
-    ,tfSignature,Signature
-    ,tfSrcPos,SrcPos
-    ]);
-end;
-
-function StratoFnOvlCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
-  FnOvl:TStratoIndex):TStratoIndex;
-var
-  p,q,r,Signature:TStratoIndex;
-  bs:cardinal;
-  tt:TStratoThingType;
-begin
-  Signature:=Sphere.r(FnOvl,tfSignature);
-  Result:=Sphere.Add(ttCodeBlock,
-    [tfParent,FnOvl
-    ,tfSrcPos,Source.SrcPos
-    ]);
-  Sphere.s(FnOvl,tfBody,Result);
-  //populate code block
-  bs:=0;
-  //this "@@"
-  if Sphere.r(Signature,tfTarget,p) then
-   begin
-    q:=Sphere.Add(ttThis,
-      [tfName,Sphere.Store.Dict.StrIdx('@@')
-      ,tfParent,Result//CodeBlock
-      ,tfSrcPos,Source.SrcPos
-      ,tfOffset,bs
-      ,tfEvaluatesTo,p
-      ]);
-    inc(bs,SystemWordSize);
-    Sphere.Append(Result,tfFirstItem,q);
-   end;
-  //return value
-  if Sphere.r(Signature,tfEvaluatesTo,p) then
-   begin
-    if Sphere.t(Sphere.r(FnOvl,tfParent))=ttClass then //constructor
-     begin
-      //with a constructor, store the effective class type here
-      q:=Sphere.Add(ttVar,
-        [tfName,Sphere.Store.Dict.StrIdx('?@@')
-        ,tfParent,Result//CodeBlock
-        ,tfSrcPos,Source.SrcPos
-        ,tfOffset,bs
-        ,tfEvaluatesTo,TypeDecl_type//TODO:TypeDecl_ClassRef to TypeDecl_obj
-        ]);
-      inc(bs,SystemWordSize);
-     end
+      p:=Sphere.Add(m,fItems,MethodType,m,SrcPos,[fSignature,Signature])
     else
      begin
-      q:=Sphere.Add(ttVar,
-        [tfName,Sphere.v(Sphere.r(FnOvl,tfParent),tfName)
-        ,tfParent,Result//CodeBlock
-        ,tfSrcPos,Sphere.v(FnOvl,tfSrcPos)
-        ,tfOffset,bs
-        ,tfEvaluatesTo,p
-        ]);
-      inc(bs,ByteSize(Sphere,p));
-     end;
-    Sphere.Append(Result,tfFirstItem,q);
-   end;
-  //arguments
-  p:=Sphere.r(Signature,tfFirstArgument);
-  while p<>0 do
-   begin
-    if Sphere.t(p)=ttArgByRef then tt:=ttVarByRef else tt:=ttVar;
-    r:=Sphere.r(p,tfEvaluatesTo);
-    if not Sphere.Add(Result,tfFirstItem,tt,
-      [tfName,Sphere.v(p,tfName)
-      ,tfParent,Result//CodeBlock
-      ,tfSrcPos,Sphere.v(p,tfSrcPos)//Source.SrcPos;
-      ,tfOffset,bs
-      ,tfEvaluatesTo,r
-      ],q) then
-      Source.Error('duplicate identifier "'+string(
-        Sphere.Store.Dict.Str[Sphere.v(p,tfName)])+'"');
-    if tt=ttVarByRef then
-      inc(bs,SystemWordSize)
-    else
-    if r<>0 then
-      inc(bs,ByteSize(Sphere,r));
-    //store first arg value on function overload index
-    if Sphere.r(FnOvl,tfFirstArgument)=0 then
-      Sphere.s(FnOvl,tfFirstArgument,q);
-    p:=Sphere.r(p,tfNext);
-   end;
-  Sphere.s(Result,tfByteSize,bs);
-end;
-
-function StratoFnCallAddArgument(Sphere:TStratoSphere;
-  FnCall,Value:TStratoIndex):TStratoIndex;
-begin
-  Result:=Sphere.Add(ttArgument,
-    //tfName,Sphere[Value].Name;//TODO: if tt__Named?
-    [tfParent,FnCall
-    ,tfTarget,Value
-    ,tfEvaluatesTo,ResType(Sphere,Value)
-    ]);
-  if Value<>0 then Sphere.s(Result,tfSrcPos,Sphere.v(Value,tfSrcPos));
-  Sphere.Append(FnCall,tfFirstArgument,Result);
-end;
-
-function StratoFnCallFindSignature(Sphere:TStratoSphere;
-  FnCall:TStratoIndex;ThingType:TStratoThingType):boolean;
-var
-  p,p1,q,r,rt:TStratoIndex;
-begin
-  //see also TStratoParser.Combine: pArgList
-  //assert all Arguments added
-  p:=Sphere.r(FnCall,tfTarget);
-  if Sphere.t(p)=ttField then p:=Sphere.r(p,tfTarget);
-  r:=0;//default
-  rt:=0;//default
-  while Sphere.t(p) in [ttVar,ttCast,ttField,ttArrayIndex,ttClassRef] do
-    p:=Sphere.r(p,tfEvaluatesTo);
-  case Sphere.t(p) of
-    ttMember:
-     begin
-      r:=Sphere.r(p,tfFirstItem);
-      while (r<>0) and not((Sphere.t(r)=ThingType) and
-        StratoFnArgListsMatch(Sphere,Sphere.r(r,tfSignature),FnCall)) do
-        r:=Sphere.r(r,tfNext);
-      if r<>0 then rt:=Sphere.r(Sphere.r(r,tfSignature),tfEvaluatesTo);
-     end;
-
-    ttOverload:
-     begin
-      r:=StratoFnCallFindInherited(Sphere,ttOverload,Sphere.r(p,tfParent),
-        FnCall,Sphere.v(Sphere.r(p,tfParent),tfName));
-      if r<>0 then rt:=Sphere.r(Sphere.r(r,tfSignature),tfEvaluatesTo);
-     end;
-
-    //ttInterface? //TODO:
-
-    ttClass:
-     begin
-      //see also StratoFnCallFindInherited!
-      r:=0;
-      case ThingType of
-        ttOverload:
-         begin
-          ThingType:=ttConstructors;
-          rt:=p;
-         end;
-        ttDestructor:;//
-        else ThingType:=0;//Source.Error(...
-      end;
-      repeat
-        if r=0 then
-         begin
-          r:=Sphere.r(p,tfFirstItem);
-          while (r<>0) and (Sphere.t(r)<>ThingType) do
-            r:=Sphere.r(r,tfNext);
-          if ThingType=ttConstructors then
-            if r<>0 then r:=Sphere.r(r,tfFirstItem);//ttConstructor
-         end
-        else
-          if ThingType=ttConstructors then r:=Sphere.r(r,tfNext) else r:=0;
-        if r=0 then p:=Sphere.r(p,tfInheritsFrom);
-      until (p=0) or ((r<>0) and
-        StratoFnArgListsMatch(Sphere,Sphere.r(r,tfSignature),FnCall));
-     end;
-
-    ttConstructor:
-     begin
-      //constructor calling inherited constructor
-      r:=StratoFnCallFindInherited(Sphere,ttConstructor,Sphere.r(p,tfParent),
-        FnCall,0);
-      if r<>0 then
-       begin
-        p:=Sphere.r(FnCall,tfParent);
-        while Sphere.t(p)=ttCodeBlock do p:=Sphere.r(p,tfParent);
-        rt:=Sphere.rr(p,[tfParent,tfParent]);
-       end;
-     end;
-
-    ttDestructor:
-      r:=StratoFnCallFindInherited(Sphere,ttDestructor,Sphere.r(p,tfParent),0,0);
-
-    //else error?
-  end;
-  if r=0 then Result:=false else
-   begin
-    p:=Sphere.r(FnCall,tfTarget);
-    if Sphere.t(p)=ttField then
-     begin
-      p1:=p;
-      p:=Sphere.r(p,tfTarget);
-     end
-    else
-      p1:=FnCall;
-    while Sphere.t(p) in [ttVar,ttCast,ttField,ttArrayIndex,ttClassRef] do
-     begin
-      if Sphere.t(p) in [ttVar,ttCast] then
-       begin
-        q:=Sphere.Add(ttField,
-          [tfParent,Sphere.r(FnCall,tfParent)
-          ,tfSubject,p
-          ,tfSrcPos,Sphere.v(FnCall,tfSrcPos)
-          //,tfEvaluatesTo?
-          ]);
-        //p,tfTarget//see p1:= below
-        Sphere.s(p1,tfTarget,q);
-        p1:=q;
-       end;
-      p:=Sphere.r(p,tfEvaluatesTo);
-     end;
-    Sphere.s(p1,tfTarget,r);
-    if ThingType=ttPropertyGet then
-      Sphere.s(FnCall,tfThingType,ttPropCall)
-    else
-      if rt<>0 then Sphere.s(FnCall,tfEvaluatesTo,rt);
-    Result:=true;
-   end;
-end;
-
-function StratoFnCallFindInherited(Sphere:TStratoSphere;
-  MethodType:TStratoThingType;MethodParent,Signature:TStratoIndex;
-  Name:TStratoName):TStratoIndex;
-var
-  p,q:TStratoIndex;
-begin
-  if MethodParent=0 then Result:=0 else
-   begin
-    case MethodType of
-      ttOverload,ttConstructor,ttPropertyGet,ttPropertySet:
-        q:=Sphere.r(MethodParent,tfParent);
-      ttDestructor:
-        q:=MethodParent;
-      else
-        q:=0;//error?
-    end;
-    if (q<>0) and (Sphere.t(q)<>ttClass) then q:=0;
-    if q<>0 then q:=Sphere.r(q,tfInheritsFrom);
-    p:=0;
-    while (p=0) and (q<>0) do
-     begin
-      case MethodType of
-        ttOverload,ttPropertyGet,ttPropertySet:
-         begin
-          p:=Sphere.Lookup(q,tfFirstItem,Name);
-          if Sphere.t(p)=ttMember then
-            p:=Sphere.r(p,tfFirstItem)
-          else
-            p:=0;//error?
-         end;
-        ttConstructor:
-         begin
-          p:=Sphere.r(q,tfFirstItem);
-          while (p<>0) and (Sphere.t(p)<>ttConstructors) do
-            p:=Sphere.r(p,tfNext);
-          if p<>0 then p:=Sphere.r(p,tfFirstItem);
-         end;
-        ttDestructor:
-         begin
-          p:=Sphere.r(q,tfFirstItem);
-          while (p<>0) and (Sphere.t(p)<>ttDestructor) do
-            p:=Sphere.r(p,tfNext);
-         end;
-        else p:=0;//error?
-      end;
-      if MethodType<>ttDestructor then
-        while (p<>0) and not((Sphere.t(p)=MethodType) and
-          StratoFnArgListsMatch(Sphere,Signature,p)) do
-          p:=Sphere.r(p,tfNext);
-      if (p=0) and (q<>0) then q:=Sphere.r(q,tfInheritsFrom);
+      Sphere.n(p,vSrcPos)^:=SrcPos;
+      Sphere.n(p,fParent)^:=m;
+      Sphere.n(p,fSignature)^:=Signature;
      end;
     Result:=p;
    end;
 end;
 
-function StratoFnCallFindVirtual(Sphere:TStratoSphere;
-  ImplClass,Target:TStratoIndex):TStratoIndex;
+function StratoFnOvlCodeBlock(Sphere:TStratoSphere;Source:TStratoSource;
+  FnOvl:xItem):xItem;
 var
-  n:TStratoName;
-  p,q:TStratoIndex;
-  tt:TStratoThingType;
+  cb,p,v,a,a0:xItem;
+  bs,q:PxValue;
+  t:xTypeNr;
 begin
-  //assert ImplClass<>nil and ImplClass.ThingType=ttClass
-  if Target=0 then Result:=0 else
+  cb:=Sphere.Add(nCodeBlock,FnOvl,Source.SrcPos,[]);
+  bs:=Sphere.n(cb,vByteSize);
+  //assert FnOvl.Body=nil
+  Sphere.n(FnOvl,fBody)^:=cb;
+  //populate code block
+  //this "@@"
+  p:=Sphere.n(Sphere.n(FnOvl,fSignature)^,fSubject)^;
+  if p<>0 then
    begin
-    tt:=Sphere.t(Target);
-    case tt of
-      ttOverload,ttPropertyGet,ttPropertySet:
+    Sphere.Add(cb,fVarDecls,nThis,cb,Source.SrcPos,
+      [vName,Sphere.Store.Dict.StrIdx('@@')
+      ,vOffset,bs^
+      ,fTypeDecl,p
+      ]);
+    inc(bs^,SystemWordSize);
+   end;
+  //return value
+  p:=Sphere.n(Sphere.n(FnOvl,fSignature)^,fReturnType)^;
+  if p<>0 then
+    if Sphere.n(FnOvl,vTypeNr)^=nConstructor then
+     begin
+      //with a constructor, store the effective class type here
+      Sphere.Add(cb,fVarDecls,nVarDecl,cb,Source.SrcPos,
+        [vName,Sphere.Store.Dict.StrIdx('?@@')
+        ,vOffset,bs^
+        ,fTypeDecl,TypeDecl_type//TODO:TypeDecl_ClassRef to TypeDecl_obj
+        ]);
+      inc(bs^,SystemWordSize);
+     end
+    else
+     begin
+      Sphere.Add(cb,fVarDecls,nVarDecl,cb,Sphere.n(FnOvl,vSrcPos)^,
+        [vName,Sphere.n(Sphere.n(FnOvl,fParent)^,vName)^
+        ,vOffset,bs^
+        ,fTypeDecl,p
+        ]);
+      inc(bs^,ByteSize(Sphere,p));
+     end;
+  //arguments
+  Sphere.First(Sphere.n(FnOvl,fSignature)^,fArguments,a,a0);
+  while a<>0 do
+   begin
+    if Sphere.Lookup(cb,Sphere.n(a,vName)^)<>0 then
+      Source.Error('duplicate identifier "'+string(
+        Sphere.Store.Dict.Str[Sphere.n(a,vName)^])+'"');
+    //TODO: force read-only
+    p:=Sphere.n(a,fTypeDecl)^;
+    if Sphere.n(a,vTypeNr)^=nArgByRef then t:=nVarByRef else t:=nVarDecl;
+    v:=Sphere.Add(cb,fVarDecls,t,cb,Sphere.n(a,vSrcPos)^,
+      [vName,Sphere.n(a,vName)^
+      ,vOffset,bs^
+      ,fTypeDecl,p
+      ]);
+    if t=nVarByRef then
+      inc(bs^,SystemWordSize)
+    else
+    if p<>0 then
+      inc(bs^,ByteSize(Sphere,p));
+    //store first arg value on function overload index
+    q:=Sphere.n(FnOvl,fFirstArgVar);
+    if q^=0 then q^:=v;
+    //next argument
+    Sphere.Next(a,a0);
+   end;
+  Result:=cb;
+end;
+
+procedure StratoFnCallAddArgument(Sphere:TStratoSphere;
+  var ListTail:xItem;Value:xItem;SrcPos:xSrcPos);
+var
+  p,q:xItem;
+begin
+  //TODO: parent from earlier Push(pArgList? (determine F/S/V-call then?)
+  p:=Sphere.Add(nArgument,0,SrcPos,
+    [fValue,Value
+    ,fTypeDecl,ResType(Sphere,Value)
+    ]);
+  if ListTail=0 then //see also Sphere.Append
+    Sphere.n(p,fNext)^:=p
+  else
+   begin
+    q:=Sphere.n(ListTail,fNext)^;
+    Sphere.n(ListTail,fNext)^:=p;
+    Sphere.n(p,fNext)^:=q;
+   end;
+  ListTail:=p;
+end;
+
+function StratoFnCallBySignature(Sphere:TStratoSphere;
+  MethodType:xTypeNr;Subject,Arguments,Parent:xItem;SrcPos:xSrcPos):xItem;
+var
+  p,p0,q,q0:xItem;
+  tt:xTypeNr;
+  nn:xName;
+  v:boolean;
+begin
+  //assert Arguments 0 or last in a cyclic list (ready for fArguments)
+  p:=0;
+  q:=Subject;
+  v:=false;//default
+  while p=0 do
+    case Sphere.n(q,vTypeNr)^ of
+      nVarDecl,nCast:
        begin
-        n:=Sphere.v(Sphere.r(Target,tfParent),tfName);//ttMember
-        p:=0;
-        q:=ImplClass;
-        while (p=0) and (q<>0) do
-         begin
-          p:=Sphere.Lookup(q,tfFirstItem,n);
-          if (p<>0) and (Sphere.t(p)=ttMember) then
-            p:=Sphere.r(p,tfFirstItem)
-          else
-            p:=0;//error?
-          while (p<>0) and not((Sphere.t(p)=tt) and
-            StratoFnArgListsMatch(Sphere,Target,p)) do
-            p:=Sphere.r(p,tfNext);
-          if p=0 then q:=Sphere.r(q,tfInheritsFrom);
-         end;
-        Result:=p;
+        q:=Sphere.n(q,fTypeDecl)^;
+        v:=true;
        end;
-      ttConstructor:
+      nField:
        begin
-        p:=0;
-        q:=ImplClass;
-        while (p=0) and (q<>0) do
-         begin
-          p:=Sphere.r(q,tfFirstItem);
-          while (p<>0) and (Sphere.t(p)<>ttConstructors) do
-            p:=Sphere.r(p,tfNext);
-          if p<>0 then p:=Sphere.r(p,tfFirstItem);
-          while (p<>0) and not(StratoFnArgListsMatch(Sphere,Target,p)) do
-            p:=Sphere.r(p,tfNext);
-          if p=0 then q:=Sphere.r(q,tfInheritsFrom);
-         end;
-        Result:=p;
+        Subject:=Sphere.n(q,fSubject)^;//TODO: only once!!!
+        q:=Sphere.n(q,fTarget)^;
+        v:=true;
        end;
-      ttDestructor:
+      nClassRef:
        begin
-        p:=0;
-        q:=ImplClass;
-        while (p=0) and (q<>0) do
-         begin
-          p:=Sphere.r(q,tfFirstItem);
-          while (p<>0) and (Sphere.t(p)<>ttDestructor) do
-            p:=Sphere.r(p,tfNext);
-          if p=0 then q:=Sphere.r(q,tfInheritsFrom);
-         end;
-        Result:=p;
+        q:=Sphere.n(q,fSubject)^;
+        v:=true;
+        if MethodType=nOverload then MethodType:=nConstructor;
        end;
+      nArrayIndex:
+       begin
+        q:=ResType(Sphere,Sphere.n(q,fSubject)^);
+        v:=true;
+       end;
+      nFCall,nSCall,nVCall:
+       begin
+        q:=ResType(Sphere,Sphere.n(q,fTarget)^);//?
+        v:=true;
+       end;
+      nThis://assert called by combine pArgList "@@@(...": find inherited
+        p:=Sphere.n(Sphere.n(q,fParent)^,fParent)^; //see also below (initial fInheritsFrom)
       else
-        Result:=0;//raise?
+        p:=q;
     end;
+  Result:=0;//default
+  q:=0;//default
+  case Sphere.n(p,vTypeNr)^ of
+    nMember:
+     begin
+      Sphere.First(p,fItems,q,q0);
+      while (q<>0) and not((Sphere.n(q,vTypeNr)^=MethodType) and
+        StratoFnArgListsMatch(Sphere,Sphere.n(q,fSignature)^,Arguments)) do
+        Sphere.Next(q,q0);
+      if q<>0 then
+        case Sphere.n(Sphere.n(p,fParent)^,vTypeNr)^ of
+          nClass,nInterface:
+            Result:=Sphere.Add(nVCall,Parent,SrcPos,
+              [fSubject,Subject
+              ,fTarget,q
+              ,fArguments,Arguments
+              ]);
+          nRecord:
+            Result:=Sphere.Add(nSCall,Parent,SrcPos,
+              [fSubject,Subject
+              ,fTarget,q
+              ,fArguments,Arguments
+              ]);
+          else
+            Result:=Sphere.Add(nFCall,Parent,SrcPos,
+              [fTarget,q
+              ,fArguments,Arguments
+              ]);
+        end;
+     end;
+
+    //nInterface? //TODO:
+    //nPropertyGet //TODO:
+
+    nClass:
+     begin
+      if MethodType=nConstructor then MethodType:=nConstructors;
+      repeat
+        if q=0 then
+         begin
+          Sphere.First(p,fItems,q,q0);
+          while (q<>0) and (Sphere.n(q,vTypeNr)^<>MethodType) do
+            Sphere.Next(q,q0);
+          if (MethodType=nConstructors) and (q<>0) then
+            Sphere.First(q,fItems,q,q0);//assert Sphere.n(q,vTypeNr)=nConstructor
+         end
+        else
+          if MethodType=nConstructors then
+            Sphere.Next(q,q0)
+          else
+            q:=0;
+        if q=0 then p:=Sphere.n(p,fInheritsFrom)^;
+      until (p=0) or ((q<>0) and
+        StratoFnArgListsMatch(Sphere,Sphere.n(q,fSignature)^,Arguments));
+      if q<>0 then
+        if v then
+          Result:=Sphere.Add(nVCall,Parent,SrcPos,
+            [fSubject,Subject
+            ,fTarget,q
+            ,fArguments,Arguments
+            ])
+        else
+          Result:=Sphere.Add(nSCall,Parent,SrcPos,
+            [fSubject,Subject
+            ,fTarget,q
+            ,fArguments,Arguments
+            ]);
+     end;
+
+    nOverload,nConstructor,nDestructor:
+     begin
+      //assert p.fBody.fVarDecls.fNext.vTypeNr=nThis
+      q:=Sphere.n(p,fParent)^;
+      tt:=Sphere.n(p,vTypeNr)^;
+      nn:=0;//default
+      case tt of
+        nOverload,nPropertyGet,nPropertySet:
+          nn:=Sphere.n(q,vName)^;
+      end;
+      if tt<>nDestructor then q:=Sphere.n(q,fParent)^;
+      if Sphere.n(Subject,vTypeNr)^=nThis then q:=Sphere.n(q,fInheritsFrom)^;//find inherited
+      if Sphere.n(q,vTypeNr)^<>nClass then q:=0;
+      p:=0;
+      while (p=0) and (q<>0) do
+       begin
+        case tt of
+          nOverload,nPropertyGet,nPropertySet:
+           begin
+            p:=Sphere.Lookup(q,nn);
+            if Sphere.n(p,vTypeNr)^=nMember then
+              Sphere.First(p,fItems,p,p0)
+            else
+              Sphere.None(p,p0);//error?
+           end;
+          nConstructor:
+           begin
+            Sphere.First(q,fItems,p,p0);
+            while (p<>0) and (Sphere.n(p,vTypeNr)^<>nConstructors) do
+              Sphere.Next(p,p0);
+            if p<>0 then Sphere.First(p,fItems,p,p0);
+           end;
+          nDestructor:
+           begin
+            Sphere.First(q,fItems,p,p0);
+            while (p<>0) and (Sphere.n(p,vTypeNr)^<>nDestructor) do
+              Sphere.Next(p,p0);
+           end;
+          else
+            Sphere.None(p,p0);//error?
+        end;
+        if tt<>nDestructor then
+          while (p<>0) and not((Sphere.n(p,vTypeNr)^=tt) and
+            StratoFnArgListsMatch(Sphere,Sphere.n(p,fSignature)^,Arguments)) do
+            Sphere.Next(p,p0);
+        if (p=0) and (q<>0) then q:=Sphere.n(q,fInheritsFrom)^;
+       end;
+      if p=0 then
+        Result:=0
+      else
+        if v then
+          Result:=Sphere.Add(nVCall,Parent,SrcPos,
+            [fSubject,Subject
+            ,fTarget,p
+            ,fArguments,Arguments
+            ])
+        else
+          Result:=Sphere.Add(nSCall,Parent,SrcPos,
+            [fSubject,Subject
+            ,fTarget,p
+            ,fArguments,Arguments
+            ]);
+     end;
+
+    nArray:
+      if MethodType=nPropertyGet then //Combine:pBrackets
+       begin
+        //TODO: multidimensional arrays, array of array
+        //if ResType(Sphere,Arguments)<>TypeDecl_number then
+        //  Source.Error('argument index not a number');
+        Result:=Sphere.Add(nArrayIndex,Parent,SrcPos,
+          [fSubject,Subject
+          ,fItems,Arguments
+          ]);
+       end;
+
+    //else error?
+  end;
+end;
+
+function StratoFnCallFindVirtual(Sphere:TStratoSphere;
+  FnCall,SubjectType:xItem;SubjectData:PxValue):xItem;
+var
+  p,p0,q,Arguments:xItem;
+  xp:PxValue;
+  tt:xTypeNr;
+  nn:xName;
+begin
+  xp:=nil;//default
+  case Sphere.n(SubjectType,vTypeNr)^ of
+    nClassRef,nRecord,nInterface:
+      xp:=SubjectData;
+    nClass:
+     begin
+      //instance? get instance class
+      xp:=pointer(SubjectData^);
+      //inc(xPtr(xp),Sphere.n(Sphere.Lookup(TypeDecl_object,Sphere.Store.Dict['_baseclass']),vOffset)^);
+      dec(xPtr(xp),SystemWordSize);//assert object._baseclass offset -4
+     end;
+  end;
+  if xp=nil then
+    Result:=0
+  else
+   begin
+    //lookup
+    p:=Sphere.n(FnCall,fTarget)^;
+    Arguments:=Sphere.n(FnCall,fArguments)^;
+    tt:=Sphere.n(p,vTypeNr)^;
+    nn:=0;//default
+    case tt of
+      nOverload,nPropertyGet,nPropertySet:
+        nn:=Sphere.n(Sphere.n(p,fParent)^,vName)^;
+    end;
+    p:=0;
+    q:=PxValue(xp)^;
+    while (p=0) and (q<>0) do
+     begin
+      if tt=nConstructor then
+       begin
+        Sphere.First(q,fItems,p,p0);
+        while (p<>0) and (Sphere.n(p,vTypeNr)^<>nConstructors) do
+          Sphere.Next(p,p0);
+        if p<>0 then Sphere.First(p,fItems,p,p0);
+       end
+      else
+       begin
+        p:=Sphere.Lookup(q,nn);
+        if Sphere.n(p,vTypeNr)^=nMember then
+          Sphere.First(p,fItems,p,p0)
+        else
+          Sphere.None(p,p0);//error?
+       end;
+      while (p<>0) and not((Sphere.n(p,vTypeNr)^=tt) and
+        StratoFnArgListsMatch(Sphere,Sphere.n(p,fSignature)^,Arguments)) do
+        Sphere.Next(p,p0);
+      if p=0 then q:=Sphere.n(q,fInheritsFrom)^;
+     end;
+    Result:=p;
+   end;
+end;
+
+function StratoFnCallDestructor(Sphere:TStratoSphere;Source:TStratoSource;
+  CodeBlock:xItem):xItem;
+var
+  p,pThis,q,q0:xItem;
+begin
+  q:=CodeBlock;
+  p:=0;
+  while q<>0 do
+   begin
+    //p:=xxLookup(q,Store.Dict.StrIdx('@@'));
+    Sphere.First(q,fVarDecls,p,q0);
+    if Sphere.n(p,vTypeNr)^=nThis then
+      q:=0
+    else
+     begin
+      p:=0;
+      q:=Sphere.n(q,fParent)^;
+      if Sphere.n(q,vTypeNr)^<>nCodeBlock then q:=0;
+     end;
+   end;
+  if p=0 then
+   begin
+    Source.Error('"@@" undefined');
+    Result:=0;//?Sphere.Add(nFnCall?
+   end
+  else
+   begin
+    //find destructor (see also StratoFnCallFindInherited
+    pThis:=p;//see Add(nVCall below)
+    p:=Sphere.n(p,fTypeDecl)^;
+    q:=0;
+    while (p<>0) and (q=0) do
+     begin
+      Sphere.First(p,fItems,q,q0);
+      while (q<>0) and (Sphere.n(q,vTypeNr)^<>nDestructor) do Sphere.Next(q,q0);
+      if q=0 then p:=Sphere.n(p,fInheritsFrom)^;
+     end;
+    if q=0 then
+      Source.Error('unable to determine destructor');
+    //then call it
+    Result:=Sphere.Add(nVCall,CodeBlock,Source.SrcPos,[fSubject,pThis,fTarget,q]);
+    Source.Skip(stPOpen);
+    Source.Skip(stPClose);
    end;
 end;
 
 function StratoFnCodeBlock(Sphere:TStratoSphere;
-  Parent,ThisType,ValueType:TStratoIndex;
-  ValueName:TStratoName;SrcPos:cardinal):TStratoIndex;
+  Parent,ThisType,ValueType:xItem;
+  ValueName:xName;SrcPos:xSrcPos):xItem;
 var
-  bs:cardinal;
+  cb:xItem;
+  bs:PxValue;
 begin
-  Result:=Sphere.Add(ttCodeBlock,
-    [tfParent,Parent
-    ,tfSrcPos,SrcPos
-    ]);
-  bs:=0;
+  cb:=Sphere.Add(nCodeBlock,Parent,SrcPos,[]);
+  bs:=Sphere.n(cb,vByteSize);
   //'this' inside of code block
-  if (ThisType<>0) and (Sphere.t(ThisType)<>ttNameSpace) then
+  if (ThisType<>0) and (Sphere.n(ThisType,vTypeNr)^<>nNameSpace) then
    begin
-    Sphere.Add(Result,tfFirstItem,ttThis,
-      [tfName,Sphere.Store.Dict.StrIdx('@@')
-      ,tfParent,Result
-      ,tfSrcPos,SrcPos
-      ,tfOffset,bs
-      ,tfEvaluatesTo,ThisType
+    Sphere.Add(cb,fVarDecls,nThis,cb,SrcPos,
+      [vName,Sphere.Store.Dict.StrIdx('@@')
+      ,vOffset,bs^
+      ,fTypeDecl,ThisType
       ]);
-    inc(bs,SystemWordSize);
+    inc(bs^,SystemWordSize);
    end;
   //'value' inside of code block
   if ValueType<>0 then
    begin
-    Sphere.Add(Result,tfFirstItem,ttVar,
-      [tfName,ValueName
-      ,tfParent,Result
-      ,tfSrcPos,Sphere.v(Parent,tfSrcPos)
-      ,tfEvaluatesTo,ValueType
-      ,tfOffset,bs
+    Sphere.Add(cb,fVarDecls,nVarDecl,cb,Sphere.n(Parent,vSrcPos)^,
+      [vName,ValueName
+      ,fTypeDecl,ValueType
+      ,vOffset,bs^
       ]);
-    inc(bs,ByteSize(Sphere,ValueType));
+    inc(bs^,ByteSize(Sphere,ValueType));
    end;
-  Sphere.s(Result,tfByteSize,bs);
+  Result:=cb;
 end;
 
 procedure StratoFnArgByValues(Sphere:TStratoSphere;
-  FnCall,FirstArg,FirstValue:TStratoIndex);
+  FnCall,ArgsFrom,ValuesFrom:xItem);
 var
-  p,q,r,n:TStratoIndex;
+  p,p0,q:xItem;
 begin
-  //assert Sphere.r(FnCall,tfFirstArgument)=0;
-  n:=0;
-  p:=FirstArg;
-  q:=FirstValue;
+  //assert FnCall.FirstArg=nil
+  Sphere.First(Sphere.n(ArgsFrom,fSignature)^,fArguments,p,p0);
+  q:=Sphere.n(ValuesFrom,fFirstArgVar)^;
   //TODO: default argument values
   while (p<>0) and (q<>0) do
    begin
-    r:=Sphere.Add(ttArgument,
-      [tfName,Sphere.v(q,tfName)
-      ,tfParent,FnCall
-      ,tfSrcPos,Sphere.v(FnCall,tfSrcPos)
-      ,tfTarget,q
-      ,tfEvaluatesTo,ResType(Sphere,q)
+    Sphere.Add(FnCall,fArguments,nArgument,FnCall,Sphere.n(FnCall,vSrcPos)^,
+      [vName,Sphere.n(q,vName)^
+      ,fValue,q
+      ,fTypeDecl,ResType(Sphere,q)
       ]);
-    if n=0 then Sphere.s(FnCall,tfFirstArgument,r) else Sphere.s(n,tfNext,r);
-    n:=r;
-    p:=Sphere.r(p,tfNext);
-    q:=Sphere.r(q,tfNext);//else error?
+    Sphere.Next(p,p0);
+    q:=Sphere.n(q,fNext)^;
    end;
-  //if (q=0) and (p<>0) then raise?error?
+  //if (p<>0) and (q=0) then raise?error?
 end;
 
+{
 function StratoFindPropertySet(Sphere:TStratoSphere;
-  AssignTo,PropCall:TStratoIndex;Op,SrcPos:cardinal):boolean;
+  AssignTo,PropCall:xItem;Op:cardinal;SrcPos:xSrcPos):boolean;
 var
-  Getter,SetCall,Member,Signature,ParentClass,SetOp:TStratoIndex;
-  p,q:TStratoIndex;
-  qf:TStratoField;
-  Name:TStratoName;
+  Getter,Getter0,Member,Signature,ParentClass,SetCall,SetOp,p,q,r,r0:xItem;
+  Name:xName;
   st:TStratoToken;
 begin
-  //assert Sphere.t(PropColl)=ttPropCall
+  //assert Sphere.n(PropCall,vTypeNr)^ in [nPropGetCall,nPropSetCall]
   Result:=false;//default
   //find virtual property setter
-  Getter:=Sphere.r(PropCall,tfTarget);//ttPropertyGet
-  if Sphere.t(Getter)=ttField then Getter:=Sphere.r(Getter,tfTarget);
-  if Sphere.t(Getter)=ttPropertyGet then
+  Getter:=Sphere.n(PropCall,fParent)^;
+  if Sphere.n(Getter,vTypeNr)^=nField then Getter:=Sphere.n(Getter,fTarget)^;
+  if Sphere.n(Getter,vTypeNr)^=nPropertyGet then
    begin
-    Signature:=Sphere.r(Getter,tfSignature);
-    Member:=Sphere.r(Getter,tfParent);//ttMember
-    Name:=Sphere.v(Member,tfName);
-    ParentClass:=Sphere.r(Member,tfParent);//ttClass
+    Signature:=Sphere.n(Getter,fSignature)^;
+    Member:=Sphere.n(Getter,fParent)^;
+    Name:=Sphere.n(Member,vName)^;
+    ParentClass:=Sphere.n(Member,fParent)^;
     repeat
-      Getter:=Sphere.r(Member,tfFirstItem);
-      while (Getter<>0) and not((Sphere.t(Getter)=ttPropertySet)
-        and (SameType(Sphere,Sphere.r(Getter,tfSignature),Signature))) do
-        Getter:=Sphere.r(Getter,tfNext);
+      Sphere.First(Member,fItems,Getter,Getter0);
+      while (Getter<>0) and not((Sphere.n(Getter,vTypeNr)^=nPropertySet)
+        and (SameType(Sphere,Sphere.n(Getter,fSignature)^,Signature))) do
+        Sphere.Next(Getter,Getter0);
       if Getter=0 then
        begin
         Member:=0;
         while (ParentClass<>0) and (Member=0) do
          begin
-          ParentClass:=Sphere.r(ParentClass,tfInheritsFrom);
-          if ParentClass<>0 then
-            Member:=Sphere.Lookup(ParentClass,tfFirstItem,Name);
+          ParentClass:=Sphere.n(ParentClass,fInheritsFrom)^;
+          if ParentClass<>0 then Member:=Sphere.Lookup(ParentClass,Name);
          end;
        end;
     until (Getter<>0) or (ParentClass=0);
@@ -585,125 +633,84 @@ begin
       end;
       if st<>st_Unknown then
        begin
-        //duplicate ttPropCall, insert ttBinaryOp
-        SetOp:=Sphere.Add(ttBinaryOp,
-          [tfParent,Sphere.r(PropCall,tfParent)//cb
-          ,tfSrcPos,SrcPos
-          ,tfOperator,cardinal(st)
-          //tfRight: see Combine pAssignment
+        //duplicate nPropCall, insert nBinaryOp
+        SetOp:=Sphere.Add(nBinaryOp,Sphere.n(PropCall,fParent)^,SrcPos,
+          [vOperator,xValue(st)
+          //fRight: see Combine pAssignment
           ]);
-        Sphere.s(PropCall,tfEvaluatesTo,SetOp);
-        q:=SetOp;
-        qf:=tfLeft;
+        q:=0;
         p:=AssignTo;
         while (p<>0) and (p<>PropCall) do
          begin
-          case Sphere.t(p) of
-            ttField:
+          case Sphere.n(p,vTypeNr)^ of
+            nField:
              begin
-              p:=Sphere.Add(ttField,
-                [tfParent,Sphere.r(p,tfParent)
-                ,tfSubject,Sphere.r(p,tfSubject)
-                ,tfEvaluatesTo,Sphere.r(p,tfEvaluatesTo)
-                ,tfSrcPos,Sphere.v(p,tfSrcPos)
+              r:=Sphere.Add(nField,Sphere.n(p,fParent)^,Sphere.n(p,vSrcPos)^,
+                [fSubject,Sphere.n(p,fSubject)^
                 ]);
-              Sphere.s(q,qf,p);
-              q:=p;
-              qf:=tfTarget;
-              p:=Sphere.r(p,tfTarget);
+              if q=0 then Sphere.n(SetOp,fLeft)^:=r else Sphere.n(q,fTarget)^:=r;
+              q:=r;
+              p:=Sphere.n(p,fTarget)^;
              end;
             //TODO: more?
             else
               p:=0;//Source.Error('unsupported property header');
           end;
          end;
-        if p<>0 then //if p=PropCall then
+        if p<>0 then //if p is PropCall then
          begin
-          SetCall:=Sphere.Add(ttPropCall,
-            [tfParent,Sphere.r(p,tfParent)
-            ,tfFirstArgument,Sphere.r(p,tfFirstArgument)
-            ,tfSrcPos,Sphere.v(p,tfSrcPos)
-            ]);
-          Sphere.s(q,qf,SetCall);
-          q:=Sphere.r(p,tfTarget);
-          if Sphere.t(q)=ttField then
-            p:=Sphere.Add(ttField,
-              [tfParent,Sphere.r(q,tfParent)
-              ,tfSubject,Sphere.r(q,tfSubject)
-              ,tfTarget,Sphere.r(q,tfTarget)
-              ,tfEvaluatesTo,Sphere.r(q,tfEvaluatesTo)
-              ,tfSrcPos,Sphere.v(q,tfSrcPos)
+          SetCall:=Sphere.Add(nFnCall,Sphere.n(p,fParent)^,Sphere.n(p,vSrcPos)^,[]);
+          Sphere.First(p,fArguments,r,r0);
+          Sphere.Append(SetCall,fArguments,r);
+          if q=0 then Sphere.n(SetOp,fLeft)^:=SetCall else Sphere.n(q,fTarget)^:=SetCall;
+          q:=Sphere.n(p,fSubject)^;
+          if Sphere.n(q,vTypeNr)^=nField then
+            p:=Sphere.Add(nField,Sphere.n(q,fParent)^,Sphere.n(q,vSrcPos)^,
+              [fSubject,Sphere.n(q,fSubject)^
+              ,fTarget,Sphere.n(q,fTarget)^
               ]);
-          Sphere.s(SetCall,tfTarget,p);
+          Sphere.n(SetCall,fTarget)^:=p;
          end
         else
           Result:=false;
        end;
-      //update ttPropCall
-      Sphere.s(PropCall,tfOperator,Op);
-      q:=Sphere.r(PropCall,tfTarget);
-      if Sphere.t(q)=ttField then
-        Sphere.s(q,tfTarget,Getter)
+      //update nPropCall
+      q:=Sphere.n(PropCall,fSubject)^;
+      if Sphere.n(q,vTypeNr)^=nField then
+        Sphere.n(q,fSubject)^:=Getter
       else
-        Sphere.s(PropCall,tfTarget,Getter);
+        Sphere.n(PropCall,fSubject)^:=Getter;
      end;
    end;
   //else Source.Error?
 end;
+}
 
 function StratoCheckMemberNoArguments(Sphere:TStratoSphere;
-  Field,Target:TStratoIndex):TStratoIndex;
+  Field,Target,Parent:xItem;SrcPos:xSrcPos):xItem;
 var
-  p,q:TStratoIndex;
+  q,q0:xItem;
 begin
-  Result:=Target;//default;
+  Result:=Target;//default
   if Target<>0 then
-   begin
-    p:=0;//default
-    //TODO: while?
-    case Sphere.t(Target) of
-      ttMember:
-        p:=Target;
-      ttField:
+    case Sphere.n(Target,vTypeNr)^ of
+      nMember:
        begin
-        q:=Sphere.r(Target,tfTarget);
-        if Sphere.t(q)=ttMember then p:=q;
-       end;
-    end;
-    if p<>0 then
-     begin
-      q:=Sphere.r(p,tfFirstItem);
-      while (q<>0) and not((Sphere.t(q)=ttOverload) and
-        (Sphere.r(Sphere.r(q,tfTarget),tfFirstArgument)=0)) do
-        q:=Sphere.r(q,tfNext);
-      if q<>0 then
-       begin
-        Sphere.s(Field,
-          [tfThingType,ttFnCall
-          ,tfName,Sphere.v(p,tfName)//ttMember
-          ,tfTarget,q
-          ,tfEvaluatesTo,Sphere.r(Sphere.r(q,tfTarget),tfEvaluatesTo)//ttSignature
-          ]);
-        Result:=Field;
-       end
-      else
-       begin
-        q:=Sphere.r(p,tfFirstItem);
-        while (q<>0) and not((Sphere.t(q)=ttPropertyGet) and
-          (Sphere.r(Sphere.r(q,tfTarget),tfFirstArgument)=0)) do
-          q:=Sphere.r(q,tfNext);
+        Sphere.First(Target,fItems,q,q0);
+        while (q<>0) and not(
+          ((Sphere.n(q,vTypeNr)^=nOverload) or (Sphere.n(q,vTypeNr)^=nPropertyGet)) and
+          //(Sphere.n(q,fFirstArgVar)^=0)) do
+          (Sphere.n(Sphere.n(q,fSignature)^,fArguments)^=0)
+        ) do
+          Sphere.Next(q,q0);
         if q<>0 then
-         begin
-          Sphere.s(Field,
-            [tfThingType,ttPropCall
-            ,tfTarget,q
-            ,tfEvaluatesTo,Sphere.r(Sphere.r(q,tfTarget),tfEvaluatesTo)//ttSignature
-            ]);
-          Result:=Field;
-         end;
+          Result:=Sphere.Add(nFCall,Parent,SrcPos,[fTarget,q]);
+
+        //else nPGetCall?
        end;
-     end;
-   end;
+
+      //else//more?
+    end;
 end;
 
 end.

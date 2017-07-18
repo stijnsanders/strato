@@ -3,559 +3,308 @@ unit stratoDecl;
 interface
 
 type
-  TStratoThingType=type cardinal;
-  TStratoIndex=type cardinal;
-  TStratoField=type cardinal;
-  TStratoName=type cardinal;
+  xValue=type cardinal;
+  xItem=type xValue;
+  xName=type xValue;
+  xSrcPos=type xValue;
+  xTypeNr=type xValue;
 
-  TStratoThing=array[0..7] of cardinal;
-  PStratoThing=^TStratoThing;//only used by TStratoSphere internally
-  
+  PxValue=^xValue;
+
+  xPtr=cardinal;//used for pointer arithmetic
+
 const
-  //About TStratoThing:
-  //not all ThingType's use all of the TStratoThing fields,
-  //also to save space, some overlap
-  //function "rx" is used to govern which fields
-  //are in use for each ThingType
-  //constant values here are carefully chosen to be binary relevant (see bitmasks) and not to overlap
+  xValueSize=SizeOf(xValue);
 
-  ttFileMarker   = $00727453;//'Str'#0 see pHeader below
-  ttBinaryData   = $0200;
-  ttSourceFile   = $0201;   //only at start of block
-  ttModule       = $0202;
-  ttDependency   = $0203;
+                               //SFFFXNN size, field bits, master, number
+    n_BinaryData               =$0000001; //use SizeDiv4 when iterating
+    //n_Item                     =$1C00100;
+    //n_Chainable                =$2600200;
+    //n_Named                    =$3600300;
 
-  tt__Resolvable = $0010;   //bitmask: things that use FirstItem
-  tt__Typed      = $0020;   //bitmask: things that use EvaluateTo
-  tt__IsType     = $0040;   //bitmask: things allowed as EvaluatesTo
-  //TODO: tt__Named?
+    n_Item_Low                 =$2600000;//used by xTypeDefX below
+    n_Item_High                =$7800000;
 
-  ttNameSpace    = $0011;
-  ttTypeDecl     = $0050;
-  ttRecord       = $0051;
-  ttEnumeration  = $0052;
-  ttLiteral      = $0021;
-  ttVar          = $0022;
-  ttConstant     = $0023;
-  ttCodeBlock    = $0131;
+    nSourceFile                =$943C000;
+    
+    nNameSpace                 =$4680300;
+    nImport                    =$4680308;
+    nGlobal                    =$4700000;
+    nPrivate                   =$2600201;
 
-  tt__Directed   = $0080;   //bitmask: things that use Target
+    nTypeDecl                  =$4600400;
+    nSignature                 =$66E0400;
+    nArgument                  =$56C0300;
+    nArgByRef                  =$56C0308;
+    nVarDecl                   =$66C0300;
+    nVarByRef                  =$66C0308;
+    nLiteral                   =$3700100;
+    nConstant                  =$56C0301;
+    nTypeAlias                 =$3700208;
 
-  ttImport       = $0081;
-  ttAlias        = $0082;
-  ttGlobal       = $0083;   //see tf_Module_FirstGlobalVar
-  ttPrivate      = $0091;
-  ttSignature    = $00E0;
-  ttMember       = $0001;
-  ttOverload     = $0002;
-  ttFnCall       = $0084;
-  ttArgument     = $00A0;
-  ttAssign       = $0003;
-  ttUnaryOp      = $0025;
-  ttBinaryOp     = $0026;
-  ttCast         = $00A1;
-  ttSelection    = $0123;
-  ttIteration    = $0101;
-  ttIterationPE  = $0102;//post evaluation
-  ttTry          = $0004;
-  ttThrow        = $0008;
-  ttDeferred     = $0005;
-  ttCatch        = $0006;
-  ttSysCall      = $0007;
-  ttArray        = $0041;
-  ttArrayIndex   = $0024;
-  ttField        = $0027;
-  ttThis         = $0028;
-  ttPointer      = $00C0;
-  ttAddressOf    = $002A;
-  ttDereference  = $002B;
-  ttArgByRef     = $00A2;
-  ttVarByRef     = $00A3;
-  ttClass        = $00D0;
-  ttConstructors = $000A;
-  ttConstructor  = $000B;
-  ttDestructor   = $000C;
-  ttClassRef     = $00C1;
-  ttInterface    = $00D1;
-  ttPropertyGet  = $000D;
-  ttPropertySet  = $000E;
-  ttPropCall     = $0085;
+    nMember                    =$4680301;
+    nOverload                  =$57C0200;
 
-  //TStratoThing fields:
-  tf__FieldIndex   = $800; //bitmask: prevents overlap with tt*
-  tf__IsValue      = $400; //bitmask: field contains plain cardinal, not TStratoIndex
-  tfThingType      = $C00;//use Sphere.t
-  tfParent         = $801;
-  tfNext           = $802;
-  tfName           = $C03;//TStratoName
-  tfFirstItem      = $804;
-  tfByteSize       = $C05;
-  tfInheritsFrom   = $806;
-  tfSrcPos         = $C07;
-  tfFirstStatement = $813;
-  tfInitialValue   = $814;
-  tfOffset         = $C15;
-  tfEvaluatesTo    = $816;
-  tfSubject        = $823;
-  tfValueFrom      = $824;
-  tfAssignTo       = $825;
-  tfOperator       = $C33;//TStratoToken (stOp*)
-  tfLeft           = $834;
-  tfRight          = $835;
-//  tfSourceFile     = $843;
-  tfFirstArgument  = $844;
-  tfSignature      = $845;
-  tfBody           = $846;
-  tfTarget         = $875;
-  tfDoIf           = $853;
-  tfDoThen         = $854;
-  tfDoElse         = $855;
-  tfDoFirst        = $865;
+    nArray                     =$5640400;
+    nRecord                    =$5640401;
+    nEnumeration               =$4680402;
 
-  //ttSourceFile
-  tf_SourceFile_FileName        =$901;//ttBinary
-  tf_SourceFile_FileSize        =$C02;
-  tf_SourceFile_SrcPosLineIndex =$D03;
-  tf_SourceFile_FirstDependency =$B04;
-  tf_SourceFile_Module          =$B05;
+    nClass                     =$66C0400;
+    nClassRef                  =$4680408;
+    nInterface                 =$56C0401;
+    nConstructors              =$4680304;
+    nConstructor               =$57C0203;
+    nDestructor                =$57C0204;
+    nPropertyGet               =$57C0201;
+    nPropertySet               =$57C0202;
 
-  //ttModule
-  tf_Module_FirstNameSpace  =$A04;
-  tf_Module_FirstGlobalVar  =$A05;
-  tf_Module_Initialization  =$A06;
-  tf_Module_Finalization    =$A07;
+    nCodeBlock                 =$6760200;
+    nSysCall                   =$3600201;
+    nFCall                     =$4780210;//function call
+    nSCall                     =$57C0211;//static call
+    nVCall                     =$57C0212;//virtual call (dynamic)
+    nThis                      =$66C0202;
+    nPointer                   =$3700200;
+    nAddressOf                 =$4780208;
+    nDereference               =$4780209;
+    nField                     =$4780200;
+    nArrayIndex                =$4780201;
+    nCast                      =$4780202;
 
-{
-  //ttNameSpace
-  tf_NameSpace_Master          =$?05;
-}
+    nAssign                    =$56C0204;
+    nUnaryOp                   =$56C0205;
+    nBinaryOp                  =$66E0201;
+    nSelection                 =$67E0201;
+    nIteration                 =$77F0200;
+    nIterPostEval              =$77F0201;
 
-{$IFDEF DEBUG}
-type
-  rxt=function(p:TStratoIndex):TStratoThingType of object;
+    nTry                       =$3700203;
+    nThrow                     =$3700204;
+    nDeferred                  =$3700205;
+    nCatchAll                  =$3700206;
+    nCatchTypes                =$4780203;
+    nCatchNamed                =$56C0200;
 
-function rx(tt:TStratoThingType;f:TStratoField;t:rxt;q:TStratoIndex):cardinal;
-{$ENDIF}
+    n_Invalid                  =$0000000;
+
+    //field indexes
+
+    f_Unknown     =100;
+    fParent       =101;//n_Item
+    fNext         =102;//n_Chainable
+      // ATTENTION: list pointers point to last element in list,
+      // fNext value of last element points to first item in list
+    fItems        =103;
+    fValue        =104;
+    fSubject      =105;
+    fTarget       =106;
+
+    fTypeDecl     =107; //nTypeDecl
+    fSignature    =108;
+    fArguments    =109; //nArgument,nArgByRef
+    fFirstArgVar  =110;
+    fReturnType   =111; //nTypeDecl
+    fVarDecl      =112; //nVarDecl
+    fInheritsFrom =113;
+    fVarDecls     =114;
+
+    fDoFirst      =120;
+    fDoIf         =121;
+    fDoThen       =122;
+    fDoElse       =123;
+    fBody         =124;
+    fLeft         =125;
+    fRight        =126;
+    fExceptionConstructor =127;
+
+    //see also xSourcefile below
+    fSourceFile_NameSpaces          =150;
+    fSourceFile_Globals             =151;
+    fSourceFile_InitializationBlock =152;
+    fSourceFile_FinalizationBlock   =153;
+
+    v_IntegerFields =180;
+
+    vTypeNr         =181;
+    vSrcPos         =182;
+    vName           =183;
+    vByteSize       =184;
+    vOffset         =185;
+    vOperator       =186;
+    vExName         =187;
+
+    f_FieldsMax     =199;
 
 type
+  xSourceFile=record
+    TypeNr:xTypeNr;
+    SrcPosLineIndex:cardinal;
+    FileName:xItem;//xBinaryData
+    FileSize:cardinal;
+    Hash:cardinal;
+    Reserved1:cardinal;
+    Reserved2:cardinal;
+    //TODO: hash, timestamp
+    NameSpaces:xItem;
+    Globals:xItem;
+    InitializationBlock:xItem;
+    FinalizationBlock:xItem;
+  end;
+  PxSourceFile=^xSourceFile;
+
+  (*
+    n_BinaryData, vTypeNr,vBytesize,{pData,}
+    n_Item,       vTypeNr,vSrcPos,fParent
+    n_Chainable,  vTypeNr,vSrcPos,fParent,fNext,
+    n_Named,      vTypeNr,vSrcPos,fParent,fNext,vName,
+
+    nSourceFile,  vTypeNr,vSrcPosLineIndex,fFileName{:n_BinaryData},vFileSize,vFileHash,
+                  vReserved1,vReserved2,lNameSpaces,lGlobals,lInitializationBlock,lFinalizationBlock,
+  *)
+
+const
+  xTypeDefLen=195;
+  xTypeDef:array[0..xTypeDefLen-1] of xTypeNr=(
+
+    //list of uses of fields (all have vTypeNr,vSrcPos,fParent in common)
+
+    nNameSpace,                 fNext,vName,fItems,
+    nImport,                    fNext,vName,fSubject{nNameSpace},
+    nTypeDecl,                  fNext,vName,vByteSize, //TODO:fPointerTo{nTypeDecl}
+    nSignature,                 fNext,vName,fSubject{nClass,nRecord},fArguments,fReturnType,
+    nArgument,                  fNext,vName,fTypeDecl,fValue,
+      //Parent is nSignature: default value (nConstant,nLiteral)
+      //Parent is n*Call: arg var (nVarDecl,nVarByRef)
+
+    nArgByRef,                  fNext,vName,fTypeDecl,fValue, //same as above
+    nVarDecl,nVarByRef,nThis,   fNext,vName,fTypeDecl,fValue,vOffset,
+    nGlobal,                    fNext,fVarDecl,vByteSize,
+    nPrivate,                   fNext,
+    nLiteral,                   fValue,fTypeDecl,
+    nConstant,                  fNext,vName,fValue,fTypeDecl,
+    nTypeAlias,                 fNext,fTypeDecl,
+    nMember,                    fNext,vName,fItems{nOverload,nPropertyGet,nPropertySet},
+    nConstructors,              fNext,vName,fItems{nConstructor},
+    nOverload,                  fNext,fSignature,fFirstArgVar,fBody,
+    nConstructor,nDestructor,   fNext,fSignature,fFirstArgVar,fBody,
+    nPropertyGet,nPropertySet,  fNext,fSignature,fFirstArgVar,fBody,
+    nArray,                     fNext,vName,vByteSize,fTypeDecl,
+      //TODO: size/extent/dimension: Array.ByteSize div ByteSize(Array.ElementType) for now
+      //TODO: multi-dimensional arrays
+    nRecord,                    fNext,vName,vByteSize,fItems,
+    nEnumeration,               fNext,vName,fItems,
+    nClass,                     fNext,vName,fInheritsFrom{nClass},fItems,vByteSize,
+    nClassRef,                  fNext,vName,fSubject{nClass},
+    nInterface,                 fNext,vName,fInheritsFrom{nInterface},fItems,
+
+    nCodeBlock,                 fNext,fVarDecls,vByteSize,fItems,fReturnType,
+    nSysCall,                   fNext,vOffset,
+    nFCall,                     fNext,fTarget,fArguments,
+    nSCall,nVCall,              fNext,fSubject,fTarget,fArguments,
+    //TODO: nPGetCall,nPSetCall
+
+    nPointer,                   fNext,fSubject{nTypeDecl,nPointer},
+    nAddressOf,nDereference,    fNext,fSubject,fReturnType,
+
+    nField,                     fNext,fSubject,fTarget, //subject.target
+    nArrayIndex,                fNext,fSubject,fItems, //subject[item(s)]
+    nCast,                      fNext,fSubject,fTypeDecl,
+    nAssign,                    fNext,vOperator,fTarget,fValue,
+    nUnaryOp,                   fNext,vOperator,fRight,fReturnType,
+    nBinaryOp,                  fNext,vOperator,fLeft,fRight,fReturnType,
+    nSelection,                 fNext,fDoIf,fDoThen,fDoElse,fReturnType,
+    nIteration,nIterPostEval,   fNext,fDoFirst,fDoIf,fDoThen,fBody,fReturnType,//TODO: iterate over range always
+    nThrow,                     fNext,fExceptionConstructor,
+    nDeferred,                  fNext,fItems,
+    nCatchAll,                  fNext,fBody,
+    nCatchTypes,                fNext,fItems{nTypeAlias},fBody,
+    nCatchNamed,                fNext,vExName,fVarDecl,fBody,
+
+    n_Item_Low //closing entry
+  );
+
+var
+  xTypeDefX:array[n_Item_Low..n_Item_High] of integer;
+
+const
+  StratoSphereFileMarker=$00727453;//'Str'#0 see pHeader below
+
+type
+  TStratoFileHeader=record
+    FileMarker:cardinal;
+    FileVersion:cardinal;
+    BlockCount:cardinal;
+    Reserved1:cardinal;
+  end;
   TStratoBlockHeader=record
-    Marker:TStratoThingType;
-    SourceFile:TStratoIndex;
-    ThingCount,
-    NextBlock:cardinal;
-    xReserved1,
-    xReserved2,
-    xReserved3,
-    xReserved4:TStratoIndex;
+    Reserved1:cardinal;
+    ItemCount:cardinal;
+    SourceFile:xItem;
+    ContinueBlockIdx:cardinal;
   end;
 
 implementation
 
 uses SysUtils;
 
-{$IFDEF DEBUG}
+{$D-}
+{$L-}
 
-function rx(tt:TStratoThingType;f:TStratoField;t:rxt;q:TStratoIndex):cardinal;
+procedure StratoCheckTypeNrs;
 var
-  ok:boolean;
-  tc:TStratoThingType;
-  procedure anydecl;
-  begin
-    ok:=tc in [0,ttTypeDecl,ttRecord,ttEnumeration,ttClass,ttInterface,
-      ttVar,ttVarByRef,ttConstant,ttSignature,ttMember,ttDestructor,
-      ttClassRef];
-  end;
-  procedure anyval;
-  begin
-    ok:=((tc and tt__Typed)<>0) or (tc in [ttFnCall,ttPropCall]);
-  end;
+  i,j,k,n,m:cardinal;
 begin
-  if ((f and tf__IsValue)=0) and (q<>0) and (@t<>nil) then tc:=t(q) else tc:=0;
-  if f=tfSrcPos then Result:=7 else
+  i:=0;
+  while i<xTypeDefLen do
    begin
-    ok:=false;//default
-    case tt of
-      ttSourceFile:
-        case f of
-          tf_SourceFile_FileName:ok:=(q=0) or (tc=ttBinaryData);
-          tf_SourceFile_FileSize:ok:=true;
-          //TODO: FileCRC32,FileDate
-          tf_SourceFile_SrcPosLineIndex:ok:=true;
-          tf_SourceFile_FirstDependency:ok:=(q=0) or (tc=ttDependency);
-          tf_SourceFile_Module:ok:=(q=0) or (tc=ttModule);
-        end;
-      ttModule:
-        case f of
-          tf_Module_FirstNameSpace:ok:=(q=0) or (tc=ttNameSpace);
-          tf_Module_FirstGlobalVar:ok:=(q=0) or (tc=ttGlobal);
-          tf_Module_Initialization,
-          tf_Module_Finalization:ok:=(q=0) or (tc=ttCodeBlock);
-        end;
-      ttDependency:
-        case f of
-          tfParent:ok:=tc=ttSourceFile;
-          tfNext:ok:=(q=0) or (tc=ttDependency);
-          tfTarget:ok:=tc=ttSourceFile;
-        end;
-      ttNameSpace:
-        case f of
-          tfParent:ok:=(q=0) or (tc=ttNameSpace);
-          tfName:ok:=true;
-          tfFirstItem,tfNext:if tc=ttNameSpace then ok:=true else anydecl;
-          tfTarget:ok:=(q=0) or (tc=ttNameSpace);//master namespace
-        end;
-      ttTypeDecl,ttRecord,ttEnumeration:
-        case f of
-          tfParent:ok:=tc=ttNameSpace;
-          tfNext:anydecl;
-          tfName:ok:=true;
-          tfFirstItem:if q=0 then ok:=true else
-            case tt of
-              ttRecord:ok:=tc in [ttVar,ttMember,ttPropertyGet,ttPropertySet];
-              ttEnumeration:ok:=tc=ttConstant;
-            end;
-          tfByteSize:ok:=true;
-        end;
-      ttLiteral:
-        case f of
-          tfParent:ok:=(q=0) or (tc=ttCodeBlock);
-          tfNext:anydecl;
-          tfInitialValue:ok:=tc=ttBinaryData;
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0;
-        end;
-      ttVar:
-        case f of
-          tfParent:
-            case tc of
-              ttNameSpace,ttClass,ttCodeBlock:ok:=true;
-            end;
-          tfNext:anydecl;
-          tfName:ok:=true;
-          tfInitialValue:ok:=tc in [0,ttLiteral,ttConstant];
-          tfOffset:ok:=true;
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0;
-        end;
-      ttConstant:
-        case f of
-          tfParent:
-            case tc of
-              ttNameSpace,ttClass,ttCodeBlock:ok:=true;
-            end;
-          tfNext:anydecl;
-          tfName:ok:=true;
-          tfInitialValue:ok:=tc in [ttLiteral,ttConstant];
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0;
-        end;
-      ttCodeBlock:
-        case f of
-          tfParent:
-            case tc of
-              ttNameSpace,ttCodeBlock,ttOverload,ttConstructor,ttDestructor,
-              ttPropertyGet,ttPropertySet:
-                ok:=true;
-            end;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfFirstItem:ok:=tc in [0,ttVar,ttThis];
-          tfFirstStatement:ok:=(tc and tt__IsType)=0;
-          tfByteSize:ok:=true;
-          tfEvaluatesTo:ok:=(q=0) or ((tc and tt__IsType)<>0);
-        end;
-      ttImport:
-        case f of
-          tfParent,tfTarget:ok:=tc=ttNameSpace;
-          tfName:ok:=true;
-        end;
-      ttAlias:
-        case f of
-          tfParent:
-            case tc of
-              ttCodeBlock,ttNameSpace:ok:=true;
-            end;
-          tfNext:ok:=tc=ttAlias;
-          tfTarget:
-            case tc of
-              ttMember,ttCodeBlock:ok:=true;
-            end;
-        end;
-      ttGlobal:
-        case f of
-          tfParent:ok:=tc=ttNameSpace;
-          tfNext:ok:=tc in [0,ttGlobal];
-          tfSubject:ok:=tc=ttVar;
-          tfByteSize:ok:=true;
-        end;
-      ttPrivate:
-        case f of
-          tfParent:ok:=tc=ttNameSpace;
-          tfNext:anydecl;
-          tfFirstItem:anydecl;
-          tfTarget:ok:=tc=ttNameSpace;
-        end;
-      ttSignature:
-        case f of
-          tfParent:ok:=tc in [ttNameSpace,ttClass,ttRecord,ttOverload];
-          tfNext:anydecl;
-          tfName:ok:=true;
-          tfFirstArgument:ok:=tc in [0,ttArgument,ttArgByRef];
-          tfTarget:ok:=tc in [0,ttClass,ttRecord]; //call subject (this)
-          tfEvaluatesTo:ok:=(q=0) or ((tc and tt__IsType)<>0); //return value type
-        end;
-      ttMember:
-        case f of
-          tfParent:ok:=tc in [ttNameSpace,ttClass,ttRecord];
-          tfNext:anydecl;
-          tfName:ok:=true;
-          tfFirstItem:ok:=tc in [0,ttOverload,ttPropertyGet,ttPropertySet];
-        end;
-      ttOverload,ttPropertyGet,ttPropertySet:
-        case f of
-          tfParent:ok:=tc=ttMember;
-          tfNext:ok:=tc in [0,ttOverload,ttPropertyGet,ttPropertySet];
-          tfFirstArgument:ok:=tc in [0,ttVar,ttVarByRef];
-          tfSignature:ok:=tc=ttSignature;
-          tfBody:ok:=tc=ttCodeBlock;//ttSysCall?
-        end;
-      ttFnCall:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfName:ok:=true; //=0 when constructor and calling inherited constructor
-          tfFirstArgument:ok:=(q=0) or ((tc and tt__Typed)<>0);
-          tfTarget:
-            ok:=tc in [ttMember,ttOverload,
-              ttClass,//only when parsing, to resolve later
-              ttField,ttCast,ttVar,ttPointer,//TODO: resolve more?
-              ttConstructor,ttDestructor];
-          tfEvaluatesTo:ok:=(q=0) or ((tc and tt__IsType)<>0);
-        end;
-      ttArgument://TODO: split parent ttSignature or ttFnCall
-        case f of
-          tfParent:ok:=tc in [ttSignature,ttFnCall];
-          tfNext:ok:=tc in [0,ttArgument,ttArgByRef];
-          tfName:ok:=true;
-          tfInitialValue: //default value (signature only)
-            ok:=(q=0) or ((tc and tt__Typed)<>0);
-          tfTarget: //argument value [ATTENTION! Target and not ValueFrom!]
-            //0 when parent ttSignature, non-0 when parent ttFnCall
-            ok:=(q=0) or ((tc and tt__Typed)<>0);
-          tfEvaluatesTo://argument type (used to find suitable signature)
-            ok:=(tc and tt__IsType)<>0;
-        end;
-      ttAssign:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfOperator:ok:=true;
-          tfAssignTo:ok:=tc in [ttVar,ttArrayIndex,ttField,ttCast];
-          tfValueFrom:anyval;
-        end;
-      ttUnaryOp:
-        case f of
-          tfThingType:ok:=q=ttFnCall;//only allow upgrade to destructor call
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfOperator:ok:=true;
-          tfRight:anyval; //[ATTENTION! Right and not Target!]
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0;
-        end;
-      ttBinaryOp:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfOperator:ok:=true;
-          tfLeft,tfRight:anyval;
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0;
-        end;
-      ttCast:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfEvaluatesTo:ok:=((tc and tt__IsType)<>0) or (tc=ttFnCall);
-          tfTarget:ok:=((tc and tt__Typed)<>0) or (tc=ttFnCall);
-        end;
-      ttSelection:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfDoIf,tfDoThen,tfDoElse:ok:=(tc and tt__IsType)=0;
-          tfEvaluatesTo:ok:=(q=0) or ((tc and tt__IsType)<>0);
-        end;
-      ttIteration,ttIterationPE:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfDoFirst,tfDoIf,tfDoThen,tfBody:ok:=(tc and tt__IsType)=0;
-        end;
-      ttTry:
-        case f of
-          tfTarget:ok:=tc in [ttDeferred,ttCatch];
-        end;
-      ttThrow:
-        case f of
-          tfTarget:ok:=tc=ttFnCall; //exception object constructor //TODO
-        end;
-      ttDeferred:
-        case f of
-          tfTarget:ok:=(tc and tt__IsType)<>0;//TODO
-        end;
-      ttCatch:
-        case f of
-          tfFirstArgument:ok:=tc=ttVar; //exception object reference
-          tfTarget:ok:=(tc and tt__IsType)<>0; //exception object mask
-          tfBody:ok:=tc=ttCodeBlock;
-        end;
-      ttSysCall:
-        case f of
-          tfParent:
-            case tc of
-              ttOverload,ttCodeBlock:ok:=true;
-            end;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfOperator:ok:=true; //internal value (see PerformSysCall)
-        end;
-      ttArray:
-        case f of
-          tfParent:
-            case tc of
-              ttNameSpace,ttClass,ttCodeBlock:ok:=true;
-            end;
-          tfNext:anydecl;
-          tfName:ok:=true;
-          tfSubject:ok:=(tc and tt__Istype)<>0; //array element type (ttTypeDecl)
-          //TODO: multi-dimensional arrays
-          tfByteSize:ok:=true; //total array memory size
-        end;
-      ttArrayIndex:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfTarget:ok:=tc in [ttArray,ttField]; //x in x[y]
-          tfFirstArgument:ok:=(tc and tt__IsType)<>0; //y in x[y]
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0;
-        end;
-      ttField:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfSubject:ok:=(tc and tt__Typed)<>0; //x in x.y
-          tfTarget: //y in x.y
-            ok:=tc in [ttVar,
-              ttMember,//only when parsing, to resolve later
-              ttOverload,ttConstructor,ttDestructor,ttPropertyGet,ttPropertySet];
-          tfEvaluatesTo:ok:=(q=0) or //0 when as ttFnCall's tfTarget
-            ((tc and tt__Typed)<>0) or ((tc and tt__IsType)<>0);
-        end;
-      ttThis:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(q=0) or (tc=ttVar);
-          tfName:ok:=true;//'@@'
-          tfOffset:ok:=true;
-          tfEvaluatesTo:ok:=tc in [ttClass,ttRecord];
-        end;
-      ttPointer:
-        case f of
-          tfParent:
-            case tc of
-              ttCodeBlock,ttNameSpace,ttSignature:ok:=true;
-            end;
-          tfByteSize:ok:=true;//ok:=q=SystemWordSize;
-          tfEvaluatesTo:ok:=tc in [ttClass,ttTypeDecl];
-        end;
-      ttAddressOf:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfValueFrom:ok:=tc in [ttThis,ttVar];
-          tfEvaluatesTo:ok:=tc=ttPointer;
-        end;
-      ttDereference:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfEvaluatesTo:ok:=tc in [ttPointer,ttField];
-          tfValueFrom:ok:=tc=ttVar;
-        end;
-      ttArgByRef:
-        case f of
-          tfParent:ok:=tc=ttSignature;
-          tfNext:ok:=tc in [0,ttArgument,ttArgByRef];
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0;
-        end;
-      ttVarByRef:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfOffset:ok:=true;
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0;
-        end;
-      ttClass:
-        case f of
-          tfParent:ok:=tc=ttNameSpace;
-          tfNext:anydecl;
-          tfName:ok:=true;
-          tfFirstItem:ok:=tc in [0,ttVar,ttMember,ttConstructors,ttDestructor];
-          tfByteSize:ok:=true; //size of data, not value since that's a pointer
-          tfInheritsFrom:ok:=(q=0) or (tc=ttClass);
-        end;
-      ttConstructors:
-        case f of
-          tfParent:ok:=tc=ttClass;
-          tfNext:ok:=tc in [0,ttVar,ttMember,ttDestructor];
-          tfName:ok:=true;//always 0!
-          tfFirstItem:ok:=(q=0) or (tc=ttConstructor);
-        end;
-      ttConstructor: // (like ttOverload)
-        case f of
-          tfParent:ok:=tc=ttConstructors;
-          tfNext:ok:=(q=0) or (tc=ttConstructor);
-          tfSignature:ok:=tc=ttSignature;
-          tfBody:ok:=tc=ttCodeBlock;
-          tfFirstArgument:ok:=tc in [0,ttVar,ttVarByRef];
-        end;
-      ttDestructor:
-        case f of
-          tfParent:ok:=tc=ttClass;
-          tfNext:ok:=tc in [0,ttVar,ttMember,ttDestructor];
-          tfName:ok:=true;
-          tfSignature:ok:=tc=ttSignature;
-          tfBody:ok:=tc=ttCodeBlock;
-          //no tfFirstArgument!
-        end;
-      ttClassRef:
-        case f of
-          tfParent:
-            case tc of
-              ttClass,ttNameSpace,ttCodeBlock:ok:=true;
-            end;
-          tfNext:anydecl;
-          tfName:ok:=true;
-          tfByteSize:ok:=true;//ok:=q=SystemWordSize;
-          tfEvaluatesTo:ok:=tc=ttClass;
-        end;
-      ttInterface:
-        case f of
-          tfFirstItem:ok:=tc=ttMember;
-          tfByteSize:ok:=true;//ok:=q=SystemWordSize;//since it's a pointer
-          tfInheritsFrom:ok:=tc=ttInterface;
-        end;
-      ttPropCall:
-        case f of
-          tfParent:ok:=tc=ttCodeBlock;
-          tfNext:ok:=(tc and tt__IsType)=0;
-          tfOperator:ok:=true; //0 with ttPropertyGet, stAssign* with ttPropertySet
-          tfFirstArgument:ok:=(tc and tt__Typed)<>0;
-          tfTarget:ok:=tc in [ttMember,ttOverload,
-            ttClass,//only when parsing, to resolve later
-            ttField,ttCast,ttVar,ttPointer,//TODO: resolve more?
-            ttConstructor,ttDestructor];
-          tfEvaluatesTo:ok:=(tc and tt__IsType)<>0; //ttPropertySet: value to set
-        end;
-    end;
-    if ok then Result:=f and $07 else
-      if tc=0 then
-        raise Exception.CreateFmt(
-          'Field not available for thing type %.4x[%.3x] (%d)',[tt,f,q])
-      else
-        raise Exception.CreateFmt(
-          'Child not allowed for field %.4x[%.3x]=%.4x (%d)',[tt,f,tc,q]);
+    j:=i+1;
+    while (j<xTypeDefLen) and (xTypeDef[j]>f_FieldsMax) do inc(j);
+    k:=j;
+    n:=$0200;
+    m:=$0400;
+    while (k<xTypeDefLen) and (xTypeDef[k]<f_FieldsMax) do
+     begin
+      if xTypeDef[k]<v_IntegerFields then m:=m or n;
+      n:=n shr 1;
+      inc(k);
+     end;
+    m:=m or ((k-j+1) shl 12);
+
+    if ((cardinal(xTypeDef[i]) shr 12)<>m) and (i<>xTypeDefLen-1) then
+      raise Exception.CreateFmt('Flags mismatch: %.7x %.4x',[cardinal(xTypeDef[i]),m]);
+      
+    inc(i);
+    if i=j then
+     begin
+      while (j<xTypeDefLen) and (xTypeDef[j]<f_FieldsMax) do inc(j);
+      i:=j;
+     end;
    end;
 end;
-{$ENDIF}
 
+procedure StratoBuildTypeDefX;
+var
+  i,j:integer;
+begin
+  {$IFDEF DEBUG}
+  StratoCheckTypeNrs;
+  {$ENDIF}
+  i:=0;
+  while i<xTypeDefLen do
+   begin
+    j:=i+1;
+    while (j<xTypeDefLen) and (xTypeDef[j]>f_FieldsMax) do inc(j);
+    while (i<>j) do
+     begin
+      xTypeDefX[xTypeDef[i]]:=j;
+      inc(i);
+     end;
+    while (j<xTypeDefLen) and (xTypeDef[j]<f_FieldsMax) do inc(j);
+    i:=j;
+   end;
+end;
+
+initialization
+  StratoBuildTypeDefX;
 end.
+

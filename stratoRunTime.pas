@@ -14,171 +14,115 @@ const
   stratoSysCall_mfree=$102;
   stratoSysCall_writeln=$200;
 
-procedure DefaultTypes(Store:TStratoStore;InlineErrors:boolean;
-  var ErrorCount:integer);
+procedure DefaultTypes(Store:TStratoStore);
 
 var
-  TypeDecl_void,TypeDecl_type,TypeDecl_number,TypeDecl_intLast,
-  TypeDecl_pointer,TypeDecl_bool,TypeDecl_string,TypeDecl_variant,
-  TypeDecl_object,TypeDecl_hash:TStratoIndex;
-  Name_Inherited:TStratoName;
+  TypeDecl_void,TypeDecl_type,TypeDecl_bool,TypeDecl_string,
+  TypeDecl_number,TypeDecl_intLast,TypeDecl_variant,TypeDecl_pointer,
+  TypeDecl_hash,TypeDecl_object:xItem;
 
 implementation
 
-uses SysUtils, stratoSource, stratoParse;
+uses SysUtils;
 
-procedure DefaultTypes(Store:TStratoStore;InlineErrors:boolean;
-  var ErrorCount:integer);
+procedure DefaultTypes(Store:TStratoStore);
 var
-  Source:TStratoSource;
   Sphere:TStratoSphere;
-  ns,nn:TStratoIndex;
+  ns:xItem;
 
-  function A(const Name:UTF8String;s:integer): TStratoIndex;
+  function A(const Name:UTF8String;s:integer):xItem;
   begin
-    Result:=Sphere.Add(ttTypeDecl,
-      [tfName,Store.Dict.StrIdx(Name)
-      ,tfParent,ns
-      ,tfByteSize,s
+    Result:=Sphere.Add(ns,fItems,nTypeDecl,ns,0,
+      [vName,Store.Dict.StrIdx(Name)
+      ,vByteSize,s
       ]);
-    if nn=0 then
-      Sphere.s(ns,tfFirstItem,Result)
-    else
-      Sphere.s(nn,tfNext,Result);
-    nn:=Result;
   end;
 
-  const
-    C_ByRef=$10000;
-
-  procedure C(const FunctionName,SignatureName:UTF8String;Op:cardinal;
-    const Arguments:array of TStratoIndex;ReturnType:TStratoIndex);
+  procedure C(const FunctionName,SignatureName:UTF8String;Op:xValue;
+    const Arguments:array of xItem;ReturnType:xItem);
   var
-    i,bs:integer;
-    n,n1,p1,p2,p3,s:TStratoIndex;
+    m,o,s:xItem;
+    i,l:integer;
+    cb,v1:xItem;
+    bs:PxValue;
   begin
-    n1:=Sphere.Add(ttMember,
-      [tfName,Store.Dict.StrIdx(FunctionName)
-      ,tfParent,ns
-      ]);
-    n:=Sphere.Add(ttOverload,
-      [tfParent,n1
-      ]);
-    Sphere.s(n1,tfFirstItem,n);
-    Sphere.s(nn,tfNext,n1);
-    nn:=n1;
+    m:=Sphere.Add(ns,fItems,nMember,ns,0,[vName,Store.Dict.StrIdx(FunctionName)]);
 
-    s:=Sphere.Add(ttSignature,
-      [tfName,Store.Dict.StrIdx(SignatureName)
-      ,tfParent,n
-      ,tfEvaluatesTo,ReturnType
-      ]);
-    Sphere.s(n,tfSignature,s);
+    o:=Sphere.Add(nOverload,m,0,[]);
+    Sphere.Append(m,fItems,o);
 
-    p2:=0;
-    for i:=0 to Length(Arguments)-1 do
+    s:=Sphere.Add(nSignature,o,0,
+      [vName,Store.Dict.StrIdx(SignatureName)
+      ,fReturnType,ReturnType
+      ]);
+    Sphere.n(o,fSignature)^:=s;
+
+    i:=0;
+    l:=Length(Arguments);
+    while i<l do
      begin
-      if (Arguments[i] and C_ByRef)=0 then
-        p1:=Sphere.Add(ttArgument,
-          [tfParent,s
-          ,tfEvaluatesTo,Arguments[i]
-          ])
+      if Arguments[i]<>0 then //nil prefix for arg-by-ref?
+        Sphere.Add(s,fArguments,nArgument,s,0,[fTypeDecl,Arguments[i]])
       else
-        p1:=Sphere.Add(ttArgByRef,
-          [tfParent,s
-          ,tfEvaluatesTo,Arguments[i] xor C_ByRef
-          ]);
-      if p2=0 then Sphere.s(s,tfFirstArgument,p1) else Sphere.s(p2,tfNext,p1);
-      p2:=p1;
+       begin
+        inc(i);
+        Sphere.Add(s,fArguments,nArgByRef,s,0,[fTypeDecl,Arguments[i]]);
+       end;
+      inc(i);
      end;
 
-    bs:=0;
-    p1:=Sphere.Add(ttCodeBlock,
-      [tfParent,n
-      ]);
-    Sphere.s(n,tfBody,p1);
-    p2:=Sphere.Add(ttSysCall,
-      [tfParent,n
-      ,tfOperator,Op
-      ]);
-    Sphere.s(p1,tfFirstStatement,p2);
+    cb:=Sphere.Add(nCodeBlock,o,0,[fReturnType,ReturnType]);
+    bs:=Sphere.n(cb,vByteSize);
+    Sphere.n(o,fBody)^:=cb;
+    Sphere.Add(cb,fItems,nSysCall,cb,0,[vOffset,Op]);
 
     if ReturnType<>0 then
      begin
-      p2:=Sphere.Add(ttVar,
-        [tfName,Store.Dict.StrIdx(FunctionName)
-        ,tfParent,p1
-        ,tfEvaluatesTo,ReturnType
-        ,tfOffset,bs
+      Sphere.Add(cb,fVarDecls,nVarDecl,cb,0,
+        [fTypeDecl,ReturnType
+        ,vOffset,bs^
         ]);
-      inc(bs,ByteSize(Sphere,ReturnType));
-      Sphere.s(p1,tfFirstItem,p2);
-     end
-    else
-      p2:=0;
+      inc(bs^,ByteSize(Sphere,ReturnType));
+     end;
 
-    for i:=0 to Length(Arguments)-1 do
+    i:=0;
+    l:=Length(Arguments);
+    while i<l do
      begin
-      if (Arguments[i] and C_ByRef)=0 then
+      if Arguments[i]<>0 then //nil prefix for arg-by-ref?
        begin
-        p3:=Sphere.Add(ttVar,
-           [tfParent,p1
-           ,tfOffset,bs
-           ,tfEvaluatesTo,Arguments[i]
-           ]);
-        inc(bs,Sphere.v(Arguments[i],tfByteSize));
+        v1:=Sphere.Add(cb,fVarDecls,nVarDecl,cb,0,
+          [fTypeDecl,Arguments[i]
+          ,vOffset,bs^
+          ]);
+        inc(bs^,ByteSize(Sphere,Arguments[i]));
        end
       else
        begin
-        p3:=Sphere.Add(ttVarByRef,
-           [tfParent,p1
-           ,tfOffset,bs
-           ,tfEvaluatesTo,Arguments[i] xor C_ByRef
-           ]);
-        inc(bs,SystemWordSize);
+        inc(i);
+        v1:=Sphere.Add(cb,fVarDecls,nVarByRef,cb,0,
+          [fTypeDecl,Arguments[i]
+          ,vOffset,bs^
+          ]);
+        inc(bs^,SystemWordSize);
        end;
-      if p2=0 then
-        Sphere.s(p1,tfFirstItem,p3)
-      else
-        Sphere.s(p2,tfNext,p3);
-      p2:=p3;
-      if i=0 then Sphere.s(n,tfFirstArgument,p3);
+      if i=0 then Sphere.n(o,fFirstArgVar)^:=v1;
+      inc(i);
      end;
-    Sphere.s(p1,tfByteSize,bs);
-
   end;
-
-var
-  p:TStratoIndex;
-  function pp(const Name:UTF8String):TStratoIndex;
-  begin
-    Result:=Sphere.Lookup(p,tfFirstItem,Store.Dict.StrIdx(Name));
-    if Result=0 then
-      raise Exception.Create('Run-time library missing "'+Name+'"');
-  end;
+  
 begin
-  Source:=TStratoSource.Create;//pro-forma
-  Sphere:=TStratoSphere.Create(Store,Source);
+  Sphere:=TStratoSphere.Create(Store,nil);
   try
-    {
-    Source.LoadFromFile(Store.ResolvePath('$compiler\Strato.xs'));
-    p:=StratoParseSource(Store,Source,InlineErrors);
-    inc(ErrorCount,Source.ErrorCount);
-    }
+    ns:=Sphere.Add(Sphere.SourceFile,fSourceFile_NameSpaces,nNameSpace,0,0,
+      [vName,Store.Dict.StrIdx('Strato')]);
 
-    ns:=Sphere.Add(ttNameSpace,
-      [tfName,Store.Dict.StrIdx('Strato')
-      ]);
-    Sphere.s(Sphere.Module,tf_Module_FirstNameSpace,ns);
-
-    nn:=0;
     TypeDecl_void:=A('void',0);
     TypeDecl_type:=A('type',SystemWordSize);
-    TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
-    TypeDecl_pointer:=A('pointer',SystemWordSize);
     TypeDecl_bool:=A('bool',SystemWordSize);
     TypeDecl_string:=A('string',SystemWordSize);
     TypeDecl_variant:=A('variant',16);//TODO: OLE compatible variants
+    TypeDecl_number:=A('number',SystemWordSize);//TODO: other numerics inherit, (auto)casting
     A('i8',1);
     A('i16',2);
     A('i32',4);
@@ -191,11 +135,12 @@ begin
     A('f64',8);
     TypeDecl_object:=0;//see StratoParseSource: allow only one object()={}
     TypeDecl_hash:=A('hash',SystemWordSize);//TODO:
+    TypeDecl_pointer:=A('pointer',SystemWordSize);
 
     C('__xinc','__xinc(^number)',
-      stratoSysCall_xinc,[TypeDecl_number or C_ByRef],TypeDecl_number);
+      stratoSysCall_xinc,[0,TypeDecl_number],TypeDecl_number);
     C('__xdec','__xdec(^number)',
-      stratoSysCall_xdec,[TypeDecl_number or C_ByRef],TypeDecl_number);
+      stratoSysCall_xdec,[0,TypeDecl_number],TypeDecl_number);
     C('__writeln','__writeln(string)',
       stratoSysCall_writeln,[TypeDecl_string],0);
     C('__malloc','__malloc(number)',
@@ -210,7 +155,6 @@ begin
     //TODO: strings with reference counting, copy-on-write, etc
   finally
     Sphere.Free;
-    Source.Free;
   end;
 end;
 

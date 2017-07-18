@@ -2,8 +2,8 @@ unit stratoSphere;
 
 interface
 
-{xxx$D-}
-{xxx$L-}
+{$D-}
+{$L-}
 
 uses SysUtils, Classes, stratoDict, stratoSource, stratoDecl;
 
@@ -12,9 +12,10 @@ type
   private
     FDict:TStringDictionary;
     FBlock:array of record
-      SourceFile:TStratoIndex;
-      NextBlock,Index:cardinal;
-      Data:pointer;//PStratoSphereDataBlock see below
+      Data:PxValue;
+      ItemCount:cardinal;
+      SourceFile:xItem;
+      ContinueBlockIdx:cardinal;
     end;
     FBlockCount,FBlockSize:cardinal;
     FPath:array of record
@@ -22,9 +23,9 @@ type
     end;
     procedure AddPath(const Key, Path: string);
   protected
-    function NewBlock(ChainIndex:cardinal;SourceFile:TStratoIndex):cardinal;
-    function Add(var BlockIndex:cardinal;var pp:PStratoThing):TStratoIndex;
-    function GetNode(ID: TStratoIndex; BlockIndex: cardinal): PStratoThing;
+    function NewBlock(ChainIndex:cardinal):cardinal;
+    procedure AddNode(var BlockIndex:cardinal;NodeType:xTypeNr;
+      Extra:cardinal;var Item:xItem;var Data:PxValue);
   public
     constructor Create;
     destructor Destroy; override;
@@ -34,9 +35,10 @@ type
     function StripPath(const FilePath:string):string;
     function FindFile(var FilePath:string):boolean;
     function ResolvePath(const FilePath:string):string;
-    function NextModule(var Index:TStratoIndex):boolean;
-    function NextIndex(var Index:TStratoIndex):boolean;
-    function SourceFile(Module:TStratoIndex):TStratoIndex;
+    function NextItem(var Index:xItem):boolean;
+    function NextModule(var Module:xItem):boolean;
+    function SourceFile(Index:xItem):PxSourceFile;
+    function ListBlocks(Item:xItem):string;
     property Dict:TStringDictionary read FDict;
   end;
 
@@ -44,81 +46,65 @@ type
   private
     FStore:TStratoStore;
     FBlockIndex:cardinal;
-    FSourceFile:TStratoIndex;
-    FGetNodeCacheID:TStratoIndex;
-    FGetNodeCacheST:PStratoThing;
+    FSourceFile:xItem;
     FCheckDepCache:cardinal;
-    FZeroes:TStratoThing;
-    function GetNode(ID: TStratoIndex): PStratoThing;
-    procedure CheckDep(p,q:TStratoIndex);
+    FAllwaysZero:xItem;
   public
     constructor Create(Store: TStratoStore; Source: TStratoSource);
     destructor Destroy; override;
 
-    function SourceFile:TStratoIndex;
-    function Module:TStratoIndex;
+    function n(Item:xItem;Field:xTypeNr):PxValue;
 
-    //add
-    function Add(ThingType: TStratoThingType;
-      const Values:array of cardinal): TStratoIndex; overload;
-    function Add(Parent: TStratoIndex; ListField: TStratoField; ThingType: TStratoThingType;
-      const Values:array of cardinal): TStratoIndex; overload;
-    function Add(Parent: TStratoIndex; ListField: TStratoField; ThingType: TStratoThingType;
-      const Values:array of cardinal;
-      var Index: TStratoIndex): boolean; overload;
+    function Add(NodeType:xTypeNr;
+      Parent:xItem;SrcPos:xSrcPos;const FieldValues:array of xValue):xItem; overload;
+    function Add(ListOwner:xItem;ListField:xTypeNr;NodeType:xTypeNr;
+      Parent:xItem;SrcPos:xSrcPos;const FieldValues:array of xValue):xItem; overload;
+    function Add(ListOwner:xItem;ListField:xTypeNr;NodeType:xTypeNr;Name:xName;
+      Parent:xItem;SrcPos:xSrcPos;const FieldValues:array of xValue;
+      var NewItem:xItem):boolean; overload;
 
-    function Append(Parent:TStratoIndex;List:TStratoField;
-      Item:TStratoIndex):TStratoIndex;
-    function Prepend(Parent:TStratoIndex;List:TStratoField;
-      Item:TStratoIndex):TStratoIndex;
+    procedure Append(ListOwner:xItem;ListField:xTypeNr;ListItem:xItem);
+    procedure Prepend(ListOwner:xItem;ListField:xTypeNr;ListItem:xItem);
 
-    //get ThingType:
-    function t(p:TStratoIndex):TStratoThingType;
-    //get reference:
-    function r(p:TStratoIndex;f:TStratoField):TStratoIndex; overload;
-    function r(p:TStratoIndex;f:TStratoField;var q:TStratoIndex):boolean; overload;
-    function rr(p:TStratoIndex;const ff:array of TStratoField):TStratoIndex;
-    //get value:
-    function v(p:TStratoIndex;f:TStratoField):cardinal;
-    //set:
-    procedure s(p:TStratoIndex;f:TStratoField;q:TStratoIndex); overload;
-    //procedure s(p:TStratoIndex;f:TStratoField;v:cardinal); overload;
-    procedure s(p:TStratoIndex;const Values:array of cardinal); overload;
+    function Lookup(Parent:xItem;Name:xName):xItem;
+    procedure First(ListOwner:xItem;ListField:xTypeNr;var ListItem,ListDelim:xItem);
+    procedure Next(var ListItem:xItem;ListDelim:xItem);
+    procedure None(var ListItem,ListDelim:xItem);
 
-    function Lookup(Parent:TStratoIndex;ListField:TStratoField;
-      Name:TStratoName):TStratoIndex;
-    function FQN(p:TStratoIndex):UTF8String;
-    function AddBinaryData(const x:UTF8String):TStratoIndex;
-    function GetBinaryData(p:TStratoIndex):UTF8String;
-    function DebugInfo(p:TStratoIndex):string;
-    procedure Error(p:TStratoIndex;const Msg:string);
-    procedure InlineError(Sender:TObject;Line,LPos:cardinal;
-      const ErrorMsg:string);
+    function FQN(p:xItem):UTF8String;
+    function AddBinaryData(const x:UTF8String):xItem;
+    function GetBinaryData(p:xItem):UTF8String;
+    function DebugInfo(p:xItem):string;
+    procedure Error(p:xItem;const Msg:string);
+    procedure InlineError(Sender:TObject;Line,LPos:cardinal;const ErrorMsg:string);
 
+    property SourceFile:xItem read FSourceFile;
     property Store:TStratoStore read FStore;
   end;
 
-function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
-  var q:TStratoIndex;var srcLine,srcColumn:cardinal;var p1,p2:TStratoIndex):boolean;
+function StratoGetSourceFile(Sphere:TStratoSphere;p:xItem;
+  var srcLine,srcColumn:cardinal;var p1,p2:xItem):boolean;
+
+type
+  TStratoDebugDisplay=function(s:TStratoSphere;p:xItem):string;
+var
+  xDisplay:TStratoDebugDisplay;    
 
 implementation
 
-uses Windows, stratoRunTime, stratoTokenizer, stratoLogic, stratoFn, Math;
+uses Windows, stratoTokenizer;
 
 const
-  StratoSphereDataBlockSize=$800;//2048
+  StratoSphereDataBlockBits=20;
+  StratoSphereDataBlockMax=1 shl StratoSphereDataBlockBits;
+  StratoSphereDataBlockMask=(1 shl StratoSphereDataBlockBits)-1;
+  StratoSphereDataBlockSize=StratoSphereDataBlockMax*xValueSize;
   StratoSphereBlockGrowSize=8;
-  StratoSphereFileVersion=$00000107;//0.1.7
-
-type
-  TStratoSphereDataBlock=array[0..StratoSphereDataBlockSize-1] of TStratoThing;
-  PStratoSphereDataBlock=^TStratoSphereDataBlock;
+  StratoSphereFileVersion=$00000200;//0.2.0
 
 function BlockAlloc:pointer;
 begin
-  //New(PStratoSphereDataBlock(FBlock[0].Data));
-  //ZeroMemory(FBlock[0].Data,SizeOf(TStratoSphereDataBlock));
-  Result:=VirtualAlloc(nil,SizeOf(TStratoSphereDataBlock),
+  Result:=VirtualAlloc(nil,StratoSphereDataBlockSize,
     MEM_RESERVE or MEM_COMMIT,PAGE_READWRITE);//MEM_LARGE_PAGES?
   if Result=nil then RaiseLastOSError;
 end;
@@ -132,28 +118,19 @@ end;
 
 constructor TStratoStore.Create;
 var
-  h:PStratoThing;
+  i:cardinal;
+  p:xItem;
+  sx:PxSourceFile;
 begin
   inherited Create;
   FDict:=TStringDictionary.Create;
-  FBlockCount:=1;
-  FBlockSize:=StratoSphereBlockGrowSize;
-  SetLength(FBlock,FBlockSize);
-  FBlock[0].SourceFile:=0;
-  FBlock[0].NextBlock:=0;
-  FBlock[0].Index:=1;
-  FBlock[0].Data:=BlockAlloc;
-
-  //header
-  h:=@(PStratoSphereDataBlock(FBlock[0].Data)[0]);
-  h[0]:=ttFileMarker;//tf_FileMarker
-  h[1]:=StratoSphereFileVersion;
-  h[2]:=0;//ThingCount see SaveToFile
-  h[3]:=0;
-  h[4]:=0;
-  h[5]:=0;
-  h[6]:=0;
-  h[7]:=0;
+  FBlockCount:=0;
+  FBlockSize:=0;
+  //reserve first values to invalidate xItem(0)
+  i:=0;
+  NewBlock(i);
+  AddNode(i,nSourceFile,0,p,PxValue(sx));
+  sx.SrcPosLineIndex:=1000;//?
 end;
 
 destructor TStratoStore.Destroy;
@@ -166,8 +143,7 @@ begin
   inherited;
 end;
 
-function TStratoStore.NewBlock(ChainIndex:cardinal;
-  SourceFile:TStratoIndex):cardinal;
+function TStratoStore.NewBlock(ChainIndex:cardinal):cardinal;
 begin
   Result:=FBlockCount;
   if FBlockCount=FBlockSize then
@@ -176,12 +152,17 @@ begin
     SetLength(FBlock,FBlockSize);
    end;
   inc(FBlockCount);
-  FBlock[Result].SourceFile:=SourceFile;
-  FBlock[Result].NextBlock:=0;
-  FBlock[Result].Index:=0;
-  FBlock[Result].Data:=BlockAlloc;
-  if FBlock[ChainIndex].SourceFile=SourceFile then
-    FBlock[ChainIndex].NextBlock:=Result;
+  if FBlock[Result].Data=nil then
+    FBlock[Result].Data:=BlockAlloc;
+  FBlock[Result].ItemCount:=0;
+  if ChainIndex<Result then
+   begin
+    FBlock[Result].SourceFile:=FBlock[ChainIndex].SourceFile;
+    FBlock[ChainIndex].ContinueBlockIdx:=Result;
+   end
+  else
+    FBlock[Result].SourceFile:=0;
+  FBlock[Result].ContinueBlockIdx:=0;
 end;
 
 procedure TStratoStore.AddPath(const Key,Path:string);
@@ -230,84 +211,63 @@ begin
   end;
 end;
 
-function TStratoStore.Add(var BlockIndex: cardinal;
-  var pp: PStratoThing): TStratoIndex;
+procedure TStratoStore.AddNode(var BlockIndex:cardinal;NodeType:xTypeNr;Extra:cardinal;
+  var Item:xItem;var Data:PxValue);
 var
-  i:cardinal;
+  cc:cardinal;
 begin
-  if FBlock[BlockIndex].Index=StratoSphereDataBlockSize then
-    BlockIndex:=NewBlock(BlockIndex,FBlock[BlockIndex].SourceFile);
-  i:=FBlock[BlockIndex].Index;
-  inc(FBlock[BlockIndex].Index);
-  pp:=@(PStratoSphereDataBlock(FBlock[BlockIndex].Data)[i]);
-  Result:=BlockIndex*StratoSphereDataBlockSize+i;
-end;
-
-function TStratoStore.GetNode(ID: TStratoIndex;
-  BlockIndex: cardinal): PStratoThing;
-var
-  i,j:cardinal;
-begin
-  i:=ID div StratoSphereDataBlockSize;
-  j:=ID mod StratoSphereDataBlockSize;
-  if i<FBlockCount then
-    Result:=@(PStratoSphereDataBlock(FBlock[i].Data)[j])
-  else
-  if (ID>cardinal(-5)) then //pHeader,pIndexes
-    Result:=@(PStratoSphereDataBlock(FBlock[0].Data)[3+integer(ID)])
-  else
-    Result:=nil;//raise? ptr to all-zero?
+  cc:=(cardinal(NodeType) shr 24)+2+((Extra+3) div 4);
+  if cc>=StratoSphereDataBlockMax then
+    raise Exception.CreateFmt('AddNode %.7x: size exceeds block size %d',[cardinal(NodeType),cc]);
+  if (BlockIndex>=FBlockCount) or (FBlock[BlockIndex].ItemCount+cc>StratoSphereDataBlockMax) then
+    BlockIndex:=NewBlock(BlockIndex);
+  Item:=(BlockIndex shl StratoSphereDataBlockBits) or (FBlock[BlockIndex].ItemCount);
+  Data:=FBlock[BlockIndex].Data;
+  inc(xPtr(Data),FBlock[BlockIndex].ItemCount*xValueSize);
+  Data^:=NodeType;
+  inc(FBlock[BlockIndex].ItemCount,cc);
 end;
 
 procedure TStratoStore.LoadFromFile(const FilePath: string);
 var
   f:TFileStream;//TMemoryStream first?
-  h:TStratoBlockHeader;
+  h:TStratoFileHeader;
+  b:array of TStratoBlockHeader;
   i,j,l:cardinal;
   x:UTF8String;
 begin
   f:=TFileStream.Create(FilePath,fmOpenRead or fmShareDenyWrite);
   try
-    f.Read(h,SizeOf(TStratoThing));
-    if h.Marker<>ttFileMarker then
+    l:=SizeOf(TStratoFileHeader);
+    if cardinal(f.Read(h,l))<>l then RaiseLastOSError;
+    if h.FileMarker<>StratoSphereFileMarker then
       raise Exception.Create('File is not a sphere data file');
-    if cardinal(h.SourceFile)<>StratoSphereFileVersion then
+    if h.FileVersion<>StratoSphereFileVersion then
       raise Exception.Create('File is of an unsupported version');
-    if h.ThingCount<>0 then f.Position:=0;
 
-    i:=0;
-    while h.ThingCount<>0 do
+    SetLength(b,h.BlockCount);
+    l:=SizeOf(TStratoBlockHeader)*h.BlockCount;
+    if cardinal(f.Read(b[0],l))<>l then RaiseLastOSError;
+
+    if FBlockSize<h.BlockCount then
      begin
-      if i=FBlockCount then
-       begin
-        if FBlockCount=FBlockSize then
-         begin
-          inc(FBlockSize,StratoSphereBlockGrowSize);
-          SetLength(FBlock,FBlockSize);
-         end;
-        FBlock[i].Data:=BlockAlloc;
-        inc(FBlockCount);
-       end;
-      //if h.Marker<>ttFileMarker then raise?
-      if i<>0 then FBlock[i].SourceFile:=h.SourceFile;
-      if i<>0 then FBlock[i].NextBlock:=h.NextBlock;
-      FBlock[i].Index:=h.ThingCount;
-      if h.ThingCount>StratoSphereDataBlockSize then
-        raise Exception.Create('Unexpectedly large data block');
-      f.Read(PStratoSphereDataBlock(FBlock[i].Data)[0],
-        h.ThingCount*SizeOf(TStratoThing));
-      inc(i);
-      //next?
-      f.Read(h,SizeOf(TStratoThing));//assert =SizeOf(TStratoBlockHeader)
+      i:=(h.BlockCount+StratoSphereBlockGrowSize-1) div StratoSphereBlockGrowSize;
+      FBlockSize:=i*StratoSphereBlockGrowSize;
+      SetLength(FBlock,FBlockSize);
      end;
-    while i<FBlockCount do
+    FBlockCount:=0;
+    while FBlockCount<h.BlockCount do
      begin
-      //BlockFree??
-      FBlock[i].SourceFile:=0;
-      FBlock[i].NextBlock:=0;
-      FBlock[i].Index:=0;
-      inc(i);
+      if FBlock[FBlockCount].Data=nil then
+        FBlock[FBlockCount].Data:=BlockAlloc;
+      FBlock[FBlockCount].ItemCount:=b[FBlockCount].ItemCount;
+      FBlock[FBlockCount].SourceFile:=b[FBlockCount].SourceFile;
+      FBlock[FBlockCount].ContinueBlockIdx:=b[FBlockCount].ContinueBlockIdx;//TODO: check!
+      l:=b[FBlockCount].ItemCount*xValueSize;
+      if cardinal(f.Read(FBlock[FBlockCount].Data^,l))<>l then RaiseLastOSError;
+      inc(FBlockCount);
      end;
+    SetLength(b,0); 
 
     //FDict.Clear;
     l:=1;
@@ -316,7 +276,7 @@ begin
       if f.Read(l,4)<>4 then l:=0 else
        begin
         SetLength(x,l);
-        f.Read(x[1],l);
+        if cardinal(f.Read(x[1],l))<>l then RaiseLastOSError;
         inc(i);
         j:=FDict.StrIdx(x);
         if i<>j then
@@ -331,44 +291,39 @@ end;
 procedure TStratoStore.SaveToFile(const FilePath: string);
 var
   f:TFileStream;//TMemoryStream first?
+  b:TStratoBlockHeader;
   i,l,n:cardinal;
   x:UTF8String;
-  h:TStratoBlockHeader;
+  h:TStratoFileHeader;
 begin
-  //ZeroMemory(
-  h.Marker:=ttFileMarker;
-  h.SourceFile:=0;
-  h.ThingCount:=0;
-  h.NextBlock:=0;
-  h.xReserved1:=0;
-  h.xReserved2:=0;
-  h.xReserved3:=0;
-  h.xReserved4:=0;
-
   f:=TFileStream.Create(FilePath,fmCreate);
   try
-    //ThingCount
-    PStratoSphereDataBlock(FBlock[0].Data)[0][2]:=FBlock[0].Index;
+    h.FileMarker:=StratoSphereFileMarker;
+    h.FileVersion:=StratoSphereFileVersion;
+    h.BlockCount:=FBlockCount;
+    h.Reserved1:=0;
+    l:=SizeOf(TStratoFileHeader);
+    if cardinal(f.Write(h,l))<>l then RaiseLastOSError;
+
+    //TODO: unused blocks?
+    i:=0;
+    while i<FBlockCount do
+     begin
+      b.Reserved1:=0;//?
+      b.ItemCount:=FBlock[i].ItemCount;
+      b.SourceFile:=FBlock[i].SourceFile;
+      b.ContinueBlockIdx:=FBlock[i].ContinueBlockIdx;
+      l:=SizeOf(TStratoBlockHeader);
+      if cardinal(f.Write(b,l))<>l then RaiseLastOSError;
+      inc(i);
+     end;
 
     i:=0;
     while i<FBlockCount do
      begin
-      f.Write(PStratoSphereDataBlock(FBlock[i].Data)[0],
-        FBlock[i].Index*SizeOf(TStratoThing));
+      l:=FBlock[i].ItemCount*xValueSize;
+      if cardinal(f.Write(FBlock[i].Data^,l))<>l then RaiseLastOSError;
       inc(i);
-      if i=FBlockCount then
-       begin
-        h.SourceFile:=0;
-        h.ThingCount:=0;
-        h.NextBlock:=0;
-       end
-      else
-       begin
-        h.SourceFile:=FBlock[i].SourceFile;
-        h.ThingCount:=FBlock[i].Index;
-        h.NextBlock:=FBlock[i].NextBlock;
-       end;
-      f.Write(h,SizeOf(TStratoThing));//assert =SizeOf(TStratoBlockHeader)
      end;
 
     i:=0;
@@ -387,41 +342,91 @@ begin
   end;
 end;
 
-function TStratoStore.NextModule(var Index:TStratoIndex):boolean;
+function TStratoStore.NextItem(var Index:xItem):boolean;
 var
-  i:cardinal;
+  i,j,l:cardinal;
+  p:PxValue;
+  t:xTypeNr;
 begin
-  i:=Index div StratoSphereDataBlockSize;
-  inc(i);
-  while (i<FBlockCount) and not((FBlock[i].Index>1) and
-    (PStratoSphereDataBlock(FBlock[i].Data)[0][0]=ttModule)) do
-    inc(i);
-  Index:=i*StratoSphereDataBlockSize;
-  Result:=i<FBlockCount;
-end;
-
-function TStratoStore.NextIndex(var Index:TStratoIndex):boolean;
-var
-  i,j:cardinal;
-begin
-  inc(Index);
-  i:=Index div StratoSphereDataBlockSize;
-  j:=Index mod StratoSphereDataBlockSize;
-  while (i<FBlockCount) and (j>=FBlock[i].Index) do
+  i:=Index shr StratoSphereDataBlockBits;
+  if i>=FBlockCount then
    begin
-    inc(i);
-    j:=0;
-    Index:=i*StratoSphereDataBlockSize;
+    Index:=0;
+    Result:=false; //raise?
+   end
+  else
+   begin
+    j:=Index and StratoSphereDataBlockMask;
+    p:=FBlock[i].Data;
+    inc(xPtr(p),j*xValueSize);
+    t:=xTypeNr(p^);
+    l:=((cardinal(t) shr 24) and $F)+2;
+    if t=n_BinaryData then
+     begin
+      inc(xPtr(p),xValueSize);
+      inc(l,(p^+3) shr 2);
+     end;
+    if j+l>=FBlock[i].ItemCount then
+     begin
+      inc(i);
+      //TODO: skip empty blocks
+      if i<FBlockCount then
+       begin
+        Index:=i shl StratoSphereDataBlockBits;
+        Result:=true;
+       end
+      else
+       begin
+        Index:=0;
+        Result:=false;
+       end;
+     end
+    else
+     begin
+      inc(Index,l);
+      Result:=true;
+     end;
    end;
-  Result:=i<FBlockCount;
 end;
 
-function TStratoStore.SourceFile(Module:TStratoIndex):TStratoIndex;
+function TStratoStore.NextModule(var Module:xItem):boolean;
 var
   i:cardinal;
 begin
-  i:=Module div StratoSphereDataBlockSize;
-  if i<FBlockCount then Result:=FBlock[i].SourceFile else Result:=0;
+  //assert nSourceFile at start of block (see TStratoSphere.Create)
+  if Module=xItem(-1) then
+    i:=0
+  else
+    i:=(Module shr StratoSphereDataBlockBits)+1;
+  while (i<FBlockCount) and (xTypeNr(PxValue(FBlock[i].Data)^)<>nSourceFile) do inc(i); //?
+  if i<FBlockCount then
+   begin
+    Module:=i shl StratoSphereDataBlockBits;
+    Result:=true;
+   end
+  else
+   begin
+    Module:=0;
+    Result:=false;
+   end;
+end;
+
+function TStratoStore.SourceFile(Index:xItem):PxSourceFile;
+var
+  i:cardinal;
+begin
+  i:=Index shr StratoSphereDataBlockBits;
+  if i>=FBlockCount then
+   begin
+    //Src:=0;
+    Result:=nil; //raise?
+   end
+  else
+   begin
+    //assert (FBlock[i].SourceFile and StratoSphereDataBlockMask)=0
+    //Src:=FBlock[i].SourceFile;
+    Result:=PxSourceFile(FBlock[FBlock[i].SourceFile shr StratoSphereDataBlockBits].Data);
+   end;
 end;
 
 function TStratoStore.StripPath(const FilePath: string): string;
@@ -479,34 +484,46 @@ begin
     Result:=false;
 end;
 
+function TStratoStore.ListBlocks(Item:xItem):string;
+var
+  m:xItem;
+  i:cardinal;
+begin
+  i:=Item shr StratoSphereDataBlockBits;
+  if i>=FBlockCount then
+    Result:='?' //raise?
+  else
+   begin
+    m:=FBlock[i].SourceFile;
+    Result:='';
+    for i:=0 to FBlockCount-1 do
+      if FBlock[i].SourceFile=m then
+        Result:=Format('%s, $%.3x',[Result,i]);
+   end;
+end;
+
 { TStratoSphere }
 
 constructor TStratoSphere.Create(Store: TStratoStore; Source: TStratoSource);
+var
+  s:PxSourceFile;
 begin
   inherited Create;
   FStore:=Store;
-  FGetNodeCacheID:=0;
-  FGetNodeCacheST:=nil;
   FCheckDepCache:=0;
   FBlockIndex:=0;//default
   FSourceFile:=0;//default
-
+  FAllwaysZero:=0;//see function n
   if Source<>nil then
    begin
-    FSourceFile:=Add(ttSourceFile,[]);
-    Self.s(FSourceFile,
-      [tf_SourceFile_FileName,AddBinaryData(UTF8String(
-        FStore.StripPath(Source.FilePath)))
-      ,tf_SourceFile_FileSize,Source.FileSize
-      //file date?checksum?
-      ,tf_SourceFile_SrcPosLineIndex,Source.LineIndex
-      ]);
-
-    FBlockIndex:=FStore.NewBlock(FBlockIndex,FSourceFile);
-    Self.s(FSourceFile,
-      [tf_SourceFile_Module,Add(ttModule,[])
-      ]);
-
+    FBlockIndex:=FStore.NewBlock(FStore.FBlockCount);
+    FSourceFile:=Add(nSourceFile,0,0,[]);
+    FStore.FBlock[FBlockIndex].SourceFile:=FSourceFile;//start chain //TODO: FStore method?
+    s:=PxSourceFile(FStore.FBlock[FBlockIndex].Data);
+    s.SrcPosLineIndex:=Source.LineIndex;
+    s.FileName:=AddBinaryData(UTF8String(FStore.StripPath(Source.FilePath)));
+    s.FileSize:=Source.FileSize;
+    //TODO: hash, timestamp?
     //set thread id?
    end;
   //TODO: else read-only?
@@ -518,397 +535,313 @@ begin
   inherited Destroy;
 end;
 
-function TStratoSphere.SourceFile:TStratoIndex;
-begin
-  if FSourceFile=0 then
-    raise Exception.Create('StratoSphere not started on SourceFile');
-  Result:=FSourceFile;
-end;
-
-function TStratoSphere.Module:TStratoIndex;
-begin
-  if FSourceFile=0 then
-    raise Exception.Create('StratoSphere not started on SourceFile');
-  Result:=r(FSourceFile,tf_SourceFile_Module);
-end;
-
-procedure TStratoSphere.Error(p: TStratoIndex; const Msg: string);
+procedure TStratoSphere.Error(p: xItem; const Msg: string);
 var
-  i,j:cardinal;
-  q:TStratoIndex;
+  s:PxSourceFile;
+  i:cardinal;
+  SrcPos:xSrcPos;
 begin
-  //TODO: raise?
-  i:=p div StratoSphereDataBlockSize;
-  if (p=0) or (i>=FStore.FBlockCount) then
+  s:=FStore.SourceFile(p);
+  if (s=nil) or (s.FileName=0) then
     Writeln(ErrOutput,Msg)
   else
    begin
-    q:=FStore.FBlock[i].SourceFile;
-    i:=v(q,tf_SourceFile_SrcPosLineIndex);
-    j:=v(p,tfSrcPos);
+    SrcPos:=n(p,vSrcPos)^;
+    i:=s.SrcPosLineIndex;
+    if i=0 then i:=1;
     Writeln(ErrOutput,Format('%s(%d:%d): %s',
-      [GetBinaryData(r(q,tf_SourceFile_FileName))
-      ,j div i
-      ,j mod i
+      [GetBinaryData(s.FileName)
+      ,SrcPos div i
+      ,SrcPos mod i
       ,Msg
       ]));
    end;
   ExitCode:=1;
 end;
 
-function TStratoSphere.Add(ThingType: TStratoThingType;
-  const Values:array of cardinal): TStratoIndex;
+function TStratoSphere.n(Item:xItem;Field:xTypeNr):PxValue;
 var
-  pp:PStratoThing;
-  i,l:cardinal;
-  f:TStratoField;
-  q:TStratoIndex;
+  i,j:cardinal;
+  t:xTypeNr;
+  {$IFDEF DEBUG}
+  src:pointer;
+  {$ENDIF}
 begin
-  l:=Length(Values);
-  if (l mod 2)<>0 then
-    raise Exception.Create('TStratoSphere.Add Values required 2-by-2');
-  Result:=FStore.Add(FBlockIndex,pp);
-  //ZeroMemory(q^?
-  pp[0]:=ThingType;//tfThingType
-  i:=0;
-  while (i<l) do
+  {$IFDEF DEBUG}
+  asm
+    mov eax,[ebp+4]
+    mov src,eax
+  end;
+  //dec(src,5);?
+  {$ENDIF}
+  i:=Item shr StratoSphereDataBlockBits;
+  j:=Item and StratoSphereDataBlockMask;
+  if (i>=FStore.FBlockCount) or (j>=FStore.FBlock[i].ItemCount) then
    begin
-    f:=Values[i];
-    q:=Values[i+1];
-    inc(i,2);
-    {$IFDEF DEBUG}
-    pp[rx(ThingType,f,t,q)]:=q;
-    {$ELSE}
-    pp[f and $07]:=q;
-    {$ENDIF}
-   end;
-end;
-
-function TStratoSphere.Add(Parent: TStratoIndex; ListField:TStratoField;
-  ThingType: TStratoThingType; const Values:array of cardinal): TStratoIndex;
-var
-  i,l:integer;
-  p,q:TStratoIndex;
-begin
-  //assert Values contains [tfParent,Parent]
-  l:=Length(Values);
-  i:=0;
-  while (i<l) and (Values[i]<>tfName) do inc(i,2);
-  if i=l then
-    raise Exception.Create('TStratoSphere.Add needs tfName value')
-  else
-    inc(i);
-  p:=r(Parent,ListField);//tfFirstItem
-  if p=0 then
-   begin
-    //first item
-    Result:=Add(ThingType,Values);
-    s(Parent,Listfield,Result);
+    FAllwaysZero:=0;
+    Result:=@FAllwaysZero//?????!!!!!
    end
   else
    begin
-    //assert all named things
-    q:=r(p,tfNext);
-    while (q<>0) and (v(p,tfName)<>Values[i]) do
+    Result:=FStore.FBlock[i].Data;
+    inc(xPtr(Result),j*xValueSize);
+    case Field of
+      vTypeNr:;
+      vSrcPos:inc(xPtr(Result),xValueSize);
+      fParent:inc(xPtr(Result),xValueSize*2);
+      fSourceFile_NameSpaces..fSourceFile_FinalizationBlock:
+        if Result^<>nSourceFile then
+          raise Exception.Create('SourceFile fields only available on SourceFile')
+        else
+          inc(xPtr(Result),(Field-fSourceFile_NameSpaces+7)*xValueSize);
+      else
+        if Item=0 then
+         begin
+          FAllwaysZero:=0;
+          Result:=@FAllwaysZero//?????!!!!!
+         end
+        else
+         begin
+          t:=Result^;
+          if t<n_Item_Low then i:=0 else i:=xTypeDefX[t];
+          if i=0 then raise Exception.CreateFmt('%.7x: fields not defined',
+            [cardinal(t)]) {$IFDEF DEBUG}at src{$ENDIF};
+          j:=i;
+          while (xTypeDef[j]<f_FieldsMax) and (xTypeDef[j]<>Field) do inc(j);
+          if xTypeDef[j]<f_FieldsMax then
+            inc(xPtr(Result),xValueSize*(j-i+3))
+          else
+            raise Exception.CreateFmt('%.7x: field index not found %d',
+              [cardinal(t),cardinal(Field)]) {$IFDEF DEBUG}at src{$ENDIF};
+         end;
+    end;
+   end;
+end;
+
+function TStratoSphere.Add(NodeType:xTypeNr;
+  Parent:xItem;SrcPos:xSrcPos;const FieldValues:array of xValue):xItem;
+var
+  i,j,k,l:integer;
+  p,q:PxValue;
+  {$IFDEF DEBUG}
+  src:pointer;
+  {$ENDIF}
+begin
+  {$IFDEF DEBUG}
+  asm
+    mov eax,[ebp+4]
+    mov src,eax
+  end;
+  //dec(src,5);?
+  {$ENDIF}
+  //TODO: register dependencies
+  FStore.AddNode(FBlockIndex,NodeType,0,Result,p);
+  if (cardinal(NodeType) and $F00)<>0 then
+   begin
+    q:=p;
+    inc(xPtr(q),xValueSize);q^:=SrcPos;
+    inc(xPtr(q),xValueSize);q^:=Parent;
+   end;
+  l:=Length(FieldValues);
+  if l<>0 then
+   begin
+    if NodeType<n_Item_Low then j:=0 else j:=xTypeDefX[NodeType];
+    if j=0 then raise Exception.CreateFmt('%.7x: field not defined',
+      [cardinal(NodeType)]) {$IFDEF DEBUG}at src{$ENDIF};
+    i:=0;
+    while i<>l do
      begin
-      p:=q;
-      q:=r(p,tfNext);
+      k:=j;
+      while (xTypeDef[k]<f_FieldsMax) and (xTypeDef[k]<>FieldValues[i]) do inc(k);
+      if xTypeDef[k]<f_FieldsMax then
+       begin
+        q:=p;
+        inc(xPtr(q),xValueSize*(k-j+3));
+        q^:=FieldValues[i+1];
+       end
+      else
+        raise Exception.CreateFmt('%.7x: field index not found %d',
+          [cardinal(NodeType),cardinal(FieldValues[i])]) {$IFDEF DEBUG}at src{$ENDIF};
+      inc(i,2);
      end;
-    if q<>0 then
+   end;
+end;
+
+function TStratoSphere.Add(ListOwner:xItem;ListField:xTypeNr;NodeType:xTypeNr;
+  Parent:xItem;SrcPos:xSrcPos;const FieldValues:array of xValue):xItem;
+var
+  p,q:PxValue;
+begin
+  Result:=Add(NodeType,Parent,SrcPos,FieldValues);
+  //append: n(ListOwner,ListField) points to last element in list
+  //        last element's fNext point to top of list
+  p:=n(ListOwner,ListField);
+  if p^=0 then
+    n(Result,fNext)^:=Result
+  else
+   begin
+    q:=n(p^,fNext);
+    n(Result,fNext)^:=q^;
+    q^:=Result;
+   end;
+  p^:=Result;
+end;
+
+function TStratoSphere.Add(ListOwner:xItem;ListField:xTypeNr;NodeType:xTypeNr;Name:xName;
+  Parent:xItem;SrcPos:xSrcPos;const FieldValues:array of xValue;
+  var NewItem:xItem):boolean;
+var
+  x:xItem;
+  p,q:PxValue;
+begin
+  p:=n(ListOwner,ListField);
+  if p^=0 then
+   begin
+    NewItem:=Add(NodeType,Parent,SrcPos,FieldValues);
+    n(NewItem,fNext)^:=NewItem;
+    n(NewItem,vName)^:=Name;
+    p^:=NewItem;
+    Result:=true;
+   end
+  else
+   begin
+    x:=n(p^,fNext)^;
+    while (x<>p^) and (n(x,vName)^<>Name) do x:=n(x,fNext)^;
+    if n(x,vName)^=Name then
      begin
-      //duplicate ! assert caller handles zero value
-      Result:=0;
+      //NewItem:=0;//?
+      NewItem:=Add(NodeType,Parent,SrcPos,FieldValues);//create placeholder entry to avoid further errors
+      Result:=false;
      end
     else
      begin
-      //add here
-      Result:=Add(ThingType,Values);
-      s(p,tfNext,Result);
-      //TODO: sort? build better look-up lists?
+      q:=n(p^,fNext);
+      NewItem:=Add(NodeType,Parent,SrcPos,FieldValues);
+      n(NewItem,fNext)^:=q^;
+      n(NewItem,vName)^:=Name;
+      q^:=NewItem;
+      p^:=NewItem;
+      Result:=true;
      end;
    end;
 end;
 
-function TStratoSphere.Add(Parent: TStratoIndex; ListField:TStratoField;
-  ThingType: TStratoThingType; const Values:array of cardinal; var Index: TStratoIndex): boolean;
+procedure TStratoSphere.Append(ListOwner:xItem;ListField:xTypeNr;ListItem:xItem);
+var
+  p,q,r:PxValue;
 begin
-  Index:=Add(Parent,ListField,ThingType,Values);
-  if Index=0 then
+  p:=n(ListOwner,ListField);
+  q:=n(ListItem,fNext);
+  if q^<>0 then
+    raise Exception.CreateFmt('Append: broken list detected, item can''t be on two lists $%.8x',[cardinal(ListItem)]);
+  if p^=0 then
    begin
-    //create anyway to prevent errors on further parsing
-    Index:=Add(ThingType,Values);
-    //Append?
-    Result:=false;
+    q^:=ListItem;
+    p^:=ListItem;
    end
   else
-    Result:=true;
-end;
-
-function TStratoSphere.Append(Parent:TStratoIndex;List:TStratoField;
-  Item:TStratoIndex):TStratoIndex;
-var
-  p,q:TStratoIndex;
-begin
-  {$IFDEF DEBUG}
-  if r(Item,tfNext)<>0 then
-    raise Exception.Create('broken chain detected');
-  {$ENDIF}
-  p:=r(Parent,List);
-  if p=0 then
-    s(Parent,List,Item)
-  else
    begin
-    q:=r(p,tfNext);
-    while q<>0 do
-     begin
-      p:=q;
-      q:=r(p,tfNext);
-     end;
-    s(p,tfNext,Item);
-   end;
-  Result:=Item;
-end;
-
-function TStratoSphere.Prepend(Parent:TStratoIndex;List:TStratoField;
-  Item:TStratoIndex):TStratoIndex;
-var
-  p:TStratoIndex;
-begin
-  {$IFDEF DEBUG}
-  if r(Item,tfNext)<>0 then
-    raise Exception.Create('broken chain detected');
-  {$ENDIF}
-  p:=r(Parent,List);
-  if p=0 then
-    s(Parent,List,Item)
-  else
-   begin
-    s(Item,tfNext,p);
-    s(Parent,List,Item);
-   end;
-  Result:=Item;
-end;
-
-function TStratoSphere.GetNode(ID: TStratoIndex): PStratoThing;
-var
-  i:cardinal;
-begin
-  if ID=0 then
-    Result:=nil
-  else
-  if ID=FGetNodeCacheID then
-    Result:=FGetNodeCacheST //TODO: thread-safe?
-  else
-   begin
-    Result:=FStore.GetNode(ID,FBlockIndex);
-    FGetNodeCacheID:=ID;
-    FGetNodeCacheST:=Result;
-   end;
-  if Result=nil then
-   begin
-    //reset to zeroes just to be sure (use ZeroMemory?)
-    for i:=0 to 7 do FZeroes[i]:=0;
-    Result:=@FZeroes;
+    r:=n(p^,fNext);
+    q^:=r^;
+    r^:=ListItem;
+    p^:=ListItem;
    end;
 end;
 
-function TStratoSphere.t(p: TStratoIndex): TStratoThingType;
-begin
-  if p=0 then Result:=0 else Result:=GetNode(p)[0];//tfThingtype
-end;
-
-function TStratoSphere.r(p: TStratoIndex; f: TStratoField): TStratoIndex;
-{$IFDEF DEBUG}
+procedure TStratoSphere.Prepend(ListOwner:xItem;ListField:xTypeNr;ListItem:xItem);
 var
-  pp:PStratoThing;
+  p,q,r:PxValue;
 begin
-  if (f and tf__IsValue)<>0 then
-    raise Exception.Create('Use Sphere.v to request value');
-  if p=0 then
-    Result:=0//raise?
+  p:=n(ListOwner,ListField);
+  q:=n(ListItem,fNext);
+  if q^<>0 then
+    raise Exception.CreateFmt('Append: broken list detected, item can''t be on two lists $%.8x',[cardinal(ListItem)]);
+  if p^=0 then
+   begin
+    q^:=ListItem;
+    p^:=ListItem;
+   end
   else
    begin
-    pp:=GetNode(p);
-    Result:=pp[rx(pp[0],f,t,pp[f and $07])];
+    r:=n(p^,fNext);
+    q^:=r^;
+    r^:=ListItem;
    end;
-{$ELSE}
-begin
-  if p=0 then Result:=0 else Result:=GetNode(p)[f and $07];
-{$ENDIF}
 end;
 
-function TStratoSphere.r(p: TStratoIndex; f: TStratoField;
-  var q: TStratoIndex): boolean;
-begin
-  q:=r(p,f);
-  Result:=q<>0;
-end;
-
-function TStratoSphere.rr(p:TStratoIndex;
-  const ff:array of TStratoField):TStratoIndex;
+function TStratoSphere.Lookup(Parent:xItem;Name:xName):xItem;
 var
-  i,l:integer;
+  p,p0:xItem;
 begin
+  case n(Parent,vTypeNr)^ of
+    nSourceFile:
+      p0:=n(Parent,fSourceFile_NameSpaces)^;//Globals?
+    nNameSpace,nRecord,nEnumeration,nClass,nInterface:
+      p0:=n(Parent,fItems)^;
+    nCodeBlock:
+      p0:=n(Parent,fVarDecls)^;
+    else
+      p0:=0;
+  end;
+  p:=n(p0,fNext)^;
+  while (p<>0) and not(((n(p,vTypeNr)^ and $F00)>=$300) and (n(p,vName)^=Name)) do
+    if p=p0 then p:=0 else p:=n(p,fNext)^;
   Result:=p;
-  i:=0;
-  l:=Length(ff);
-  while (Result<>0) and (i<l) do
-   begin
-    Result:=r(Result,ff[i]);
-    inc(i);
-   end;
 end;
 
-function TStratoSphere.v(p: TStratoIndex; f: TStratoField): cardinal;
-{$IFDEF DEBUG}
-var
-  pp:PStratoThing;
+procedure TStratoSphere.First(ListOwner:xItem;ListField:xTypeNr;var ListItem,ListDelim:xItem);
 begin
-  if (f and tf__IsValue)=0 then
-    raise Exception.Create('Use Sphere.r to request reference');
-  if p=0 then
-    Result:=0//raise?
+  ListDelim:=n(ListOwner,ListField)^;//list owner points to last element in list (for easy append)
+  ListItem:=n(ListDelim,fNext)^;//last element points 'next' to first element
+end;
+
+procedure TStratoSphere.Next(var ListItem:xItem;ListDelim:xItem);
+begin
+  if ListItem=ListDelim then //did last element?
+    ListItem:=0 //then we're done
   else
-   begin
-    pp:=GetNode(p);
-    Result:=pp[rx(pp[0],f,nil,0)];
-   end;
-{$ELSE}
-begin
-  if p=0 then Result:=0 else Result:=GetNode(p)[f and $07];
-{$ENDIF}
+    ListItem:=n(ListItem,fNext)^; //else advance on the list
 end;
 
-procedure TStratoSphere.s(p: TStratoIndex; f: TStratoField; q: TStratoIndex);
-{$IFDEF DEBUG}
+procedure TStratoSphere.None(var ListItem,ListDelim:xItem);
+begin
+  ListDelim:=0;
+  ListItem:=0;
+end;
+
+function TStratoSphere.FQN(p: xItem): UTF8String;
 var
-  pp:PStratoThing;
-begin
-  //TODO: if (f and tf__IsValue) [separate methods for references/values?]
-  pp:=GetNode(p);
-  pp[rx(pp[0],f,t,q)]:=q;
-{$ELSE}
-begin
-  GetNode(p)[f and $07]:=q;
-{$ENDIF}
-  if (f and tf__IsValue)=0 then CheckDep(p,q);
-end;
-
-procedure TStratoSphere.s(p: TStratoIndex; const Values: array of cardinal);
-var
-  pp:PStratoThing;
-  i,l:cardinal;
-  f:TStratoField;
-  q:TStratoIndex;
-begin
-  l:=Length(Values);
-  if (l mod 2)<>0 then
-    raise Exception.Create('TStratoSphere.Add Values required 2-by-2');
-  pp:=GetNode(p);
-  i:=0;
-  while (i<l) do
-   begin
-    f:=Values[i];
-    q:=Values[i+1];
-    inc(i,2);
-    {$IFDEF DEBUG}
-    pp[rx(pp[0],f,t,q)]:=q;
-    {$ELSE}
-    pp[f and $07]:=q;
-    {$ENDIF}
-    if (f and tf__IsValue)=0 then CheckDep(p,q);
-   end;
-end;
-
-procedure TStratoSphere.CheckDep(p,q:TStratoIndex);
-var
-  i:cardinal;
-  p1,p2,p3:TStratoIndex;
-  pp:array of TStratoIndex;
-  ppi,ppj,ppk,ppl:cardinal;
-begin
-  i:=p div StratoSphereDataBlockSize;
-  if i<FStore.FBlockCount then
-   begin
-    if (i<>0) and (FStore.FBlock[i].SourceFile<>FSourceFile) then
-//      raise Exception.CreateFmt('XBLOCK %d[%.3x] %d',[p,f,q]);
-AddBinaryData(Format('### XBLOCK %d %d',[p,q]));
-    i:=q div StratoSphereDataBlockSize;
-    if (i<>0) and (i<FStore.FBlockCount) and
-      (FStore.FBlock[i].SourceFile<>FSourceFile) and
-      (FCheckDepCache<>i) then
-     begin
-      p1:=r(FSourceFile,tf_SourceFile_FirstDependency);
-      p2:=FStore.FBlock[i].SourceFile;
-      while (p1<>0) and (r(p1,tfTarget)<>p2) do
-        p1:=r(p1,tfNext);
-      if p1=0 then
-       begin
-        //detect circular dependency
-        ppi:=0;
-        ppj:=0;
-        ppl:=0;
-        p1:=p2;
-        while p1<>0 do
-         begin
-          p1:=r(p1,tf_SourceFile_FirstDependency);
-          while p1<>0 do
-           begin
-            p3:=r(p1,tfTarget);
-            ppk:=0;
-            while (ppk<ppj) and (pp[ppk]<>p3) do inc(ppk);
-            if ppk<ppj then
-              raise Exception.Create('Circular dependency detected');
-            if (ppj=ppl) then
-             begin
-              inc(ppl,$20);//grow
-              SetLength(pp,ppl);
-             end;
-            pp[ppj]:=p3;
-            inc(ppj);
-            p1:=r(p1,tfNext);
-            while (p1=0) and (ppi<ppj) do
-             begin
-              p1:=r(pp[ppi],tf_SourceFile_FirstDependency);
-              inc(ppi);
-             end;
-           end;
-         end;
-        //add dependency
-        Append(FSourceFile,tf_SourceFile_FirstDependency,
-          Add(ttDependency,
-            [tfParent,FSourceFile
-            ,tfTarget,p2
-            ]));
-       end;
-      FCheckDepCache:=i;
-     end;
-   end;
-end;
-
-function TStratoSphere.Lookup(Parent:TStratoIndex;ListField:TStratoField;
-  Name:TStratoName):TStratoIndex;
-begin
-  Result:=r(Parent,ListField);
-  while (Result<>0) and (v(Result,tfName)<>Name) do
-    Result:=r(Result,tfNext);
-end;
-
-function TStratoSphere.FQN(p: TStratoIndex): UTF8String;
+  q:PxValue;
+  i,j:cardinal;
 begin
   Result:='';
   while p<>0 do
    begin
-    //TODO: tt__Named
-    if t(p) in [ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration,
-      ttVar,ttConstant,ttImport,ttSignature,ttMember,ttArgument,
-      ttPointer,ttVarByRef,ttArgByRef,ttClass,ttInterface,
-      ttClassRef] then
-      if GetNode(p)[tfName and $07]=0 then//if v(p,tfName)=0 then
-        Result:=UTF8String(IntToStr(p))+'.'+Result
+    q:=n(p,vTypeNr);
+    case q^ of
+      nCodeBlock,nOverload:;//don't include in name path
       else
-        Result:=FStore.Dict.Str[v(p,tfName)]+'.'+Result;
-    p:=r(p,tfParent);
+       begin
+        if q^<n_Item_Low then i:=0 else i:=xTypeDefX[q^];
+        if i<>0 then
+         begin
+          j:=i;
+          while (xTypeDef[j]<f_FieldsMax) and (xTypeDef[j]<>vName) do inc(j);
+          if xTypeDef[j]<f_FieldsMax then
+           begin
+            inc(xPtr(q),xValueSize*(j-i+3));
+            i:=q^;
+           end
+          else
+            i:=0;//no vName
+         end;
+        if i=0 then
+          Result:=Format('$%.8x.%s',[cardinal(p),Result])
+        else
+          Result:=FStore.Dict.Str[i]+'.'+Result;
+       end;
+    end;
+    p:=n(p,fParent)^;
    end;
   if Result<>'' then SetLength(Result,Length(Result)-1);//trailing "."
 end;
@@ -918,105 +851,119 @@ const
   tf_BinaryData_Length =1;
   tf_BinaryData_Start  =2;
 
-function TStratoSphere.AddBinaryData(const x: UTF8String): TStratoIndex;
+function TStratoSphere.AddBinaryData(const x:UTF8String):xItem;
 var
-  l,i,bx,bi:cardinal;
-  p:PStratoThing;
-  q:TStratoIndex;
+  l:cardinal;
+  p:PxValue;
 begin
   l:=Length(x);
-  bx:=FBlockIndex;
-  bi:=FStore.FBlock[bx].Index;
-  Result:=Add(ttBinaryData,[]);
-  p:=GetNode(Result);
-  p[tf_BinaryData_Length]:=l;
-  //need more than one node?
-  //TODO: calculate, not iterate (also split over blocks?
-  i:=l+8;//check including header of first node
-  while i>SizeOf(TStratoThing) do
-   begin
-    q:=Add(ttBinaryData,[]);//to inc FDataIndex
-    if FBlockIndex<>bx then
-     begin
-      //TODO: replace with something cleaner
-      //new block started?
-      Result:=q;
-      p:=GetNode(q);
-      FStore.FBlock[bx].Index:=bi;
-      bx:=FBlockIndex;
-      bi:=FStore.FBlock[bx].Index;
-     end
-    else
-      dec(i,SizeOf(TStratoThing));
-   end;
-  //p.???:=FDataIndex-Result;?
-  //store data
-  Move(x[1],p[tf_BinaryData_Start],l);
+  FStore.AddNode(FBlockIndex,n_BinaryData,l,Result,p);
+  inc(xPtr(p),xValueSize);
+  p^:=l;
+  inc(xPtr(p),xValueSize);
+  Move(x[1],p^,l);
 end;
 
-function TStratoSphere.GetBinaryData(p: TStratoIndex): UTF8String;
+function TStratoSphere.GetBinaryData(p:xItem):UTF8String;
 var
-  l:integer;
-  pp:PStratoThing;
+  q:PxValue;
+  l:cardinal;
 begin
-  if p=0 then Result:='' else
+  q:=n(p,vTypeNr);
+  if q^<>n_BinaryData then
+    raise Exception.CreateFmt('GetBinaryData: item is not binary data $%.8x: %.7x',[cardinal(p),cardinal(q^)]);
+  inc(xPtr(q),xValueSize);
+  if q^=0 then Result:='' else
    begin
-    //assert t(p)=ttBinary
-    pp:=GetNode(p);
-    l:=pp[tf_BinaryData_Length];
+    l:=q^;
+    inc(xPtr(q),xValueSize);
     SetLength(Result,l);
-    Move(pp[tf_BinaryData_Start],Result[1],l);
+    Move(q^,Result[1],l);
    end;
 end;
 
-function TStratoSphere.DebugInfo(p:TStratoIndex):string;
+function TStratoSphere.DebugInfo(p:xItem):string;
 var
-  pp:PStratoThing;
+  i,k,l:cardinal;
+  t:xTypeNr;
+  q:PxValue;
 begin
-  if p=0 then Result:='' else
+  q:=n(p,vTypeNr);
+  t:=q^;
+  Result:=Format('%.7x',[t]);
+  l:=(t shr 24)+2;
+  i:=1;
+  k:=$1000000;
+  while i<l do
    begin
-    pp:=GetNode(p);
-    Result:=Format('(%.4x) %d,%d,%d,%d,%d',
-      [pp[0],pp[3],pp[4],pp[5],pp[6],pp[7]]);
+    k:=k shr 1;
+    inc(xPtr(q),xValueSize);
+    if (t and k)=0 then
+      Result:=Format('%s, %d',[Result,q^])
+    else
+      Result:=Format('%s, $%.8x',[Result,q^]);
+    inc(i);
    end;
+  Result[8]:=':';//was ','
 end;
 
 procedure TStratoSphere.InlineError(Sender: TObject; Line, LPos: cardinal;
   const ErrorMsg: string);
 begin
+  {$IFDEF DEBUG}
+  Store.SaveToFile('test.xsu');
+  {$ENDIF}
   AddBinaryData(Format('### %s(%d:%d): %s',
     [(Sender as TStratoSource).FilePath,Line,LPos,ErrorMsg]));
 end;
 
 { StratoGetSourceFile }
 
-function StratoGetSourceFile(s:TStratoSphere;p:TStratoIndex;
-  var q:TStratoIndex;var srcLine,srcColumn:cardinal;var p1,p2:TStratoIndex):boolean;
+function StratoGetSourceFile(Sphere:TStratoSphere;p:xItem;
+  var srcLine,srcColumn:cardinal;var p1,p2:xItem):boolean;
 var
-  pp:PStratoThing;
-  i,j:cardinal;
+  i:cardinal;
+  s:PxSourceFile;
+  q:PxValue;
+  t:xTypeNr;
 begin
-  //assert p<>0
-  //assert Sphere[p].SrcPos<>0
-  pp:=s.GetNode(p);
-  p1:=pp[1];//tfParent
-  p2:=pp[2];//tfNext
-  srcLine:=0;//default
-  srcColumn:=0;//default
-  i:=p div StratoSphereDataBlockSize;
-  if i>=s.FStore.FBlockCount then q:=0 else
-    q:=s.FStore.FBlock[i].SourceFile;
-  if q<>0 then
+  s:=Sphere.FStore.SourceFile(p);
+  if s=nil then
+    Result:=false
+  else
    begin
-    i:=s.v(q,tf_SourceFile_SrcPosLineIndex);
-    j:=pp[tfSrcPos and $07];//p:=s.v(p,tfSrcPos);
-    if i<>0 then
+    Result:=true;
+    q:=Sphere.n(p,vTypeNr);
+    t:=q^;
+
+    //SrcPos:=r^;
+    inc(xPtr(q),xValueSize);
+    i:=s.SrcPosLineIndex;
+    if i=0 then i:=1;
+    srcLine  :=q^ div i;
+    srcColumn:=q^ mod i;
+
+    //fParent
+    inc(xPtr(q),xValueSize);
+    p1:=q^;
+
+    //fNext?
+    if (t>=n_Item_Low) and (t<=n_Item_High) and (xTypeDef[xTypeDefX[t]]=fNext) then
      begin
-      srcLine:=j div i;
-      srcColumn:=j mod i;
-     end;
+      inc(xPtr(q),xValueSize);
+      p2:=q^;//fParent
+     end
+    else
+      p2:=0;
+
    end;
-  Result:=q<>0;
 end;
 
+function DefaultTypeDisplay(s:TStratoSphere;p:xItem):string;
+begin
+  Result:=Format('%.7x',[s.n(p,vTypeNr)^]);
+end;
+
+initialization
+  xDisplay:=DefaultTypeDisplay;
 end.

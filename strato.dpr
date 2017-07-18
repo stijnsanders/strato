@@ -45,7 +45,7 @@ var
   end;
 
 var
-  DoRun,DoDebug,DoTokenize,DoRunTime,DoInlineErrors:boolean;
+  DoRun,DoDebug,DoRunTime,DoInlineErrors:boolean;
   DoDump,DoDumpHR,LastFN:string;
 
 begin
@@ -56,7 +56,6 @@ begin
     Writeln('Usage:');
     Writeln('  strato [switches] [file(s)]');
     Writeln('Switches:');
-    Writeln('  -T             tokenize file(s)');
     Writeln('  -C             compile only, don''t run');
     Writeln('  -U <filename>  binary dump sphere');
     Writeln('  -H <filename>  human-readable dump sphere');
@@ -76,7 +75,6 @@ begin
       //defaults
       DoRun:=true;
       DoDebug:=false;
-      DoTokenize:=false;
       DoRunTime:=true;
       DoInlineErrors:=false;
       DoDump:='';
@@ -105,7 +103,6 @@ begin
               case x[j] of
                 'T':
                  begin
-                  DoTokenize:=true;
                   DoRunTime:=false;
                   DoRun:=false;
                  end;
@@ -140,7 +137,7 @@ begin
             //run-time
             if DoRunTime then
              begin
-              DefaultTypes(n,DoInlineErrors,ec);
+              DefaultTypes(n);//,DoInlineErrors,ec);
               DoRunTime:=false;
              end;
 
@@ -148,13 +145,17 @@ begin
             s:=TStratoSource.Create;
             s.LoadFromFile(x);
             LastFN:=x;//used by -X above
-            if DoTokenize then
-              StratoDumpTokens(s.Tokens)
-            else
-             begin
-              StratoParseSource(n,s,DoInlineErrors);
-              inc(ec,s.ErrorCount);
-             end;
+try
+            StratoParseSource(n,s,DoInlineErrors);
+except
+  on E: Exception do
+   begin
+    Writeln(ErrOutput,'"'+LastFN+'"'+E.ClassName, ': ', E.Message);
+    ExitCode:=1;
+    inc(ec);
+   end;
+end;
+            inc(ec,s.ErrorCount);
             //TODO: free s?
             
            end;

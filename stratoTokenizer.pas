@@ -8,38 +8,38 @@ type
     stStringLiteral,
     stNumericLiteral,
 
-    st_Fixed,//all below have fixed content
+    st_Fixed, //all below have fixed content
 
-    stSemiColon,//";"
-    stComma,//','
-    stPeriod, //"."
-    stColon,//":"
-    stDefine,//"=", specifically not ":=" or "=="!
-    stAt,//"@"
-    stCaret,//"^"
-    stQuestionMark,//"?"
-    stAmpersand,//"&"
+    stSemiColon,    //";"
+    stComma,        //','
+    stPeriod,       //"."
+    stColon,        //":"
+    stDefine,       //"=", specifically not ":=" or "=="!
+    stAt,           //"@"
+    stCaret,        //"^"
+    stQuestionMark, //"?"
+    stAmpersand,    //"&"
 
-    stPOpen,stPClose,//"()"
-    stAOpen,stAClose,//"{}"
-    stBOpen,stBClose,//"[]"
+    stPOpen,stPClose, //"()" parentheses
+    stCOpen,stCClose, //"{}" curly braces
+    stBOpen,stBClose, //"[]" brackets
 
-    stHRule,//"---"
-    stTry,//":::"
-    stCatch,//"???"
-    stThrow,//"!!!"
+    stHRule,       //"---" (or more)
+    stThreeColons, //":::"
+    stThreeWhats,  //"???"
+    stThreeBangs,  //"!!!"
 
-    stAtAt,//"@@": this/self
-    stAtAtAt,//"@@@": inherited/base
-    stTwoQuestionMarks,//"??": result
+    stAtAt,     //"@@": this/self
+    stAtAtAt,   //"@@@": inherited/base
+    stTwoWhats, //"??": result
 
-    stOpAssign, //":="
+    stOpAssign,    //":="
     stOpAssignAdd, //"+="
     stOpAssignSub, //"-="
     stOpAssignMul, //"*="
     stOpAssignDiv, //"/="
     stOpAssignMod, //"%="
-    stOpAssignOr, //"||="
+    stOpAssignOr,  //"||="
     stOpAssignAnd, //"&&="
     stOpEQ,  //"=="
     stOpNEQ, //"!="
@@ -48,20 +48,20 @@ type
     stOpGT,  //">"
     stOpGTE, //">="
 
-    stOpAnd,
-    stOpOr,
-    stOpNot,
-    stOpXor,
+    stOpAnd, //"&&"
+    stOpOr,  //"||"
+    stOpNot, //"!"
+    stOpXor, //"|!"
 
-    stOpAdd,
-    stOpSub,
-    stOpMul,
-    stOpDiv,
-    stOpMod,
-    stOpInc,
-    stOpDec,
-    stOpShl,
-    stOpShr,
+    stOpAdd, //"+"
+    stOpSub, //"-"
+    stOpMul, //"*"
+    stOpDiv, //"/"
+    stOpMod, //"%"
+    stOpInc, //"++"
+    stOpDec, //"--"
+    stOpShl, //"<<"
+    stOpShr, //">>"
 
     stTilde,//'~'
     stThreeLT,//"<<<" stOpRol
@@ -70,6 +70,7 @@ type
     stOpSizeOf,//"@?"
     stOpTypeIs,//"?="
 
+    st_EOF, //(past) end of file
     st_Unknown
   );
 
@@ -78,35 +79,39 @@ type
     Index,Length,SrcPos:cardinal;
   end;
 
-  TStratoSourceTokenList=array of TStratoSourceToken;
-
-function StratoTokenize(const Code: UTF8String;
-  LineIndex: cardinal): TStratoSourceTokenList;
+procedure StratoTokenizeInit(const Code: UTF8string; LineIndex:cardinal;
+  var FirstToken:TStratoSourcetoken);
+procedure StratoTokenizeNext(const Code: UTF8string; LineIndex: cardinal;
+  const CurrentToken:TStratoSourceToken; var NextToken:TStratoSourceToken);
 
 function ParseInteger(const lit: string): Int64;
 
 implementation
 
-function StratoTokenize(const Code: UTF8String;
-  LineIndex: cardinal): TStratoSourceTokenList;
+procedure StratoTokenizeInit(const Code: UTF8string; LineIndex:cardinal; var FirstToken:TStratoSourcetoken);
+var
+  t:TStratoSourceToken;
+begin
+  t.Token:=st_Unknown;
+  t.Index:=1;
+  t.Length:=0;
+  t.SrcPos:=LineIndex+1;//start at 1:1
+  StratoTokenizeNext(Code,LineIndex,t,FirstToken);
+end;
+
+procedure StratoTokenizeNext(const Code: UTF8string; LineIndex: cardinal;
+  const CurrentToken:TStratoSourceToken; var NextToken:TStratoSourceToken);
 var
   CodeIndex,CodeLength:cardinal;
-  rl,ri,ln,lx:cardinal;
+  ln,ls:cardinal;
 
   procedure Add(Len:cardinal;t:TStratoToken);
   begin
-    if ri=rl then
-     begin
-      inc(rl,$1000);//grow
-      SetLength(Result,rl);
-     end;
-    Result[ri].Index:=CodeIndex;
-    Result[ri].Length:=Len;
-    Result[ri].Token:=t;
+    NextToken.Token:=t;
+    NextToken.Index:=CodeIndex;
+    NextToken.Length:=Len;
+    NextToken.SrcPos:=ln*LineIndex+(CodeIndex-ls);
     //TODO: count tab as 4 (or 8 or 2)?
-    Result[ri].SrcPos:=ln*LineIndex+(CodeIndex-lx)+1;
-    inc(ri);
-    inc(CodeIndex,Len);
   end;
 
   function CodeNext(Fwd:cardinal):AnsiChar;
@@ -124,12 +129,12 @@ var
        begin
         inc(ln);
         if CodeNext(1)=#10 then inc(CodeIndex);
-        lx:=CodeIndex+1;
+        ls:=CodeIndex;
        end;
       #10:
        begin
         inc(ln);
-        lx:=CodeIndex+1;
+        ls:=CodeIndex;
        end;
     end;
     inc(CodeIndex);
@@ -163,16 +168,24 @@ var
 
 var
   i:cardinal;
+const
+  st_Invalid=TStratoToken(-1);
 begin
-  CodeIndex:=1;
+  CodeIndex:=CurrentToken.Index+CurrentToken.Length;
   CodeLength:=Length(Code);
-  ri:=0;
-  rl:=0;
-  lx:=1;
-  ln:=1;
-  SkipWhiteSpace;
-  while CodeIndex<=CodeLength do
+  ls:=CurrentToken.Index-(CurrentToken.SrcPos mod LineIndex);//line start
+  ln:=CurrentToken.SrcPos div LineIndex;//line number
+  NextToken.Token:=st_Invalid;
+  while NextToken.Token=st_Invalid do
    begin
+    SkipWhiteSpace;
+    if CodeIndex>CodeLength then
+     begin
+      NextToken.Token:=st_EOF;
+      NextToken.Index:=CodeLength+1;
+      NextToken.SrcPos:=(ln+1)*LineIndex+1;
+      Exit;
+     end;
     case Code[CodeIndex] of
       '/':
         case CodeNext(1) of
@@ -194,8 +207,8 @@ begin
         end;
       '(':Add(1,stPOpen);
       ')':Add(1,stPClose);
-      '{':Add(1,stAOpen);
-      '}':Add(1,stAClose);
+      '{':Add(1,stCOpen);
+      '}':Add(1,stCClose);
       '[':Add(1,stBOpen);
       ']':Add(1,stBClose);
       '&':
@@ -349,6 +362,7 @@ begin
       '=':
         case CodeNext(1) of
           //'?':Add(2,stOpTypeIs);
+          //'>':Add(2,stFatArrow);//TODO
           '=':Add(2,stOpEq);
           else Add(1,stDefine);
         end;
@@ -356,11 +370,12 @@ begin
         case CodeNext(1) of
           '?':
             case CodeNext(2) of
-              '?':Add(3,stCatch);
-              else Add(2,stTwoQuestionMarks);
+              '?':Add(3,stThreeWhats);
+              else Add(2,stTwoWhats);
             end;
           '=':Add(2,stOpTypeIs);
           //':':Add(2,stOpElvis);//TODO: https://en.wikipedia.org/wiki/Elvis_operator
+          //'.':Add(2,stWhatPeriod);
           else Add(1,stQuestionMark);//stOpIf
         end;
       '!':
@@ -368,7 +383,7 @@ begin
           '=':Add(2,stOpNEQ);
           '!':
             case CodeNext(2) of
-              '!':Add(3,stThrow);
+              '!':Add(3,stThreeBangs);
               else
                begin
                 Add(1,stOpNot);
@@ -383,7 +398,7 @@ begin
           '.':
             case CodeNext(2) of
               '.':Add(3,stEllipsis);
-              else Add(2,stRange);
+              else Add(2,stOpRange);
             end;
           else Add(1,stPeriod);
         end;
@@ -394,7 +409,7 @@ begin
         case CodeNext(1) of
           ':':
             case CodeNext(2) of
-              ':':Add(3,stTry);
+              ':':Add(3,stThreeColons);
               else Add(2,st_Unknown);//stNameSpace?
             end;
           '=':Add(2,stOpAssign);
@@ -404,9 +419,8 @@ begin
       '~':Add(1,stTilde);
       else Add(1,st_Unknown);
     end;
-    SkipWhiteSpace;
    end;
-  SetLength(Result,ri);
+  //SetLength(Result,ri);
 end;
 
 function ParseInteger(const lit: string): Int64;
@@ -481,4 +495,3 @@ begin
 end;
 
 end.
-

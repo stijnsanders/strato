@@ -10,7 +10,7 @@ uses
 type
   TXsTreeNode=class(TTreeNode)
   private
-    Index,ExpandIndex,JumpIndex:cardinal;
+    Index,ExpandIndex,JumpIndex:xItem;
     ExpandSingle:boolean;
     JumpedTo:TTreeNode;
   public
@@ -66,16 +66,21 @@ type
   private
     FStore:TStratoStore;
     FSphere:TStratoSphere;
-    FSrcFile,FHighLight1,FHighLight2:TStratoIndex;
-    FSrcPath,FFilePath,FSignature:string;
+    FHighLight1,FHighLight2:xItem;
+    FSrcFile:PxSourcefile;
+    FSrcPath,FFilePath,FFileSignature:string;
     w1,w2:integer;
+    FCheckZero:boolean;
     procedure LoadFile(const FilePath:string);
     function JumpNode(n: TTreeNode; const prefix: string;
-      i: cardinal): TXsTreeNode;
+      i: xItem): TXsTreeNode;
     function ListNode(n: TTreeNode; const prefix: string;
-      i: cardinal): TXsTreeNode;
-    function BuildNode(Node: TTreeNode; i: cardinal): TXsTreeNode;
-    procedure JumpTo(x:cardinal);
+      i: xItem): TXsTreeNode;
+    function ShowNode(n: TTreeNode; const prefix: string;
+      i: xItem): TXsTreeNode;
+    function BuildNode(Node: TTreeNode; i: xItem): TXsTreeNode;
+    procedure JumpTo(x:xItem);
+    procedure nFindPrev(var x:xItem);
   protected
     procedure DoCreate; override;
     procedure DoShow; override;
@@ -107,6 +112,11 @@ begin
       fd.nFileSizeLow]);//CRC?
     Windows.FindClose(fh);
    end;
+end;
+
+function nStr(x:xItem):string; //inline
+begin
+  Result:=Format('$%.8x',[cardinal(x)]);
 end;
 
 { TXsTreeNode }
@@ -178,9 +188,9 @@ begin
   FSphere:=nil;
   Application.OnActivate:=AppActivate;
   FSrcPath:='';
-  FSrcFile:=0;
+  FSrcFile:=nil;
   FFilePath:='';
-  FSignature:='';
+  FFileSignature:='';
 end;
 
 procedure TfrmXsViewMain.DoDestroy;
@@ -197,17 +207,18 @@ end;
 
 procedure TfrmXsViewMain.LoadFile(const FilePath: string);
 var
-  p:TStratoIndex;
+  p:xItem;
 begin
   FreeAndNil(FSphere);
   FreeAndNil(FStore);
 
   FStore:=TStratoStore.Create;
+  FStore.ReadSettings(ExtractFilePath(ParamStr(0))+'strato.ini');//?
   FStore.LoadFromFile(FilePath);
   FSphere:=TStratoSphere.Create(FStore,nil);
 
   FFilePath:=FilePath;
-  FSignature:=FileSignature(FilePath);
+  FFileSignature:=FileSignature(FilePath);
   Caption:='xsView - '+FilePath;
   Application.Title:=Caption;
   panHeader.Visible:=false;
@@ -220,10 +231,12 @@ begin
     ListBox1.Items.EndUpdate;
   end;
 
+  FCheckZero:=false;
   TreeView1.Items.BeginUpdate;
   try
     TreeView1.Items.Clear;
 
+    p:=xItem(-1);
     while FStore.NextModule(p) do BuildNode(nil,p);
 
     //ListNode(nil,':Namespaces->',FSphere.Header.FirstNameSpace);
@@ -277,6 +290,7 @@ begin
 
   finally
     TreeView1.Items.EndUpdate;
+    FCheckZero:=true;
   end;
 end;
 
@@ -319,13 +333,14 @@ begin
      end;
 end;
 
-procedure TfrmXsViewMain.JumpTo(x:cardinal);
+procedure TfrmXsViewMain.JumpTo(x:xItem);
 var
   n:TTreeNode;
-  a:array of cardinal;
-  i,ai,al:cardinal;
+  a:array of xItem;
+  i:xItem;
+  ai,al:cardinal;
   b:boolean;
-  tt:TStratoThingType;
+  tt:xTypeNr;
 begin
   if x<>0 then
    begin
@@ -334,22 +349,18 @@ begin
     ai:=0;
     while i<>0 do
      begin
-      //if i>=FSphere.NodeCount then i:=0;
       if ai=al then
        begin
         inc(al,$400);//grow;
         SetLength(a,al);
        end;
-       tt:=FSphere.t(i);
-       if tt=0 then i:=0 else
+       tt:=FSphere.n(i,vTypeNr)^;
+       if tt=n_Invalid then i:=0 else
         begin
-         if tt=ttBinaryData then dec(i);
+         if tt=n_BinaryData then nFindPrev(i);
          a[ai]:=i;
          inc(ai);
-         if tt=ttSourceFile then
-           i:=FSphere.r(i,tf_SourceFile_Module)
-         else
-           i:=FSphere.r(i,tfParent);
+         i:=FSphere.n(i,fParent)^;
         end;
      end;
     n:=TreeView1.Items.GetFirstNode;
@@ -408,36 +419,36 @@ begin
     if FFilePath<>'' then
      begin
       s:=FileSignature(FFilePath);
-      if s<>FSignature then
+      if s<>FFileSignature then
        begin
         //TODO: MessageBox?
         //TODO: attempt to restore expanded nodes state, selected/focused
         LoadFile(FFilePath);
         FSrcPath:='';//case reload
-        FSrcFile:=0;
+        FSrcFile:=nil;
        end;
      end;
 end;
 
 function TfrmXsViewMain.JumpNode(n:TTreeNode;const prefix:string;
-  i:cardinal):TXsTreeNode;
+  i:xItem):TXsTreeNode;
 var
-  tt:TStratoThingType;
+  tt:xTypeNr;
   b:boolean;
-  p,q:TStratoIndex;
+  p,q:xItem;
   m:TTreeNode;
 begin
   if i=0 then
     Result:=nil
   else
    begin
-    Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode;
+    Result:=TreeView1.Items.AddChild(n,prefix+nStr(i)) as TXsTreeNode;
     b:=false;
-    tt:=FSphere.t(i);
+    tt:=FSphere.n(i,vTypeNr)^;
     if (n<>nil) and (n is TXsTreeNode) then
-      if not(tt in [ttVar,ttVarByRef,ttThis]) then
+      if (tt<>nVarDecl) and (tt<>nVarByRef) and (tt<>nThis) then
        begin
-        q:=FSphere.r(i,tfParent);
+        q:=FSphere.n(i,fParent)^;
         m:=n;
         while not(b) and (m<>nil) do
          begin
@@ -466,14 +477,14 @@ begin
 end;
 
 function TfrmXsViewMain.ListNode(n:TTreeNode;const prefix:string;
-  i:cardinal):TXsTreeNode;
+  i:xItem):TXsTreeNode;
 begin
   if i=0 then
     //Result:=nil
-    Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode
+    Result:=TreeView1.Items.AddChild(n,prefix+nStr(i)) as TXsTreeNode
   else
    begin
-    Result:=TreeView1.Items.AddChild(n,prefix+IntToStr(i)) as TXsTreeNode;
+    Result:=TreeView1.Items.AddChild(n,prefix+nStr(i)) as TXsTreeNode;
     Result.HasChildren:=true;
     Result.ExpandIndex:=i;
    end;
@@ -481,232 +492,260 @@ begin
   Result.SelectedIndex:=iiList;
 end;
 
-function TfrmXsViewMain.BuildNode(Node:TTreeNode;i:cardinal):TXsTreeNode;
-var
-  q,p1,p2:TStratoIndex;
-  tt:TStratoThingType;
-  j,k,sy,sx:cardinal;
-  n:TXsTreeNode;
-  s:string;
+function TfrmXsViewMain.ShowNode(n:TTreeNode;const prefix:string;
+  i:xItem):TXsTreeNode;
 begin
   if i=0 then
+    //Result:=nil
+    Result:=TreeView1.Items.AddChild(n,prefix+nStr(i)) as TXsTreeNode
+  else
+   begin
+    Result:=TreeView1.Items.AddChild(n,prefix+nStr(i)) as TXsTreeNode;
+    Result.HasChildren:=true;
+    Result.ExpandIndex:=i;
+    Result.ExpandSingle:=true;
+   end;
+  Result.ImageIndex:=iiDefault;
+  Result.SelectedIndex:=iiDefault;
+end;
+
+function TfrmXsViewMain.BuildNode(Node:TTreeNode;i:xItem):TXsTreeNode;
+var
+  p1,p2,j:xItem;
+  tt:xTypeNr;
+  k,sy,sx:cardinal;
+  n:TXsTreeNode;
+  s:string;
+  src:PxSourceFile;
+begin
+  if (i=0) and FCheckZero then
     Result:=nil
   else
    begin
-    s:=IntToStr(i)+': '+StratoDumpThing(FSphere,i);
-    tt:=FSphere.t(i);
-    if (tt<>ttSourceFile) and (tt<>ttBinaryData)
-      and StratoGetSourceFile(FSphere,i,q,sy,sx,p1,p2) then
-      s:=Format('%s  [%s(%d:%d)]',[s
-        ,FSphere.GetBinaryData(FSphere.r(q,tf_SourceFile_FileName))
-        ,sy
-        ,sx
-        ]);
+    s:=Format('$%.8x: %s',[cardinal(i),StratoDumpThing(FSphere,i)]);
+    tt:=FSphere.n(i,vTypeNr)^;
+    if (tt<>nSourceFile) and (tt<>n_BinaryData)
+      and StratoGetSourceFile(FSphere,i,sy,sx,p1,p2) then
+     begin
+      src:=FSphere.Store.SourceFile(i);
+      if (src.FileName=0) or (sy=0) then
+        s:=s+' []'
+      else
+        s:=Format('%s  [%s(%d:%d)]',[s
+          ,FSphere.GetBinaryData(FSphere.Store.SourceFile(i).FileName)
+          ,sy
+          ,sx
+          ]);
+     end;
     n:=TreeView1.Items.AddChild(Node,s) as TXsTreeNode;
     n.Index:=i;
     k:=iiDefault;
     j:=0;//set ExpandIndex?
     case tt of
-      ttSourceFile:
+      nSourceFile:
        begin
-        n.Text:=Format('%d: "%s" #%d',
-          [i
-          ,FSphere.GetBinaryData(FSphere.v(i,tf_SourceFile_FileName))
-          ,FSphere.v(i,tf_SourceFile_FileSize)
+        src:=FSphere.Store.SourceFile(i);
+        if src.FileName=0 then s:='' else s:=FSphere.GetBinaryData(src.FileName);
+        n.Text:=Format('$%.8x: "%s" #%d%s',
+          [cardinal(i)
+          ,s
+          ,src.FileSize
+          ,FSphere.Store.ListBlocks(i)
           ]);
-        ListNode(n,':Dependencies->',FSphere.r(i,tf_SourceFile_FirstDependency));
+        //ListNode(n,':Dependencies->',src.Dependencies));
+        ListNode(n,':Namespaces->',src.NameSpaces);
+        ListNode(n,':Globals->',src.Globals);
+        ShowNode(n,':Initialization=',src.InitializationBlock);
+        ShowNode(n,':Finalization=',src.FinalizationBlock);
        end;
-      ttModule:
+      //nDependency:
+      //  n.JumpIndex:=FSphere.u(i,fTarget);
+      //nTypeDecl:
+      //  j:=FSphere.u(i,fItems);
+      nNameSpace,nRecord,nEnumeration:
+        j:=FSphere.n(i,fItems)^;
+      //nAlias
+      nGlobal:
+        n.JumpIndex:=FSphere.n(i,fVarDecl)^;
+      nImport:
+        j:=FSphere.n(i,fSubject)^;
+      nDeferred:
+        j:=FSphere.n(i,fItems)^;
+      nThrow:
+        BuildNode(n,FSphere.n(i,fExceptionConstructor)^);//n.JumpIndex:=?
+      nArray:
+        n.JumpIndex:=FSphere.n(i,fTypeDecl)^;
+      nMember,nConstructors:
+        j:=FSphere.n(i,fItems)^;
+      nVarDecl,nVarByRef,nConstant,nLiteral:
        begin
-        BuildNode(n,FStore.SourceFile(i));
-        ListNode(n,':Namespaces->',FSphere.r(i,tf_Module_FirstNameSpace));
-        ListNode(n,':GlobalVars->',FSphere.r(i,tf_Module_FirstGlobalVar));
-        ListNode(n,':Initialization->',FSphere.r(i,tf_Module_Initialization));
-        ListNode(n,':Finalization->',FSphere.r(i,tf_Module_Finalization));
+        n.JumpIndex:=FSphere.n(i,fTypeDecl)^;
+        BuildNode(n,FSphere.n(i,fValue)^);
        end;
-      ttDependency:
-        n.JumpIndex:=FSphere.r(i,tfTarget);
-      ttNameSpace,ttTypeDecl,ttRecord,ttEnumeration:
-        j:=FSphere.r(i,tfFirstItem);
-      ttAlias,ttGlobal,ttImport,ttTry,ttDeferred,ttThrow:
+      nSignature:
        begin
-        q:=FSphere.r(i,tfTarget);
-        n.JumpIndex:=q;
-        if (q<>0) and (FSphere.t(q)=ttField) then BuildNode(n,q);
+        JumpNode(n,':objects=',FSphere.n(i,fSubject)^);
+        ListNode(n,':arguments->',FSphere.n(i,fArguments)^);
+        JumpNode(n,':result=',FSphere.n(i,fReturnType)^);
        end;
-      ttArray:
-        n.JumpIndex:=FSphere.r(i,tfSubject);
-      ttMember,ttConstructors:
-        j:=FSphere.r(i,tfFirstItem);
-      ttVar,ttConstant,ttLiteral:
+      nOverload,nConstructor,nDestructor,nPropertyGet,nPropertySet:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        BuildNode(n,FSphere.r(i,tfInitialValue));
+        JumpNode(n,':signature=',FSphere.n(i,fSignature)^);
+        if tt<>nDestructor then
+          JumpNode(n,':arguments->',FSphere.n(i,fFirstArgVar)^);
+        BuildNode(n,FSphere.n(i,fBody)^);
        end;
-      ttSignature:
+      nFCall:
        begin
-        JumpNode(n,':obj=',FSphere.r(i,tfTarget));
-        ListNode(n,':arg->',FSphere.r(i,tfFirstArgument));
-        JumpNode(n,':res=',FSphere.r(i,tfEvaluatesTo));
+        JumpNode(n,':target=',FSphere.n(i,fTarget)^);
+        ListNode(n,':arguments->',FSphere.n(i,fArguments)^);
        end;
-      ttOverload,ttConstructor,ttPropertyGet,ttPropertySet:
+      nSCall,nVCall:
        begin
-        JumpNode(n,':sig=',FSphere.r(i,tfSignature));
-        JumpNode(n,':arg->',FSphere.r(i,tfFirstArgument));
-        BuildNode(n,FSphere.r(i,tfBody));
+        JumpNode(n,':subject=',FSphere.n(i,fSubject)^);
+        JumpNode(n,':target=',FSphere.n(i,fTarget)^);
+        ListNode(n,':arguments->',FSphere.n(i,fArguments)^);
        end;
-      ttFnCall:
+      nArgument,nArgByRef://?
        begin
-        JumpNode(n,':trg=',FSphere.r(i,tfTarget));
-        ListNode(n,':arg->',FSphere.r(i,tfFirstArgument));
-        //if Target is ttConstructor?
-        q:=FSphere.r(i,tfEvaluatesTo);
-        if q<>0 then JumpNode(n,':res->',q);
+        n.JumpIndex:=FSphere.n(i,fTypeDecl)^;
+        if FSphere.n(FSphere.n(i,fParent)^,vTypeNr)^=nSignature then
+          JumpNode(n,':default=',FSphere.n(i,fValue)^)
+        else
+          JumpNode(n,':value=',FSphere.n(i,fValue)^);
        end;
-      ttArgument:
+      nThis:
+        n.JumpIndex:=FSphere.n(i,fTypeDecl)^;
+      nArrayIndex:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        JumpNode(n,':dft=',FSphere.r(i,tfInitialValue));
-        JumpNode(n,':val=',FSphere.r(i,tfTarget));
+        //n.JumpIndex:=FSphere.n(?,fTypeDecl)^;
+        JumpNode(n,':array=',FSphere.n(i,fSubject)^);
+        ListNode(n,':index->',FSphere.n(i,fItems)^);
        end;
-      ttThis://,ttInherited:
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-      ttArrayIndex:
+      nField:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        JumpNode(n,':arr=',FSphere.r(i,tfTarget));
-        ListNode(n,':idx->',FSphere.r(i,tfFirstArgument));
+        JumpNode(n,':x=',FSphere.n(i,fSubject)^);
+        JumpNode(n,':y=',FSphere.n(i,fTarget)^);
        end;
-      ttField:
+      nCodeBlock:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        JumpNode(n,':x=',FSphere.r(i,tfSubject));
-        JumpNode(n,':y=',FSphere.r(i,tfTarget));
+        n.JumpIndex:=FSphere.n(i,fReturnType)^;
+        ListNode(n,':var->',FSphere.n(i,fVarDecls)^);
+        ListNode(n,':cmd->',FSphere.n(i,fItems)^);
        end;
-      ttCodeBlock:
+      nAssign:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        ListNode(n,':var->',FSphere.r(i,tfFirstItem));
-        ListNode(n,':cmd->',FSphere.r(i,tfFirstStatement));
+        JumpNode(n,':ValueFrom ',FSphere.n(i,fValue)^);
+        JumpNode(n,':AssignTo ',FSphere.n(i,fTarget)^);
        end;
-      ttAssign:
+      nUnaryOp:
        begin
-        JumpNode(n,':ValueFrom ',FSphere.r(i,tfValueFrom));
-        JumpNode(n,':AssignTo ',FSphere.r(i,tfAssignTo));
+        n.JumpIndex:=FSphere.n(i,fReturnType)^;
+        JumpNode(n,':Right ',FSphere.n(i,fRight)^);
        end;
-      ttUnaryOp:
+      nBinaryOp:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        JumpNode(n,':Right ',FSphere.r(i,tfRight));
+        n.JumpIndex:=FSphere.n(i,fReturnType)^;
+        JumpNode(n,':Left ',FSphere.n(i,fLeft)^);
+        JumpNode(n,':Right ',FSphere.n(i,fRight)^);
        end;
-      ttBinaryOp:
+      nCast:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        JumpNode(n,':Left ',FSphere.r(i,tfLeft));
-        JumpNode(n,':Right ',FSphere.r(i,tfRight));
+        n.JumpIndex:=FSphere.n(i,fTypeDecl)^;
+        JumpNode(n,':subject=',FSphere.n(i,fSubject)^);
        end;
-      ttCast:
+      nClass,nInterface:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        JumpNode(n,':sub=',FSphere.r(i,tfTarget));
+        n.JumpIndex:=FSphere.n(i,fInheritsFrom)^;
+        j:=FSphere.n(i,fItems)^;
        end;
-      ttClass,ttInterface:
+      nSelection:
        begin
-        n.JumpIndex:=FSphere.r(i,tfInheritsFrom);
-        j:=FSphere.r(i,tfFirstItem);
+        JumpNode(n,':If ',FSphere.n(i,fDoIf)^);
+        JumpNode(n,':Then ',FSphere.n(i,fDoThen)^);
+        JumpNode(n,':Else ',FSphere.n(i,fDoElse)^);
        end;
-      ttSelection:
+      nIteration:
        begin
-        JumpNode(n,':If ',FSphere.r(i,tfDoIf));
-        ListNode(n,':Then ',FSphere.r(i,tfDoThen));
-        ListNode(n,':Else ',FSphere.r(i,tfDoElse));
+        JumpNode(n,':First ',FSphere.n(i,fDoFirst)^);
+        JumpNode(n,':If ',FSphere.n(i,fDoIf)^);
+        JumpNode(n,':Then ',FSphere.n(i,fDoThen)^);
+        BuildNode(n,FSphere.n(i,fBody)^);
        end;
-      ttIteration:
+      nIterPostEval:
        begin
-        ListNode(n,':First ',FSphere.r(i,tfDoElse));
-        JumpNode(n,':If ',FSphere.r(i,tfDoIf));
-        ListNode(n,':Then ',FSphere.r(i,tfDoThen));
-        BuildNode(n,FSphere.r(i,tfBody));
+        BuildNode(n,FSphere.n(i,fBody)^);
+        JumpNode(n,':First ',FSphere.n(i,fDoFirst)^);
+        JumpNode(n,':If ',FSphere.n(i,fDoIf)^);
+        JumpNode(n,':Then ',FSphere.n(i,fDoThen)^);
        end;
-      ttIterationPE:
+      nCatchAll:
+        BuildNode(n,FSphere.n(i,fBody)^);
+      nCatchTypes:
        begin
-        BuildNode(n,FSphere.r(i,tfBody));
-        ListNode(n,':First ',FSphere.r(i,tfDoElse));
-        JumpNode(n,':If ',FSphere.r(i,tfDoIf));
-        ListNode(n,':Then ',FSphere.r(i,tfDoThen));
+        ListNode(n,'->',FSphere.n(i,fItems)^);
+        BuildNode(n,FSphere.n(i,fBody)^);
        end;
-      ttCatch:
+      nCatchNamed:
        begin
-        n.JumpIndex:=FSphere.r(i,tfDoIf);
-        JumpNode(n,':v=',FSphere.r(i,tfFirstItem));
-        BuildNode(n,FSphere.r(i,tfBody));
+        //n.JumpIndex:=FSphere.n(i,fBody)^
+        JumpNode(n,':e=',FSphere.n(i,fTypeDecl)^);
+        BuildNode(n,FSphere.n(i,fBody)^);
        end;
-      ttPointer,ttArgByRef,ttVarByRef,ttClassRef:
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-      ttAddressOf,ttDereference:
+      nPointer,nClassRef:
+        n.JumpIndex:=FSphere.n(i,fSubject)^;
+      nAddressOf,nDereference:
        begin
-        n.JumpIndex:=FSphere.r(i,tfEvaluatesTo);
-        BuildNode(n,FSphere.r(i,tfValueFrom));
-       end;
-      ttDestructor:
-       begin
-        JumpNode(n,':sig=',FSphere.r(i,tfSignature));
-        BuildNode(n,FSphere.r(i,tfBody));
-       end;
-      ttPropCall:
-       begin
-        JumpNode(n,':trg=',FSphere.r(i,tfTarget));
-        ListNode(n,':arg->',FSphere.r(i,tfFirstArgument));
-        q:=FSphere.r(i,tfEvaluatesTo);
-        if q<>0 then JumpNode(n,':val=',q);
+        n.JumpIndex:=FSphere.n(i,fReturnType)^;
+        BuildNode(n,FSphere.n(i,fSubject)^);
        end;
     end;
     case tt of
-      ttNameSpace:k:=iiNameSpace;
-      ttTypeDecl:k:=iiTypeDecl;
-      ttRecord:k:=iiRecord;
-      ttEnumeration:k:=iiEnum;
-      ttAlias,ttGlobal:k:=iiItem;
-      ttImport:k:=iiImport;
-      //ttTry,ttDeferred:
-      ttThrow:k:=iiThrow;
-      ttArray:k:=iiArray;
-      ttMember:k:=iiFunction;
-      ttVar:k:=iiVar;
-      ttConstant:k:=iiConstant;
-      ttLiteral:k:=iiLiteral;
-      ttBinaryData:k:=iiLitVal;
-      ttSignature:k:=iiSignature;
-      ttOverload:k:=iiOverload;
-      ttConstructors:k:=iiConstructors;
-      ttConstructor:k:=iiConstructor;
-      ttFnCall:k:=iiCall;
-      ttArgument:k:=iiArg;
-      ttThis:k:=iiThis;
-      //ttInherited:k:=iiInherited;
-      ttArrayIndex:k:=iiArrayIndex;
-      ttField:k:=iiField;
-      ttCodeBlock:k:=iiBlock;
-      ttAssign:k:=iiAssign;
-      ttUnaryOp:k:=iiUnOp;
-      ttBinaryOp:k:=iiBinOp;
-      ttCast:k:=iiCast;
-      ttClass:k:=iiClass;
-      ttSelection:k:=iiSelection;
-      ttIteration,ttIterationPE:k:=iiIteration;
-      //ttCatch:
-      ttPointer:k:=iiPointer;
-      ttArgByRef:k:=iiArgByRef;
-      //ttVarByRef:
-      ttAddressOf:k:=iiAddressOf;
-      ttDereference:k:=iiDereference;
-      ttDestructor:k:=iiDestructor;
-      ttInterface:k:=iiInterface;
-      ttClassRef:k:=iiClassRef;
-      ttPropertyGet:k:=iiPropertyGet;
-      ttPropertySet:k:=iiPropertySet;
-      ttPropCall:
-        if FSphere.v(i,tfOperator)=0 then k:=iiPropCall else k:=iiPropAssign;
+      nNameSpace:k:=iiNameSpace;
+      nTypeDecl:k:=iiTypeDecl;
+      nRecord:k:=iiRecord;
+      nEnumeration:k:=iiEnum;
+      nGlobal:k:=iiItem;
+      nImport:k:=iiImport;
+      //nTry,nDeferred:
+      nThrow:k:=iiThrow;
+      nArray:k:=iiArray;
+      nMember:k:=iiFunction;
+      nVarDecl:k:=iiVar;
+      nConstant:k:=iiConstant;
+      nLiteral:k:=iiLiteral;
+      n_BinaryData:k:=iiLitVal;
+      nSignature:k:=iiSignature;
+      nOverload:k:=iiOverload;
+      nConstructors:k:=iiConstructors;
+      nConstructor:k:=iiConstructor;
+      nFCall,nSCall,nVCall:k:=iiCall;
+      nArgument:k:=iiArg;
+      nThis:k:=iiThis;
+      //nInherited:k:=iiInherited;
+      nArrayIndex:k:=iiArrayIndex;
+      nField:k:=iiField;
+      nCodeBlock:k:=iiBlock;
+      nAssign:k:=iiAssign;
+      nUnaryOp:k:=iiUnOp;
+      nBinaryOp:k:=iiBinOp;
+      nCast:k:=iiCast;
+      nClass:k:=iiClass;
+      nSelection:k:=iiSelection;
+      nIteration,nIterPostEval:k:=iiIteration;
+      //nCatch:
+      nPointer:k:=iiPointer;
+      nArgByRef:k:=iiArgByRef;
+      //nVarByRef:
+      nAddressOf:k:=iiAddressOf;
+      nDereference:k:=iiDereference;
+      nDestructor:k:=iiDestructor;
+      nInterface:k:=iiInterface;
+      nClassRef:k:=iiClassRef;
+      nPropertyGet:k:=iiPropertyGet;
+      nPropertySet:k:=iiPropertySet;
+//      nPropGetCall:k:=iiPropCall;
+//      nPropSetCall:k:=iiPropAssign;
     end;
     n.ImageIndex:=k;
     n.SelectedIndex:=k;
@@ -722,7 +761,7 @@ end;
 procedure TfrmXsViewMain.TreeView1Expanding(Sender: TObject; Node: TTreeNode;
   var AllowExpansion: Boolean);
 var
-  i:cardinal;
+  i,j:xItem;
 begin
   if (Node is TXsTreeNode) and Node.HasChildren and (Node.Count=0) then
    begin
@@ -733,12 +772,16 @@ begin
       if (Node as TXsTreeNode).ExpandSingle then
         BuildNode(Node,i)
       else
-        while i<>0 do
+       begin
+        j:=FSphere.n(i,fNext)^;
+        while j<>0 do
          begin
-          BuildNode(Node,i);
-          i:=FSphere.r(i,tfNext);
+          BuildNode(Node,j);
+          if j=i then j:=0 else j:=FSphere.n(j,fNext)^;
          end;
+       end;
     finally
+
       TreeView1.Items.EndUpdate;
     end;
    end;
@@ -746,22 +789,10 @@ begin
 end;
 
 procedure TfrmXsViewMain.ListBox1DblClick(Sender: TObject);
-var
-  i,j,l:integer;
-  s:string;
 begin
   if ListBox1.ItemIndex<>-1 then
    begin
-    s:=ListBox1.Items[ListBox1.ItemIndex];
-    l:=Length(s);
-    i:=1;
-    j:=0;
-    while (i<l) and (s[i]<>':') do
-     begin
-      j:=j*10+(byte(s[i]) and $F);
-      inc(i);
-     end;
-    JumpTo(j);
+    JumpTo(xItem(StrToInt(Copy(ListBox1.Items[ListBox1.ItemIndex],1,9))));
     if TreeView1.Selected<>nil then TreeView1.SetFocus;
    end;
 end;
@@ -795,19 +826,22 @@ end;
 
 procedure TfrmXsViewMain.btnGoToClick(Sender: TObject);
 var
-  p:TStratoIndex;
+  s:string;
+  p:xItem;
   b:boolean;
 begin
   TreeView1.Selected:=nil;
-  p:=StrToInt(txtGoTo.Text);
+  s:=txtGoTo.Text;
+  if (s='') or (s[1]<>'$') then s:='$'+s;
+  p:=xItem(StrToInt(s));
   b:=true;
   while (p<>0) and b do
    begin
     JumpTo(p);
     if TreeView1.Selected=nil then
      begin
-      if FSphere.t(p)=ttBinaryData then dec(p);
-      p:=FSphere.r(p,tfParent);
+      if FSphere.n(p,vTypeNr)^=n_BinaryData then nFindPrev(p);
+      p:=FSphere.n(p,fParent)^;
      end
     else
      begin
@@ -858,9 +892,10 @@ end;
 
 procedure TfrmXsViewMain.TreeView1Change(Sender: TObject; Node: TTreeNode);
 var
-  p,q,h1,h2,p1,p2:TStratoIndex;
+  q,h1,h2,p1,p2:xItem;
   i,Line,Col:cardinal;
   si:TScrollInfo;
+  src:PxSourcefile;
 begin
   if txtSourceView.Visible then
    begin
@@ -869,7 +904,7 @@ begin
     if (Node=nil) or not(Node is TXsTreeNode) then
      begin
       txtSourceView.Clear;
-      FSrcFile:=0;
+      FSrcFile:=nil;
       FHighLight1:=0;
       FHighLight2:=0;
      end
@@ -882,25 +917,24 @@ begin
       q:=FHighLight2;
       try
         if (q<>0) then
-         begin
-          if not StratoGetSourceFile(FSphere,q,p,Line,Col,p1,p2) then p:=0;
-         end;
-        if (p=0) or (Line=0) then
+          if not StratoGetSourceFile(FSphere,q,Line,Col,p1,p2) then Line:=0;
+        if Line=0 then
          begin
           //txtSourceView.Text:=Format('???[%d] %d:%d',[q,Line,Col])
           txtSourceView.SelLength:=0;
          end
         else
          begin
-          if p<>FSrcFile then
+          src:=FSphere.Store.SourceFile(q);
+          if src<>FSrcFile then
            begin
-            FSrcFile:=0;//in case of error
+            FSrcFile:=nil;//in case of error
             //TODO: resolve relative path
             //TODO: cache several?
-            FSrcPath:=FSphere.GetBinaryData(FSphere.r(p,tf_SourceFile_FileName));
+            FSrcPath:=FSphere.Store.ResolvePath(FSphere.GetBinaryData(src.FileName));
             //TODO: check signature/timestamp
             txtSourceView.Lines.LoadFromFile(FSrcPath);
-            FSrcFile:=p;
+            FSrcFile:=src;
            end;
           //lblFileName.Caption:=Format('%s %d:%d',[FSrcPath,Line,Col]);
 
@@ -921,8 +955,8 @@ begin
       except
         //on e:Exception do?
          begin
-          txtSourceView.Text:=Format('!!![%d] "%s"%d:%d',[q,FSrcPath,Line,Col]);
-          FSrcFile:=0;
+          txtSourceView.Text:=Format('!!![$%.8x] "%s"%d:%d',[cardinal(q),FSrcPath,Line,Col]);
+          FSrcFile:=nil;
          end;
       end;
      end;
@@ -948,7 +982,7 @@ end;
 procedure TfrmXsViewMain.TreeView1CustomDrawItem(Sender: TCustomTreeView;
   Node: TTreeNode; State: TCustomDrawState; var DefaultDraw: Boolean);
 var
-  p:TStratoIndex;
+  p:xItem;
 begin
   if ((FHighLight1<>0) or (FHighLight2<>0)) and not(cdsSelected in State) then
     if Node is TXsTreeNode then
@@ -964,6 +998,22 @@ begin
         Sender.Canvas.Brush.Color:=$FFCC99 //skyblue
       ;
      end;
+end;
+
+procedure TfrmXsViewMain.nFindPrev(var x: xItem);
+var
+  i:cardinal;
+begin
+  //assert v(x,vTypeNr)=n_BinaryData
+  //assert (x and StratoSphereDataBlockMask)>0
+  i:=1;
+  dec(x,SizeOf(xItem));
+  while (i<>10) and ((FSphere.n(x,vTypeNr)^ shr 24)<>i) do
+   begin
+    inc(i);
+    dec(x,SizeOf(xItem));
+   end;
+  if i=10 then x:=0;
 end;
 
 end.

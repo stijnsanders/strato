@@ -2,10 +2,10 @@ unit stratoSource;
 
 interface
 
-{$D-}
-{$L-}
-
 uses SysUtils, Classes, stratoTokenizer;
+
+const
+  StratoTokenMaxLookForward=12;//more? config?
 
 type
   TStratoSourceErrorHandler=procedure(Sender:TObject;Line,LPos:cardinal;
@@ -13,32 +13,30 @@ type
 
   TStratoSource=class(TObject)
   private
-    FTIndex,FTLast,FTLength,FErrors:integer;
-    FLineIndex,FFileSize:cardinal;
-    FTContent:boolean;
-    FTokens:TStratoSourceTokenList;
     FSource:UTF8String;
+    FTA,FTB,FLineIndex:cardinal;
+    FTokens:array[0..StratoTokenMaxLookForward-1] of TStratoSourceToken;
     FFilePath:string;
+    FFileSize,FErrors:cardinal;
     FOnError:TStratoSourceErrorHandler;
+    procedure PeekToken(var i:cardinal);
   public
     procedure LoadFromFile(const FilePath:string);
-    function Done:boolean;
     function NextToken(var st:TStratoToken):boolean;
-    function Token:TStratoToken;
+    function Token:TStratoToken; //advances index
     function IsNext(const st:array of TStratoToken):boolean; //advances index on true!
     function IsNextID(const st:array of TStratoToken):boolean; //(doesn't advance index)
     function IsNextBetween(st1,st2:TStratoToken):boolean;//(doesn't advance index)
     procedure Skip(st:TStratoToken);
-    function GetID(var SrcPos:cardinal): UTF8String;
+    function GetID(var SrcPos: cardinal): UTF8String;
     function GetStr: UTF8String;
     function GetStrs: UTF8String;
     procedure Error(const msg: string);
-    function SrcPos:cardinal;
+    function SrcPos: cardinal;
     property FilePath:string read FFilePath;
     property FileSize:cardinal read FFileSize;
     property LineIndex:cardinal read FLineIndex;
-    property ErrorCount:integer read FErrors write FErrors;
-    property Tokens:TStratoSourceTokenList read FTokens;
+    property ErrorCount:cardinal read FErrors write FErrors;
     property OnError:TStratoSourceErrorHandler read FOnError write FOnError;
   end;
 
@@ -92,141 +90,170 @@ begin
   end;
   //TODO: EOL's here and determine best SrcPosLineIndex?
   FLineIndex:=DefaultLineIndex;
-  //parse data
-  FTokens:=StratoTokenize(FSource,FLineIndex);
-  FTLength:=Length(FTokens);
-  FTIndex:=0;
-  FTLast:=0;
   FErrors:=0;
-end;
-
-function TStratoSource.Done: boolean;
-begin
-  Result:=FTIndex>=FTLength;
+  //initialize tokenizer
+  StratoTokenizeInit(FSource,FLineIndex,FTokens[0]);
+  FTA:=0;
+  FTB:=0;
 end;
 
 function TStratoSource.NextToken(var st:TStratoToken):boolean;
 begin
-  if FTIndex<FTLength then
+  st:=FTokens[FTA].Token;
+  Result:=st<>st_EOF;
+  PeekToken(FTA);
+end;
+
+procedure TStratoSource.PeekToken(var i:cardinal);
+begin
+  if i=FTB then
    begin
-    st:=Token;
-    Result:=true;
+    inc(FTB);
+    if FTB=StratoTokenMaxLookForward then FTB:=0;
+    StratoTokenizeNext(FSource,FLineIndex,FTokens[i],FTokens[FTB]);
+    i:=FTB;
    end
   else
    begin
-    st:=st_Unknown;
-    Result:=false;
+    inc(i);
+    if i=StratoTokenMaxLookForward then i:=0;
    end;
 end;
 
 function TStratoSource.Token: TStratoToken;
 begin
-  if FTContent then inc(FTIndex);
-  if FTIndex<FTLength then
-   begin
-    Result:=FTokens[FTIndex].Token;
-    FTLast:=FTIndex;
-    FTContent:=Result<st_Fixed;
-    if not FTContent then inc(FTIndex);
-   end
-  else
-   begin
-    Error('unexpected end of file');
-    Result:=st_Unknown;
-   end;
+  Result:=FTokens[FTA].Token;
+  if Result=st_EOF then Error('unexpected end of file');
+  PeekToken(FTA);
 end;
 
 function TStratoSource.IsNext(const st: array of TStratoToken): boolean;
 var
-  i,l:integer;
+  i,j,l:cardinal;
 begin
+  i:=0;
+  j:=FTA;
   l:=Length(st);
-  if FTIndex+l>FTLength then Result:=false else
+  Result:=true;//default
+  {$IFDEF DEBUG}
+  if l>=StratoTokenMaxLookForward then
    begin
-    i:=0;
-    while (i<>l) and (FTokens[FTIndex+i].Token=st[i]) do inc(i);
-    Result:=i=l;
-    if Result then
+    Error('Maximum token look forward exceeded');
+    Result:=false;
+   end
+  else
+  {$ENDIF}
+   begin
+    while Result and (i<l) do
      begin
-      FTLast:=FTIndex;
-      FTContent:=FTokens[FTIndex].Token<st_Fixed;
-      if not FTContent then inc(FTIndex);
+      if FTokens[j].Token=st[i] then
+       begin
+        inc(i);
+        PeekToken(j);
+       end
+      else
+        Result:=false;
      end;
+    if Result then PeekToken(FTA);//advance index (only once!)
    end;
 end;
 
 function TStratoSource.IsNextID(const st: array of TStratoToken): boolean;
 var
-  i,j,l:integer;
+  i,j,l:cardinal;
 begin
-  i:=FTIndex;
-  while (i<>FTLength) and (FTokens[i].Token=stIdentifier) do
+  i:=0;
+  j:=FTA;
+  Result:=true;//default
+  while (Result) and (i<StratoTokenMaxLookForward) do
    begin
-    inc(i);
-    if (i<>FTLength) and (FTokens[i].Token=stPeriod) then inc(i);
+    if (((i and 1)=0) and (FTokens[j].Token=stIdentifier)) or
+       (((i and 1)=1) and (FTokens[j].Token=stPeriod)) then
+     begin
+      inc(i);
+      PeekToken(j);
+     end
+    else
+      Result:=false;
    end;
-  l:=Length(st);
-  j:=0;
-  while (i<>FTLength) and (j<>l) and (FTokens[i].Token=st[j]) do
+  if i=StratoTokenMaxLookForward then
    begin
-    inc(i);
-    inc(j);
-   end;
-  Result:=j=l;
+    Error('Maximum token look forward exceeded');
+    Result:=false;
+   end
+  else
+    if (i and 1)=1 then
+     begin
+      l:=Length(st);
+      if i+l>=StratoTokenMaxLookForward then
+       begin
+        Error('Maximum token look forward exceeded');
+        Result:=false;
+       end
+      else
+       begin
+        i:=0;
+        Result:=true;//default
+        while Result and (i<l) do
+          if FTokens[j].Token=st[i] then
+           begin
+            inc(i);
+            PeekToken(j);
+           end
+          else
+            Result:=false;
+        if Result then PeekToken(FTA);//advance index (only once!)
+       end;
+     end
+    else
+      Result:=false;
 end;
 
 function TStratoSource.IsNextBetween(st1, st2: TStratoToken): boolean;
 begin
-  if FTIndex<FTLength then
-    Result:=(st1<=FTokens[FTIndex].Token) and (st2>=FTokens[FTIndex].Token)
-  else
-    Result:=false;
+  Result:=(st1<=FTokens[FTA].Token) and (st2>=FTokens[FTA].Token);
 end;
 
 procedure TStratoSource.Skip(st: TStratoToken);
 begin
-  //assert not FContent
-  //assert st>=st_Fixed
-  if (FTIndex<FTLength) and (FTokens[FTIndex].Token=st) then
-   begin
-    FTLast:=FTIndex;
-    FTContent:=false;
-    inc(FTIndex);
-   end;
+  if st=FTokens[FTA].Token then PeekToken(FTA);
 end;
 
 function TStratoSource.GetID(var SrcPos: cardinal): UTF8String;
+var
+  i:cardinal;
 begin
-  //assert (FTIndex>0) and (FTIndex<=FTLength) and (FTokens[FTIndex].Token=stIdentifier)
-  Result:=Copy(FSource,FTokens[FTIndex].Index,FTokens[FTIndex].Length);
-  SrcPos:=FTokens[FTIndex].SrcPos;
-  FTLast:=FTIndex;
-  FTContent:=false;
-  inc(FTIndex);
+  i:=FTA;
+  if i=0 then i:=StratoTokenMaxLookForward;
+  dec(i);
+  Result:=Copy(FSource,FTokens[i].Index,FTokens[i].Length);
+  SrcPos:=FTokens[i].SrcPos;
 end;
 
 function TStratoSource.GetStrs: UTF8String;
 begin
-  Result:='';
-  while (FTIndex<FTLength) and (FTokens[FTIndex].Token=stStringLiteral) do
+  Result:=GetStr;
+  while IsNext([stStringLiteral]) do
     Result:=Result+GetStr;
 end;
 
 function TStratoSource.GetStr: UTF8String;
 var
-  i,j,k,l,r:cardinal;
+  f,i,j,k,l,r:cardinal;
   a:byte;
   b:boolean;
 begin
-  //assert FTIndex<FTLength
-  //assert FTokens[FTIndex].Token=stStringLiteral
+  f:=FTA;
+  if f=0 then f:=StratoTokenMaxLookForward;
+  dec(f);
+  //assert FTokens[f].Token=stStringLiteral
   r:=0;
-  SetLength(Result,FTokens[FTIndex].Length);
-  case FSource[FTokens[FTIndex].Index] of
+  SetLength(Result,FTokens[f].Length);
+  case FSource[FTokens[f].Index] of
     ''''://Pascal-style
      begin
-      i:=FTokens[FTIndex].Index+1;
-      j:=i+FTokens[FTIndex].Length-2;
+      i:=FTokens[f].Index+1;
+      j:=i+FTokens[f].Length-2;
       while i<>j do
        begin
         inc(r);
@@ -238,9 +265,9 @@ begin
      end;
     '"'://C-style (or Python-style triple double quotes)
      begin
-      i:=FTokens[FTIndex].Index;
-      j:=i+FTokens[FTIndex].Length-1;
-      if (FTokens[FTIndex].Length>=6) and (FSource[i]='"')
+      i:=FTokens[f].Index;
+      j:=i+FTokens[f].Length-1;
+      if (FTokens[f].Length>=6) and (FSource[i]='"')
         and (FSource[i+1]='"') and (FSource[i+2]='"')
         //and (FSource[j-1]='"') and (FSource[j-2]='"') and (FSource[j-3]='"')
         then
@@ -379,41 +406,35 @@ begin
       Error('unsupported string literal type');
   end;
   SetLength(Result,r);
-  FTContent:=false;
-  inc(FTIndex);
 end;
 
 procedure TStratoSource.Error(const msg:string);
 var
-  x,y:cardinal;
+  i,x,y:cardinal;
 begin
   inc(FErrors);
+  i:=FTA;//FTLast?
+  if i=0 then i:=StratoTokenMaxLookForward;
+  dec(i);
   //TODO: display FFilePath here relative to 'project root'?
-  if FTLast<FTLength then
-   begin
-    x:=FTokens[FTLast].SrcPos div FLineIndex;
-    y:=FTokens[FTLast].SrcPos mod FLineIndex;
-    //TODO: config switch append code snippet
-//    if FTokens[FTLast].Length>40 then s:=' "'+Copy(FSource,FTokens[FTLast].Index,40)+'...'
-//      else s:=' "'+Copy(FSource,FTokens[FTLast].Index,FTokens[FTLast].Length)+'"';
-    Writeln(ErrOutput,Format('%s(%d:%d): %s',[FFilePath,x,y,msg]));//Index?
-   end
-  else
-   begin   
-    x:=0;
-    y:=0;
-    Writeln(ErrOutput,Format('%s(EOF): %s',[FFilePath,msg]));
-   end;
+  x:=FTokens[i].SrcPos div FLineIndex;
+  y:=FTokens[i].SrcPos mod FLineIndex;
+  //TODO: config switch append code snippet
+//  if FTokens[i].Length>40 then s:=' "'+Copy(FSource,FTokens[i].Index,40)+'...'
+//    else s:=' "'+Copy(FSource,FTokens[i].Index,FTokens[i].Length)+'"';
+  Writeln(ErrOutput,Format('%s(%d:%d): %s',[FFilePath,x,y,msg]));//Index?
   //raise?
   if @FOnError<>nil then FOnError(Self,x,y,msg);
 end;
 
 function TStratoSource.SrcPos: cardinal;
+var
+  i:cardinal;
 begin
-  if FTLast<FTLength then
-    Result:=FTokens[FTLast].SrcPos
-  else
-    Result:=0;
+  i:=FTA;//FTLast?
+  if i=0 then i:=StratoTokenMaxLookForward;
+  dec(i);
+  Result:=FTokens[i].SrcPos;
 end;
 
 end.
