@@ -8,6 +8,9 @@ TODO
 * interfaces, properties (extensive testing/dogfooding)
 * prevent namespace-crossing (also: ttPrivate)
 
+
+* TODO: test array of function with the same signature without parameters... (and if ResType behaves)
+
 * heap (malloc, check stack overflow)
 * strings on heap, strings from/to array of chars
 * struct initial values

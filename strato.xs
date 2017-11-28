@@ -1,5 +1,8 @@
 Strato
 
+/*
+//see Sphere.DeclareIntrinsicTypes:
+
 :variant @16;//TODO: OLE compatible variants
 :i8  @1;
 :i16 @2;
@@ -11,12 +14,72 @@ Strato
 :u64 @8;
 :f32 @4;//TODO: floating-point support
 :f64 @8;
+//:f80 @10
 
+:string;//TODO
 :hash;//TODO:
 
-__xinc(a:^number):number{1}
-__xdec(a:^number):number{2}
-__writeln(a:string){$200}
-__malloc(a:number):pointer{$100}
-__realloc(d:pointer;a:number):pointer{$101}
-__mfree(d:pointer){$102}
+*/
+
+true=0==0;
+false=0==1;
+
+
+i8."++"{$"i";}
+i8."--"{$"d";}
+i8."+"(a:i8){$"+";}
+i16."+"(a:i16){$"+";}
+i32."+"(a:i32){$"+";}
+i64."+"(a:i64){$"+";}
+u8."+"(a:u8){$"+";}
+u16."+"(a:u16){$"+";}
+u32."+"(a:u32){$"+";}
+u64."+"(a:u64){$"+";}
+f32."+"(a:f32){$"f+";}
+f64."+"(a:f64){$"f+";}
+
+__xinc(^a:number):number{$$1;}
+__xdec(^a:number):number{$$2;}
+__writeln(a:string){$$200;}
+__malloc(a:number):pointer{$$100;}
+__realloc(d:pointer;a:number):pointer{$$101;}
+__mfree(d:pointer){$$102;}
+
+//previously "oo.xs"
+
+
+object:={
+	_basetype:?object@-@?0;//class
+	_refcount:number@-@?0*2;
+	//implemented interfaces?
+}
+
+object_base_size=@?0*2;
+
+object(){
+	@@:pointer:=__malloc(@?@@+object_base_size);
+	@@:number+=object_base_size;
+	_basetype:=?@@;
+	_refcount:=0;
+}
+
+-object(){
+	//assert _refcount=0
+	:x:=@@:pointer;
+	x:number-=object_base_size;
+	__mfree(x);
+}
+
+object._addref(){
+	__xinc(_refcount);
+}
+
+object._release(){
+	(__xdec(_refcount)==0) {-@@();} {}
+}
+
+/*
+object."[]"(x:string):string{
+	??:="["+x+"]";
+}
+*/

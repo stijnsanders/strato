@@ -21,6 +21,7 @@ type
   public
     constructor Create;
     destructor Destroy; override;
+    function GetIdx(const x:UTF8String):cardinal;
     function StrIdx(const x:UTF8String):cardinal;//int64?
     property StrCount:cardinal read FLastIndex;
     property Str[Idx:cardinal]:UTF8String read GetStr; default;
@@ -56,6 +57,43 @@ begin
     inc(FNodesSize,StringDictionaryNodesGrowSize);
     SetLength(FNodes,FNodesSize shl 8);
     //ZeroMemory(?
+   end;
+end;
+
+function TStringDictionary.GetIdx(const x: UTF8String): cardinal;
+var
+  i,l,p:cardinal;
+  n:PStringDictionaryNodeData;
+  y:UTF8String;
+begin
+  l:=Length(x)+1;//assert xx:UTF8String :: xx[Length(xx)+1]=#0
+  if l=1 then Result:=0 else
+   begin
+    //p:=0;
+    i:=1;
+    n:=@FNodes[{p or }byte(x[i])];
+    Result:=cardinal(-1);
+    while Result=cardinal(-1) do
+      if n.Index=0 then
+        Result:=0
+      else
+       begin
+        y:=FNodes[n.Index].Value;//assert reference-counted strings
+        while (i<>l) and (i<>n.Length) and (x[i]=y[i]) do inc(i);
+        if (i=l) and (i=n.Length) then
+          if x[i]=y[i] then
+            Result:=n.Index
+          else
+            Result:=0
+        else
+        if (i=n.Length) and (n.Next<>0) then
+         begin
+          p:=n.Next shl 8;
+          n:=@FNodes[p or byte(x[i])];
+         end
+        else
+          Result:=0;
+       end;
    end;
 end;
 

@@ -2,6 +2,9 @@ unit stratoTokenizer;
 
 interface
 
+{$D-}
+{$L-}
+
 type
   TStratoToken=(
     stIdentifier,
@@ -19,6 +22,9 @@ type
     stCaret,        //"^"
     stQuestionMark, //"?"
     stAmpersand,    //"&"
+    stDollar,       //'$'
+    stHash,         //'#'
+    stTilde,        //'~'
 
     stPOpen,stPClose, //"()" parentheses
     stCOpen,stCClose, //"{}" curly braces
@@ -28,10 +34,12 @@ type
     stThreeColons, //":::"
     stThreeWhats,  //"???"
     stThreeBangs,  //"!!!"
+    stEllipsis,    //"..."
 
     stAtAt,     //"@@": this/self
     stAtAtAt,   //"@@@": inherited/base
-    stTwoWhats, //"??": result
+    stWhatWhat, //"??": result
+    stHashHash, //"##": interation
 
     stOpAssign,    //":="
     stOpAssignAdd, //"+="
@@ -41,7 +49,7 @@ type
     stOpAssignMod, //"%="
     stOpAssignOr,  //"||="
     stOpAssignAnd, //"&&="
-    stOpEQ,  //"=="
+    stOpEQ,  //"==" //see alo stDefine,stOpAssign
     stOpNEQ, //"!="
     stOpLT,  //"<"
     stOpLTE, //"<="
@@ -62,8 +70,8 @@ type
     stOpDec, //"--"
     stOpShl, //"<<"
     stOpShr, //">>"
+    stOpRange, //".."
 
-    stTilde,//'~'
     stThreeLT,//"<<<" stOpRol
     stThreeGT,//">>>" stOpRor
 
@@ -220,6 +228,13 @@ begin
             end;
           else Add(1,stAmpersand);
         end;
+      '$':Add(1,stDollar);
+      '#':
+        case CodeNext(1) of
+          '#':Add(2,stHashHash);
+          else Add(1,stHash);
+        end;
+      '~':Add(1,stTilde);
       '|':
         case CodeNext(1) of
           '!':Add(2,stOpXor);
@@ -310,9 +325,11 @@ begin
                 while (i<=CodeLength) and (Code[i]='-') do inc(i);
                 Add(i-CodeIndex,stHRule);
                end;
+               //'>':Add(3,stLongArrow);
               else Add(2,stOpDec);
             end;
           '=':Add(2,stOpAssignSub);
+          //'>':Add(2,stArrow);
           else Add(1,stOpSub);
         end;
       '%':
@@ -371,7 +388,7 @@ begin
           '?':
             case CodeNext(2) of
               '?':Add(3,stThreeWhats);
-              else Add(2,stTwoWhats);
+              else Add(2,stWhatWhat);
             end;
           '=':Add(2,stOpTypeIs);
           //':':Add(2,stOpElvis);//TODO: https://en.wikipedia.org/wiki/Elvis_operator
@@ -392,8 +409,7 @@ begin
             end;
           else Add(1,stOpNot);
         end;
-      '.':Add(1,stPeriod);
-      {
+      '.':
         case CodeNext(1) of
           '.':
             case CodeNext(2) of
@@ -402,7 +418,6 @@ begin
             end;
           else Add(1,stPeriod);
         end;
-      }
       ',':Add(1,stComma);
       ';':Add(1,stSemiColon);
       ':':
@@ -416,7 +431,6 @@ begin
           else Add(1,stColon);
         end;
       'A'..'Z','_','a'..'z':GetIdentifier;
-      '~':Add(1,stTilde);
       else Add(1,st_Unknown);
     end;
    end;

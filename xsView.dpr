@@ -4,9 +4,9 @@ uses
   Forms,
   xsViewMain in 'xsViewMain.pas' {frmXsViewMain},
   stratoDecl in 'stratoDecl.pas',
-  stratoDict in 'stratoDict.pas',
   stratoSphere in 'stratoSphere.pas',
-  stratoDebug in 'stratoDebug.pas';
+  stratoDebug in 'stratoDebug.pas',
+  stratoTools in 'stratoTools.pas';
 
 {$R *.res}
 

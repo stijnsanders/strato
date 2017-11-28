@@ -9,7 +9,7 @@ Find the sum of all the multiples of 3 or 5 below 1000.
 
 {
 	:sum:=0;
-	&(:i:=0;i<1000;i++){
+	:i ## 0..1000-1 {
 		(i%5==0||i%3==0)sum+=i;;
 	}
 	__writeln(sum:string);

@@ -43,26 +43,29 @@ type
     procedure actRunToFocusExecute(Sender: TObject);
     procedure actCopyExecute(Sender: TObject);
     procedure lvStackDblClick(Sender: TObject);
+    procedure Splitter1Moved(Sender: TObject);
+    procedure Panel1Resize(Sender: TObject);
   private
-    FDoNext:integer;
-    FBreakAt:array of xItem;
-    FSrcFile:PxSourceFile;
+    FDoNext,y1,y2:integer;
+    FBreakAt:array of rItem;
+    FSrc:cardinal;
     FSrcPath:string;
     FSrcData:TStringList;
     FTrailSuspended:boolean;
   protected
     procedure DoCreate; override;
     procedure DoDestroy; override;
+    procedure DoShow; override;
   public
     function WaitNext:boolean;
-    function CheckBreakPoint(p:xItem):boolean;
-    procedure ShowSource(s:TStratoSphere;p:PxSourceFile;Line,Col:cardinal);
+    function CheckBreakPoint(p:rItem):boolean;
+    procedure ShowSource(p:rItem;Line,Col:cardinal);
     procedure Done;
   end;
 
 implementation
 
-uses Clipbrd;
+uses Clipbrd, stratoTools;
 
 {$R *.dfm}
 
@@ -104,7 +107,7 @@ procedure TfrmDebugView.btnRunToClick(Sender: TObject);
 var
   s:string;
   i,j,l:integer;
-  k:cardinal;
+  k1,k2:cardinal;
 const
   MaxBreakPoints=$100;
 begin
@@ -119,18 +122,31 @@ begin
     SetLength(FBreakAt,MaxBreakPoints);
     while (i<=l) do
      begin
-      k:=0;
-      while (i<=l) and (s[i] in ['0'..'9','A'..'F']) do
+      k1:=0;
+      while (i<=l) and (s[i] in ['0'..'9']) do
        begin
-        if (byte(s[i]) and $F0)=$30 then
-          k:=(k shl 4)+(byte(s[i]) and $F)
-        else
-          k:=(k shl 4)+(byte(s[i]) and $F)+9;
+        k1:=k1*10+(byte(s[i]) and $F);
         inc(i);
+       end;
+      if (i<l) and (s[i]<>' ') and (s[i+1] in ['0'..'9']) then
+       begin
+        //assert s[i]=ItemToStrMask[3]
+        inc(i);
+        k2:=0;
+        while (i<=l) and (s[i] in ['0'..'9']) do
+         begin
+          k2:=k2*10+(byte(s[i]) and $F);
+          inc(i);
+         end;
+       end
+      else
+       begin
+        k2:=k1;
+        k1:=0;//ip div StratoSphereBlockBase;
        end;
       if j=MaxBreakPoints then
         raise Exception.Create('Maximum breakpoints exceeded');
-      FBreakAt[j]:=xItem(k);
+      FBreakAt[j]:=xxr(k1*StratoSphereBlockBase+k2);
       inc(j);
       while (i<=l) and not(s[i] in ['0'..'9']) do inc(i);
      end;
@@ -147,7 +163,7 @@ begin
    end;
 end;
 
-function TfrmDebugView.CheckBreakPoint(p: xItem): boolean;
+function TfrmDebugView.CheckBreakPoint(p: rItem): boolean;
 var
   i,l:integer;
 begin
@@ -157,7 +173,7 @@ begin
   else
    begin
     i:=0;
-    while (i<l) and (FBreakAt[i]<>p) do inc(i);
+    while (i<l) and (FBreakAt[i].x<>p.x) do inc(i);
     Result:=i<>l;
    end;
 end;
@@ -167,33 +183,33 @@ begin
   inherited;
   FSrcData:=TStringList.Create;
   FSrcPath:='';
-  FSrcFile:=nil;
+  FSrc:=cardinal(-1);
   FTrailSuspended:=false;
 end;
 
-procedure TfrmDebugView.ShowSource(s: TStratoSphere; p: PxSourceFile; Line,
-  Col: cardinal);
+procedure TfrmDebugView.ShowSource(p:rItem;Line,Col:cardinal);
 var
-  i,j,k:integer;
+  Src,i,j,k:cardinal;
   ss:string;
 begin
   try
-    if (p=nil) or (Line=0) then
+    if Line=0 then
      begin
       lblFileName.Caption:=Format('[?] %d:%d',[Line,Col]);
       txtSourceView.Text:=#13#10#13#10'?????';
      end
     else
      begin
-      if (p<>FSrcFile) then
+      Src:=rSrc(p);
+      if (Src<>FSrc) then
        begin
-        FSrcFile:=nil;//in case of error
+        FSrc:=cardinal(-1);//in case of error
         //TODO: resolve relative path
         //TODO: cache several?
-        FSrcPath:=s.Store.ResolvePath(s.GetBinaryData(p.FileName));
+        FSrcPath:=ResolveKnownPath(BinaryData(xxr(SourceFiles[Src].FileName)));
         //TODO: check signature/timestamp
         FSrcData.LoadFromFile(FSrcPath);
-        FSrcFile:=p;
+        FSrc:=Src;
        end;
       lblFileName.Caption:=Format('%s %d:%d',[FSrcPath,Line,Col]);
       while txtSourceView.Lines.Count<5 do txtSourceView.Lines.Add('//');
@@ -202,9 +218,9 @@ begin
       k:=0;
       while j<5 do
        begin
-        if (i<1) or (i>=FSrcData.Count) then
+        if (i<1) or (i>=cardinal(FSrcData.Count)) then
          begin
-          txtSourceView.Lines[j]:='/////';
+          txtSourceView.Lines[j]:='//???pastEOF???//';
           if j<2 then inc(k,7);
          end
         else
@@ -216,7 +232,7 @@ begin
         inc(i);
         inc(j);
        end;
-      txtSourceView.SelStart:=k+integer(Col)-1;
+      txtSourceView.SelStart:=integer(k+Col)-1;
       txtSourceView.SelLength:=1;//?
      end;
   except
@@ -305,6 +321,24 @@ begin
     txtBreakPoints.Text:=li.SubItems[0];
     btnRunTo.Click;
    end;
+end;
+
+procedure TfrmDebugView.DoShow;
+begin
+  inherited;
+  y1:=lvStack.Height;
+  y2:=Panel1.Height;
+end;
+
+procedure TfrmDebugView.Splitter1Moved(Sender: TObject);
+begin
+  y1:=lvStack.Height;
+  y2:=Panel1.Height;
+end;
+
+procedure TfrmDebugView.Panel1Resize(Sender: TObject);
+begin
+  if y2>8 then lvStack.Height:=y1*Panel1.Height div y2;
 end;
 
 end.

@@ -2,289 +2,283 @@ unit stratoDecl;
 
 interface
 
+{$D-}
+{$L-}
+
+const
+  StratoSphereFileVersion=$00000300;//0.3.0
+
 type
   xValue=type cardinal;
   xItem=type xValue;
   xName=type xValue;
   xSrcPos=type xValue;
-  xTypeNr=type xValue;
-
   PxValue=^xValue;
 
-  xPtr=cardinal;//used for pointer arithmetic
-
+//  xTypeNr=(
+  xTypeNr=type xValue;
 const
-  xValueSize=SizeOf(xValue);
+  //node identification codes (see also NodeTypeToStr)
+                                //SNNN: size; number
+    n_BinaryData                = 1000; //use vSizeDiv4 when iterating
+    n_NameData                  = 4000;
 
-                               //SFFFXNN size, field bits, master, number
-    n_BinaryData               =$0000001; //use SizeDiv4 when iterating
-    //n_Item                     =$1C00100;
-    //n_Chainable                =$2600200;
-    //n_Named                    =$3600300;
+    nNameSpace                  = 5000;
+    nType                       = 6000;
+    nLiteral                    = 3001;
+    nConstant                   = 6002; //constant: iValue -> nLiteral;nConstant
+    nRecord                     = 6003;
+    nArray                      = 7004;
+    nEnum                       = 5005; //enumeration: lItems -> nConstant
+    nSignature                  = 7006;
+    nSigArg                     = 6007;
+    nSigArgByRef                = 5008;
+    nMember                     = 4009;
+    nOverload                   = 6010;
+    nPointer                    = 6011;
+    nTypeAlias                  = 5012;
 
-    n_Item_Low                 =$2600000;//used by xTypeDefX below
-    n_Item_High                =$7800000;
+    nGlobal                     = 4013;
 
-    nSourceFile                =$943C000;
-    
-    nNameSpace                 =$4680300;
-    nImport                    =$4680308;
-    nGlobal                    =$4700000;
-    nPrivate                   =$2600201;
+    nClass                      = 7020;
+    nClassRef                   = 5021; //class reference: iTarget -> nClass
+    nCtors                      = 3022; //constructors: lItems -> nCtor
+    nCtor                       = 6023;
+    nDtor                       = 4024;
+    nPropGet                    = 6025;
+    nPropSet                    = 6026;
+    //TODO: nPropPtr?
+    nInterface                  = 6027;
 
-    nTypeDecl                  =$4600400;
-    nSignature                 =$66E0400;
-    nArgument                  =$56C0300;
-    nArgByRef                  =$56C0308;
-    nVarDecl                   =$66C0300;
-    nVarByRef                  =$66C0308;
-    nLiteral                   =$3700100;
-    nConstant                  =$56C0301;
-    nTypeAlias                 =$3700208;
+    nCodeBlock                  = 7028;
+    nVar                        = 7029;
+    nVarByRef                   = 6030;
+    nVarReadOnly                = 7031;
+    nThis                       = 4032;
 
-    nMember                    =$4680301;
-    nOverload                  =$57C0200;
+    nSCall                      = 5033;//system call: iTarget -> nLiteral
+    nFCall                      = 5034;//function call: iTarget -> nOverload
+    nVCall                      = 6035;//virtual/dynamic call
+    nICall                      = 6036;//inherited call
+    nCallArg                    = 5037;//call argument
 
-    nArray                     =$5640400;
-    nRecord                    =$5640401;
-    nEnumeration               =$4680402;
+    nCast                       = 5040;
+    nAddressOf                  = 5041;
+    nDereference                = 5042;
+    nArrayIndex                 = 6043;
+    nField                      = 5044;//field 'subject.target'
 
-    nClass                     =$66C0400;
-    nClassRef                  =$4680408;
-    nInterface                 =$56C0401;
-    nConstructors              =$4680304;
-    nConstructor               =$57C0203;
-    nDestructor                =$57C0204;
-    nPropertyGet               =$57C0201;
-    nPropertySet               =$57C0202;
+    nAssign                     = 6045;
+    nUnaryOp                    = 6046;
+    nBinaryOp                   = 7047;
+    nSelection                  = 7048;
+    nIteration                  = 6049;
+    nIterPostEval               = 6050;
+    nRange                      = 7051;
+    nRangeIndex                 = 5052;
 
-    nCodeBlock                 =$6760200;
-    nSysCall                   =$3600201;
-    nFCall                     =$4780210;//function call
-    nSCall                     =$57C0211;//static call
-    nVCall                     =$57C0212;//virtual call (dynamic)
-    nThis                      =$66C0202;
-    nPointer                   =$3700200;
-    nAddressOf                 =$4780208;
-    nDereference               =$4780209;
-    nField                     =$4780200;
-    nArrayIndex                =$4780201;
-    nCast                      =$4780202;
+    nTry                        = 3055;
+    nThrow                      = 4056;//raise/throw/except: iSubject -> nVCall on nCtor of exception object
+    nDefer                      = 4057;
+    nCatch                      = 6058;//catch: all OR lTypes -> nClass OR iTarget -> nVarReadOnly with iType nClass
 
-    nAssign                    =$56C0204;
-    nUnaryOp                   =$56C0205;
-    nBinaryOp                  =$66E0201;
-    nSelection                 =$67E0201;
-    nIteration                 =$77F0200;
-    nIterPostEval              =$77F0201;
+    //see xTypeDef below
+    n_TypeNr_Base               = 1000;//used with div to get size from value
+    n_TypeNr_Low                = 3000;//used for xTypeDefX below
+    n_TypeNr_High               = 7060;//used for xTypeDefX below
 
-    nTry                       =$3700203;
-    nThrow                     =$3700204;
-    nDeferred                  =$3700205;
-    nCatchAll                  =$3700206;
-    nCatchTypes                =$4780203;
-    nCatchNamed                =$56C0200;
+  //field identification codes (see also NodeFieldToStr)
+  //  (see xTypeDef below)
+  
+    iName            = 100;
+    iParent          = 101;
+    iNext            = 102;
+    iType            = 103;
+    iSubject         = 104;
+    iTarget          = 105;
+    iSignature       = 106;
+    iValue           = 107;
+    iReturnType      = 108;
+    iInheritsFrom    = 109;
 
-    n_Invalid                  =$0000000;
+    iBody            = 120;
+    iLeft            = 121;
+    iRight           = 122;
+    iFirstArgVar     = 123;
+    iPredicate       = 124;
+    iDoTrue          = 125;
+    iDoFalse         = 126;
 
-    //field indexes
+    lItems           = 200;
+    lArguments       = 201;
+    lTypes           = 202;
+    lLocals          = 203;
 
-    f_Unknown     =100;
-    fParent       =101;//n_Item
-    fNext         =102;//n_Chainable
-      // ATTENTION: list pointers point to last element in list,
-      // fNext value of last element points to first item in list
-    fItems        =103;
-    fValue        =104;
-    fSubject      =105;
-    fTarget       =106;
+    vTypeNr          = 000;
+    vSrcPos          = 001;
+    vByteSize        = 002;
+    vLength          = 002;//only used with n_NameData
+    vLocalsSize      = 002;//only used with nCodeBlock
+    vOffset          = 003;
+    vOperator        = 004;
+    vKey             = 005;
 
-    fTypeDecl     =107; //nTypeDecl
-    fSignature    =108;
-    fArguments    =109; //nArgument,nArgByRef
-    fFirstArgVar  =110;
-    fReturnType   =111; //nTypeDecl
-    fVarDecl      =112; //nVarDecl
-    fInheritsFrom =113;
-    fVarDecls     =114;
+    f_FieldsMax      = 209;
 
-    fDoFirst      =120;
-    fDoIf         =121;
-    fDoThen       =122;
-    fDoElse       =123;
-    fBody         =124;
-    fLeft         =125;
-    fRight        =126;
-    fExceptionConstructor =127;
-
-    //see also xSourcefile below
-    fSourceFile_NameSpaces          =150;
-    fSourceFile_Globals             =151;
-    fSourceFile_InitializationBlock =152;
-    fSourceFile_FinalizationBlock   =153;
-
-    v_IntegerFields =180;
-
-    vTypeNr         =181;
-    vSrcPos         =182;
-    vName           =183;
-    vByteSize       =184;
-    vOffset         =185;
-    vOperator       =186;
-    vExName         =187;
-
-    f_FieldsMax     =199;
+    //keep these in equal sequence to xSourceFile fields below
+    //use with "xxr(SrcIndex * StratoSphereBlockBase)"
+    iSourceFile_FileName            = 300;
+    vSourceFile_FileSize            = 301;
+    vSourceFile_FileHash            = 302;
+    vSourceFile_SrcPosLineIndex     = 303;
+    vSourceFile_BlockIndex          = 304;
+    lSourceFile_NameSpaces          = 305;
+    iSourceFile_Local               = 306;
+    lSourceFile_Globals             = 307;
+    lSourceFile_Dictionary          = 308;
+    iSourceFile__Reserved1          = 309;
+    iSourceFile_InitializationBlock = 310;
+    iSourceFile_FinalizationBlock   = 311;
+    //= 312;
+    //= 313;
 
 type
   xSourceFile=record
-    TypeNr:xTypeNr;
-    SrcPosLineIndex:cardinal;
-    FileName:xItem;//xBinaryData
+    FileName:xItem;//n_BinaryData
     FileSize:cardinal;
-    Hash:cardinal;
-    Reserved1:cardinal;
-    Reserved2:cardinal;
-    //TODO: hash, timestamp
+    FileHash:cardinal; //TODO: file hash, timestamp
+    SrcPosLineIndex:cardinal;
+    BlockIndex:xItem;
     NameSpaces:xItem;
+    Local:xItem;
     Globals:xItem;
+    Dictionary:xItem;
+    _Reserved1:xItem;
     InitializationBlock:xItem;
     FinalizationBlock:xItem;
   end;
   PxSourceFile=^xSourceFile;
 
-  (*
-    n_BinaryData, vTypeNr,vBytesize,{pData,}
-    n_Item,       vTypeNr,vSrcPos,fParent
-    n_Chainable,  vTypeNr,vSrcPos,fParent,fNext,
-    n_Named,      vTypeNr,vSrcPos,fParent,fNext,vName,
-
-    nSourceFile,  vTypeNr,vSrcPosLineIndex,fFileName{:n_BinaryData},vFileSize,vFileHash,
-                  vReserved1,vReserved2,lNameSpaces,lGlobals,lInitializationBlock,lFinalizationBlock,
-  *)
-
-const
-  xTypeDefLen=195;
-  xTypeDef:array[0..xTypeDefLen-1] of xTypeNr=(
-
-    //list of uses of fields (all have vTypeNr,vSrcPos,fParent in common)
-
-    nNameSpace,                 fNext,vName,fItems,
-    nImport,                    fNext,vName,fSubject{nNameSpace},
-    nTypeDecl,                  fNext,vName,vByteSize, //TODO:fPointerTo{nTypeDecl}
-    nSignature,                 fNext,vName,fSubject{nClass,nRecord},fArguments,fReturnType,
-    nArgument,                  fNext,vName,fTypeDecl,fValue,
-      //Parent is nSignature: default value (nConstant,nLiteral)
-      //Parent is n*Call: arg var (nVarDecl,nVarByRef)
-
-    nArgByRef,                  fNext,vName,fTypeDecl,fValue, //same as above
-    nVarDecl,nVarByRef,nThis,   fNext,vName,fTypeDecl,fValue,vOffset,
-    nGlobal,                    fNext,fVarDecl,vByteSize,
-    nPrivate,                   fNext,
-    nLiteral,                   fValue,fTypeDecl,
-    nConstant,                  fNext,vName,fValue,fTypeDecl,
-    nTypeAlias,                 fNext,fTypeDecl,
-    nMember,                    fNext,vName,fItems{nOverload,nPropertyGet,nPropertySet},
-    nConstructors,              fNext,vName,fItems{nConstructor},
-    nOverload,                  fNext,fSignature,fFirstArgVar,fBody,
-    nConstructor,nDestructor,   fNext,fSignature,fFirstArgVar,fBody,
-    nPropertyGet,nPropertySet,  fNext,fSignature,fFirstArgVar,fBody,
-    nArray,                     fNext,vName,vByteSize,fTypeDecl,
-      //TODO: size/extent/dimension: Array.ByteSize div ByteSize(Array.ElementType) for now
-      //TODO: multi-dimensional arrays
-    nRecord,                    fNext,vName,vByteSize,fItems,
-    nEnumeration,               fNext,vName,fItems,
-    nClass,                     fNext,vName,fInheritsFrom{nClass},fItems,vByteSize,
-    nClassRef,                  fNext,vName,fSubject{nClass},
-    nInterface,                 fNext,vName,fInheritsFrom{nInterface},fItems,
-
-    nCodeBlock,                 fNext,fVarDecls,vByteSize,fItems,fReturnType,
-    nSysCall,                   fNext,vOffset,
-    nFCall,                     fNext,fTarget,fArguments,
-    nSCall,nVCall,              fNext,fSubject,fTarget,fArguments,
-    //TODO: nPGetCall,nPSetCall
-
-    nPointer,                   fNext,fSubject{nTypeDecl,nPointer},
-    nAddressOf,nDereference,    fNext,fSubject,fReturnType,
-
-    nField,                     fNext,fSubject,fTarget, //subject.target
-    nArrayIndex,                fNext,fSubject,fItems, //subject[item(s)]
-    nCast,                      fNext,fSubject,fTypeDecl,
-    nAssign,                    fNext,vOperator,fTarget,fValue,
-    nUnaryOp,                   fNext,vOperator,fRight,fReturnType,
-    nBinaryOp,                  fNext,vOperator,fLeft,fRight,fReturnType,
-    nSelection,                 fNext,fDoIf,fDoThen,fDoElse,fReturnType,
-    nIteration,nIterPostEval,   fNext,fDoFirst,fDoIf,fDoThen,fBody,fReturnType,//TODO: iterate over range always
-    nThrow,                     fNext,fExceptionConstructor,
-    nDeferred,                  fNext,fItems,
-    nCatchAll,                  fNext,fBody,
-    nCatchTypes,                fNext,fItems{nTypeAlias},fBody,
-    nCatchNamed,                fNext,vExName,fVarDecl,fBody,
-
-    n_Item_Low //closing entry
+  TStratoIntrinsicType=(
+    itVoid,
+    itType,
+    itPointer,
+    itBoolean,
+    itNumber,//native integer
+    itObject,//allow only one "object()={}"
+    itString
   );
 
+const
+  xTypeDefLen=278;
+  xTypeDef:array[0..xTypeDefLen] of xTypeNr=(
+
+    //
+    //  ATTENTION
+    //  when changing these, also update stratoDebug's StratoDumpThing !!!
+    //
+
+    //n_BinaryData,            vSizeDiv4,{pData*,}
+    n_NameData,                iParent,iNext,vKey,lItems,
+
+    nNameSpace,nEnum,          iParent,iNext,vSrcPos,iName,lItems,
+    nType,nRecord,             iParent,iNext,vSrcPos,iName,lItems,vByteSize, //TODO: iPointerTo?
+    nArray,                    iParent,iNext,vSrcPos,iName,lItems,iType,vByteSize,
+      //TODO: total/elem size (vByteSize= size element * count, for now)
+      //TODO: multi-demensional
+    nLiteral,                  vSrcPos,iType,iValue,
+    nConstant,                 iParent,iNext,vSrcPos,iName,iType,iValue,
+    nSignature,                iParent,iNext,vSrcPos,iName,iSubject,lArguments,iReturnType,
+    nSigArg,                   iParent,iNext,vSrcPos,iName,iType,iValue,
+    nSigArgByRef,              iParent,iNext,vSrcPos,iName,iType,
+    nMember,                   iParent,iNext,iName,lItems,
+    nOverload,                 iParent,iNext,vSrcPos,iSignature,iFirstArgVar,iBody,
+    nPointer,                  iParent,iNext,vSrcPos,iName,lItems,iTarget,
+    nTypeAlias,                iParent,iNext,vSrcPos,iName,iTarget,
+
+    nGlobal,                   iParent,iNext,vSrcPos,iTarget,
+
+    nClass,                    iParent,iNext,vSrcPos,iName,lItems,vByteSize,iInheritsFrom,
+    nClassRef,                 iParent,iNext,vSrcPos,iName,iTarget,
+    nCtors,                    iParent,iNext,lItems,
+    nCtor,nPropGet,nPropSet,   iParent,iNext,vSrcPos,iSignature,iFirstArgVar,iBody,
+    nDtor,                     iParent,iNext,vSrcPos,iBody,
+    nInterface,                iParent,iNext,vSrcPos,iName,lItems,iInheritsFrom,
+
+    nCodeBlock,                iParent,iNext,vSrcPos,lLocals,vLocalsSize,lItems,iReturnType,
+    nVar,nVarReadOnly,         iParent,iNext,vSrcPos,iName,vOffset,iType,iValue,
+    nVarByRef,                 iParent,iNext,vSrcPos,iName,vOffset,iType,
+    nThis,                     iParent,iNext,vOffset,iType,
+
+    nSCall,nFCall,             iParent,iNext,vSrcPos,lArguments,iTarget,
+    nVCall,nICall,             iParent,iNext,vSrcPos,lArguments,iTarget,iSubject,
+    nCallArg,                  iParent,iNext,vSrcPos,iValue,iType,
+
+    nCast,                     iParent,iNext,vSrcPos,iSubject,iType,
+    nAddressOf,nDereference,   iParent,iNext,vSrcPos,iSubject,iReturnType,
+    nArrayIndex,               iParent,iNext,vSrcPos,iSubject,lItems,iType,
+    nField,                    iParent,iNext,vSrcPos,iSubject,iTarget,
+
+    nAssign,                   iParent,iNext,vSrcPos,vOperator,iTarget,iValue,
+    nUnaryOp,                  iParent,iNext,vSrcPos,vOperator,iRight,iReturnType,
+    nBinaryOp,                 iParent,iNext,vSrcPos,vOperator,iLeft,iRight,iReturnType,
+    nSelection,                iParent,iNext,vSrcPos,iPredicate,iDoTrue,iDoFalse,iReturnType,
+    nIteration,nIterPostEval,  iParent,iNext,vSrcPos,iPredicate,iBody,iReturnType,
+    nRange,                    iParent,iNext,vSrcPos,iName,iLeft,iRight,iReturnType,
+    nRangeIndex,               iParent,iNext,vSrcPos,iLeft,iRight,
+
+    nTry,                      iParent,iNext,vSrcPos,
+    nThrow,                    iParent,iNext,vSrcPos,iSubject,
+    nDefer,                    iParent,iNext,vSrcPos,lItems,
+    nCatch,                    iParent,iNext,vSrcPos,lTypes,iTarget,iBody,
+
+    n_TypeNr_Low);
+
 var
-  xTypeDefX:array[n_Item_Low..n_Item_High] of integer;
+  xTypeDefX:array[n_TypeNr_Low..n_TypeNr_High] of cardinal;
 
 const
   StratoSphereFileMarker=$00727453;//'Str'#0 see pHeader below
 
 type
-  TStratoFileHeader=record
+  TStratoStoreHeader=record
     FileMarker:cardinal;
     FileVersion:cardinal;
-    BlockCount:cardinal;
-    Reserved1:cardinal;
-  end;
-  TStratoBlockHeader=record
-    Reserved1:cardinal;
-    ItemCount:cardinal;
-    SourceFile:xItem;
-    ContinueBlockIdx:cardinal;
+    SourceFilesCount:cardinal;
+    BlocksCount:cardinal;
   end;
 
 implementation
 
 uses SysUtils;
 
-{$D-}
-{$L-}
-
+{$IFDEF DEBUG}
 procedure StratoCheckTypeNrs;
 var
-  i,j,k,n,m:cardinal;
+  i,j,k:cardinal;
 begin
   i:=0;
   while i<xTypeDefLen do
    begin
     j:=i+1;
     while (j<xTypeDefLen) and (xTypeDef[j]>f_FieldsMax) do inc(j);
-    k:=j;
-    n:=$0200;
-    m:=$0400;
-    while (k<xTypeDefLen) and (xTypeDef[k]<f_FieldsMax) do
+    k:=j+1;
+    while (k<xTypeDefLen) and (xTypeDef[k]<f_FieldsMax) do inc(k);
+    while (i<>j) do
      begin
-      if xTypeDef[k]<v_IntegerFields then m:=m or n;
-      n:=n shr 1;
-      inc(k);
+      if (xTypeDef[i] div n_TypeNr_Base)<>(k-j) then
+        raise Exception.CreateFmt('Type Length mismatch %d:%d',
+          [xTypeDef[i],k-j]);
+      inc(i);
      end;
-    m:=m or ((k-j+1) shl 12);
-
-    if ((cardinal(xTypeDef[i]) shr 12)<>m) and (i<>xTypeDefLen-1) then
-      raise Exception.CreateFmt('Flags mismatch: %.7x %.4x',[cardinal(xTypeDef[i]),m]);
-      
-    inc(i);
-    if i=j then
-     begin
-      while (j<xTypeDefLen) and (xTypeDef[j]<f_FieldsMax) do inc(j);
-      i:=j;
-     end;
+    i:=k;
    end;
 end;
+{$ENDIF}
 
 procedure StratoBuildTypeDefX;
 var
-  i,j:integer;
+  i,j:cardinal;
 begin
   {$IFDEF DEBUG}
   StratoCheckTypeNrs;

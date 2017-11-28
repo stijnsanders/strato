@@ -22,6 +22,7 @@ object frmDebugView: TfrmDebugView
     Height = 528
     ActivePage = txContext
     Align = alClient
+    TabIndex = 0
     TabOrder = 0
     object txContext: TTabSheet
       BorderWidth = 4
@@ -62,19 +63,22 @@ object frmDebugView: TfrmDebugView
         Anchors = [akLeft, akTop, akRight, akBottom]
         BevelOuter = bvNone
         TabOrder = 0
+        OnResize = Panel1Resize
         object Splitter1: TSplitter
           Left = 0
-          Top = 145
+          Top = 120
           Width = 608
           Height = 4
           Cursor = crVSplit
           Align = alTop
+          ResizeStyle = rsUpdate
+          OnMoved = Splitter1Moved
         end
         object lvMem: TListView
           Left = 0
-          Top = 149
+          Top = 124
           Width = 608
-          Height = 92
+          Height = 117
           Align = alClient
           Columns = <
             item
@@ -112,7 +116,7 @@ object frmDebugView: TfrmDebugView
           Left = 0
           Top = 0
           Width = 608
-          Height = 145
+          Height = 120
           Align = alTop
           Columns = <
             item
@@ -227,8 +231,8 @@ object frmDebugView: TfrmDebugView
       object lvStackTrace: TListView
         Left = 0
         Top = 0
-        Width = 609
-        Height = 493
+        Width = 608
+        Height = 492
         Align = alClient
         Columns = <
           item
@@ -291,8 +295,8 @@ object frmDebugView: TfrmDebugView
       object lvTrail: TListView
         Left = 0
         Top = 0
-        Width = 609
-        Height = 493
+        Width = 608
+        Height = 492
         Align = alClient
         Columns = <
           item

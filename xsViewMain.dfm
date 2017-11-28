@@ -74,13 +74,6 @@ object frmXsViewMain: TfrmXsViewMain
     BevelOuter = bvNone
     TabOrder = 2
     Visible = False
-    object lblDictName: TLabel
-      Left = 248
-      Top = 12
-      Width = 103
-      Height = 14
-      Caption = '(from dictionary)'
-    end
     object txtGoTo: TEdit
       Left = 8
       Top = 8
@@ -98,15 +91,6 @@ object frmXsViewMain: TfrmXsViewMain
       Caption = 'Go To'
       TabOrder = 1
       OnClick = btnGoToClick
-    end
-    object txtDictLookup: TEdit
-      Left = 168
-      Top = 8
-      Width = 73
-      Height = 25
-      AutoSize = False
-      TabOrder = 2
-      OnKeyPress = txtDictLookupKeyPress
     end
   end
   object txtSourceView: TMemo
@@ -158,11 +142,6 @@ object frmXsViewMain: TfrmXsViewMain
         Caption = '&Go To...'
         ShortCut = 16455
         OnClick = GoTo1Click
-      end
-      object Dictionarylookup1: TMenuItem
-        Caption = '&Dictionary lookup...'
-        ShortCut = 16452
-        OnClick = Dictionarylookup1Click
       end
     end
   end
