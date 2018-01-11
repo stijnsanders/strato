@@ -16,13 +16,7 @@ Selection is so important I would propose to have it everywhere, which saves us 
 
 I personally like 'case' or 'switch', but I'd like to keep this first version straight-forward to get things going, and might introduce something like this in a later version.
 
-Iteration is something I don't propose to infer only from code, so I assign it a character: `&`. Followed by a boolean-expression and a statement or code block, which would work like a while-loop. Or the other way round, with the statement up front, and get a repeat-until-loop or do-while-loop. Most langauges offer a 'for' structure, but in practice there are two extra statements, one that is executed once before the loop starts (i=0), and one that is executed before each evaluation of the boolean expression (i++), so I propose an advanced structure:
-
-	& ( Statement BooleanExpression Statement ) Statement
-
-And a code block also counts as a statement, so I image I might see code like this one day:
-
-	&({BuildRequest;WriteRequest;}Line==EndOfMessage{Line:=ReadLine;}){ProcessResponseLine;}
+Iteration is something I don't propose to infer only from code, so I assign it a specific operator: `##`. Used unary it can prefix an expression that evaluates to a boolean value or a value of type range, for example using the range operator: `..` between to integer values. Used binary, it will use the variable addressed on the left to iterate over the range from the expression on the right. In both cases this will repeat the statement or code block that follows it. Used without operands, but preceding a statement or code-block followed by a boolean expression will do iteration with post-evaluation.
 
 Exception handling in its basic form comes down to indicating which code to execute when something gets thrown, optionally depending on this something. Write `:::` to denote where to start catching exceptions from (try) and `???` followed by a code block that will handle them (catch). Or `???(e:x)` to handle only exceptions of type x. Write `!!!` to throw an exception, or to re-throw the exception from a exception-handling-block.
 
@@ -120,7 +114,7 @@ To define a destructor, write `-`, the class name, `(`, `)`, `{` for the code bl
 	CodeBlockX
 		{ Statement* Expression }
 	LocalVariable
-	  : Identifier
+		: Identifier
 		: Identifier : Type
 
 	Selection
@@ -129,13 +123,9 @@ To define a destructor, write `-`, the class name, `(`, `)`, `{` for the code bl
 		(){}{}
 
 	Iteration
-		& [Expression:bool] Statement [Expression:bool]
-		& ( [Expression;] Expression:bool [; Expression]) Statement
-		&();
-		&{}()
-		&(;;){}
-		&({}{}){}
-		&(Identifier [ : Identifier ] Identifier){}
+		## [Expression:bool] Statement
+		## [Expression:range] Statement
+		Identifier ## Expression:range Statement
 
 	Operator:
 		namespace . Identifier
