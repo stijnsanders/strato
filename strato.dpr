@@ -143,7 +143,7 @@ try
           //run-time
           if DoRunTime then
            begin
-            LastFN:=ResolveKnownPath('$compiler\Strato.xs');
+            LastFN:=ResolveKnownPath('$compiler\strato.xso');
             s:=TStratoSource.Create;
             try
               s.LoadFromFile(LastFN);
