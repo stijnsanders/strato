@@ -2,8 +2,8 @@ unit stratoFn;
 
 interface
 
-{xxxx$D-}
-{xxxx$L-}
+{$D-}
+{$L-}
 
 uses stratoDecl, stratoSphere, stratoParse;
 

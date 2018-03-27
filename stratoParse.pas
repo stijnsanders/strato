@@ -2127,12 +2127,9 @@ end;
 
 procedure TStratoParser.Combine(zz:TPrecedence;var p:rItem;var pt:rItem);
 begin
-  while Peek>zz do
-   begin
-    stackPushed:=false;
+  stackPushed:=false;
+  while not(stackPushed) and (Peek>zz) do
     CombineTop(p,pt);
-    if stackPushed then break;//detect new Push
-   end;
 end;
 
 procedure TStratoParser.CombineTop(var p:rItem;var pt:rItem);
@@ -2230,6 +2227,12 @@ begin
           ]),xxr(0),SrcPos);
         //TODO: more checks on nRangeIndex?
        end
+      else if p.x=0 then
+       begin
+        if p1.x<>0 then
+          Source.Error('unexpected iterator for iteration without predicate');
+        Push(pIterationZ,xxr(0),xxr(0),SrcPos);
+       end
       else
         Push(pIterationY,Add(nIterPostEval,
           [iParent,cb.x
@@ -2258,6 +2261,20 @@ begin
         p:=p1;
         //pt:=pt;//pt:=p1.s(iReturnT
        end;
+    pIterationZ:
+     begin
+      if p1.x<>0 then
+        Source.Error('unexpected iterator for iteration with boolean predicate');
+      Push(pIterationY,Add(nIteration,
+        [iParent,cb.x
+        ,vSrcPos,SrcPos
+        ,iPredicate,p.x
+        //,iBody,//see pIterationY
+        //,iReturnType,//see pIterationY
+        ]),xxr(0),SrcPos);
+      p.x:=0;
+      pt.x:=0;
+     end;
 
     //nUnaryOp
     pUnary:
@@ -2441,7 +2458,7 @@ begin
   if p.x<>0 then
    begin
     Combine(p_Juxta,p,pt);
-    if SameType(pt,IntrinsicType(itBoolean)) then
+    if SameType(pt,IntrinsicType(itBoolean)) and (Peek<>pIterationY) then
       Push(pIfThen,p,pt,Source.SrcPos)
     else
       if p.x<>0 then
@@ -2674,7 +2691,7 @@ begin
         Pop(z,p1,p2,SrcPos);
         if p1.x=0 then
          begin
-          if SameType(pt,IntrinsicType(itBoolean)) then
+          if SameType(pt,IntrinsicType(itBoolean)) and (Peek<>pIterationZ) then
            begin
             //See also Juxta()
             Push(pIfThen,p,pt,SrcPos);

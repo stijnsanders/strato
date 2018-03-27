@@ -17,7 +17,7 @@ type
 
       p_Juxta,
 
-    pIterationX,pIterationY,
+    pIterationX,pIterationY,pIterationZ,
     pIfThen,pIfElse,
     
     pRange,
