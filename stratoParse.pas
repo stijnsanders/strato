@@ -2670,10 +2670,10 @@ begin
     stPOpen://"("
      begin
       SrcPos:=Source.SrcPos;
+      //see also Juxta()
       Combine(p_Juxta,p,pt);
-      if SameType(pt,IntrinsicType(itBoolean)) then
+      if SameType(pt,IntrinsicType(itBoolean)) and (Peek<>pIterationY) then
        begin
-        //see also Juxta()
         Push(pIfThen,p,pt,SrcPos);
         p.x:=0;
         pt.x:=0;
