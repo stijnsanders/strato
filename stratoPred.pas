@@ -15,11 +15,11 @@ type
     pUnTypedVar,
     pAssign,
 
-      p_Juxta,
-
     pIterationX,pIterationY,pIterationZ,
     pIfThen,pIfElse,
-    
+
+      p_Juxta,
+
     pRange,
     pCast,
     pLogicalOr,

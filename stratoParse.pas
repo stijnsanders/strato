@@ -98,8 +98,8 @@ type
 
     procedure LookUpLogic(nx:xName;var p:rItem;var pt:rItem;SrcPos:xSrcPos);
 
-    procedure CombineTop(var p:rItem;var pt:rItem);
-    procedure Combine(zz:TPrecedence;var p:rItem;var pt:rItem);
+    function CombineTop(var p:rItem;var pt:rItem):xSrcPos;
+    function Combine(zz:TPrecedence;var p:rItem;var pt:rItem):xSrcPos;
     procedure Juxta(var p:rItem;var pt:rItem);
     procedure PushUnary(st:TStratoToken;var p:rItem;var pt:rItem);
     procedure PushBinary(pr:TPrecedence;st:TStratoToken;var p:rItem;
@@ -2125,14 +2125,15 @@ begin
       ]);
 end;
 
-procedure TStratoParser.Combine(zz:TPrecedence;var p:rItem;var pt:rItem);
+function TStratoParser.Combine(zz:TPrecedence;var p:rItem;var pt:rItem):xSrcPos;
 begin
+  Result:=Source.SrcPos;//default
   stackPushed:=false;
   while not(stackPushed) and (Peek>zz) do
-    CombineTop(p,pt);
+    Result:=CombineTop(p,pt);
 end;
 
-procedure TStratoParser.CombineTop(var p:rItem;var pt:rItem);
+function TStratoParser.CombineTop(var p:rItem;var pt:rItem):xSrcPos;
 var
   z:TPrecedence;
   p1,p2,q1,q2:rItem;
@@ -2140,6 +2141,7 @@ var
 begin
   //IMPORTANT: don't call Push from within CombineTop!
   Pop(z,p1,p2,SrcPos);
+  Result:=SrcPos;
   case z of
 
     pCodeBlock:
@@ -2194,17 +2196,17 @@ begin
     //nIteration,nIterPostEval
     pIterationX:
      begin
-      //assert Peek=pIterationY
+      //assert Peek=pIterationZ
       if SameType(pt,IntrinsicType(itBoolean)) then
        begin
         if p1.x<>0 then
           Source.Error('unexpected iterator for iteration with boolean predicate');
-        Push(pIterationY,Add(nIteration,
+        Push(pIterationZ,Add(nIteration,
           [iParent,cb.x
           ,vSrcPos,SrcPos
           ,iPredicate,p.x
-          //,iBody,//see pIterationY
-          //,iReturnType,//see pIterationY
+          //,iBody,//see pIterationZ
+          //,iReturnType,//see pIterationZ
           ]),xxr(0),SrcPos);
        end
       else if p.NodeType=nRange then
@@ -2215,7 +2217,7 @@ begin
           q1.s(iType,pt);//assert q1=p1
           q1.s(vOffset,cb.a(vByteSize,ByteSize(pt)));
          end;
-        Push(pIterationY,Add(nIteration,
+        Push(pIterationZ,Add(nIteration,
           [iParent,cb.x
           ,vSrcPos,SrcPos
           ,iPredicate,Add(nRangeIndex,
@@ -2231,13 +2233,13 @@ begin
        begin
         if p1.x<>0 then
           Source.Error('unexpected iterator for iteration without predicate');
-        Push(pIterationZ,xxr(0),xxr(0),SrcPos);
+        Push(pIterationY,xxr(0),xxr(0),SrcPos);
        end
       else
-        Push(pIterationY,Add(nIterPostEval,
+        Push(pIterationZ,Add(nIterPostEval,
           [iParent,cb.x
           ,vSrcPos,SrcPos
-          //,iPredicate,//see pIterationY
+          //,iPredicate,//see pIterationZ
           ,iBody,p.x
           ,iReturnType,pt.x
           ]),xxr(0),SrcPos);
@@ -2245,6 +2247,20 @@ begin
       pt.x:=0;
      end;
     pIterationY:
+     begin
+      if p1.x<>0 then
+        Source.Error('unexpected iterator for iteration with boolean predicate');
+      Push(pIterationZ,Add(nIteration,
+        [iParent,cb.x
+        ,vSrcPos,SrcPos
+        ,iPredicate,p.x
+        //,iBody,//see pIterationZ
+        //,iReturnType,//see pIterationZ
+        ]),xxr(0),SrcPos);
+      p.x:=0;
+      pt.x:=0;
+     end;
+    pIterationZ:
       if p1.NodeType=nIterPostEval then
        begin
         if SameType(pt,IntrinsicType(itBoolean)) then
@@ -2261,20 +2277,6 @@ begin
         p:=p1;
         //pt:=pt;//pt:=p1.s(iReturnT
        end;
-    pIterationZ:
-     begin
-      if p1.x<>0 then
-        Source.Error('unexpected iterator for iteration with boolean predicate');
-      Push(pIterationY,Add(nIteration,
-        [iParent,cb.x
-        ,vSrcPos,SrcPos
-        ,iPredicate,p.x
-        //,iBody,//see pIterationY
-        //,iReturnType,//see pIterationY
-        ]),xxr(0),SrcPos);
-      p.x:=0;
-      pt.x:=0;
-     end;
 
     //nUnaryOp
     pUnary:
@@ -2454,15 +2456,23 @@ begin
 end;
 
 procedure TStratoParser.Juxta(var p:rItem; var pt:rItem);
+var
+  SrcPos:xSrcPos;
 begin
   if p.x<>0 then
    begin
-    Combine(p_Juxta,p,pt);
-    if SameType(pt,IntrinsicType(itBoolean)) and (Peek<>pIterationY) then
-      Push(pIfThen,p,pt,Source.SrcPos)
-    else
-      if p.x<>0 then
-        Source.Error('missing operator or semicolon');
+    SrcPos:=Combine(p_Juxta,p,pt);
+    case Peek of
+      pIfThen,pIterationX:
+        CombineTop(p,pt);
+      pIterationZ:
+        CombineTop(p,pt);//????
+      else
+        if SameType(pt,IntrinsicType(itBoolean)) then
+          Push(pIfThen,p,pt,SrcPos)
+        else
+          Source.Error('missing operator or semicolon');
+    end;
     p.x:=0;
     pt.x:=0;
    end;
@@ -2669,15 +2679,15 @@ begin
 
     stPOpen://"("
      begin
-      SrcPos:=Source.SrcPos;
       //see also Juxta()
-      Combine(p_Juxta,p,pt);
-      if SameType(pt,IntrinsicType(itBoolean)) and (Peek<>pIterationY) then
-       begin
-        Push(pIfThen,p,pt,SrcPos);
-        p.x:=0;
-        pt.x:=0;
-       end;
+      SrcPos:=Combine(p_Juxta,p,pt);
+      if Peek<>pIterationZ then
+        if SameType(pt,IntrinsicType(itBoolean)) then
+         begin
+          Push(pIfThen,p,pt,SrcPos);
+          p.x:=0;
+          pt.x:=0;
+         end;
       Push(pParentheses,p,xxr(0),SrcPos);
       p.x:=0;
       pt.x:=0;
@@ -2691,16 +2701,17 @@ begin
         Pop(z,p1,p2,SrcPos);
         if p1.x=0 then
          begin
-          if SameType(pt,IntrinsicType(itBoolean)) and (Peek<>pIterationZ) then
-           begin
-            //See also Juxta()
-            Push(pIfThen,p,pt,SrcPos);
-            p.x:=0;
-            pt.x:=0;
-           end
-          else
-            if Peek in [pIfThen,pIfElse] then
-              CombineTop(p,pt);
+          if Peek<>pIterationY then
+            if SameType(pt,IntrinsicType(itBoolean)) then
+             begin
+              //See also Juxta()
+              Push(pIfThen,p,pt,SrcPos);
+              p.x:=0;
+              pt.x:=0;
+             end
+            else
+              if Peek in [pIfThen,pIfElse] then
+                CombineTop(p,pt);
          end
         else
          begin
