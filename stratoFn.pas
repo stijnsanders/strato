@@ -144,8 +144,9 @@ var
 begin
   if Value.x<>0 then
    begin
-    p:=Parser.Add(nCallArg, //iParent: see StratoFnCallBySignature
+    p:=Parser.Add(nCallArg,
       [vSrcPos,SrcPos
+      //,iParent: see StratoFnCallBySignature
       ,iValue,Value.x
       ,iType,ValueType.x
       ]);
@@ -403,7 +404,7 @@ begin
           [iParent,Parent.x
           ,vSrcPos,SrcPos
           ,iSubject,Subject.x
-          ,lItems,Arguments.x
+          ,lArguments,Arguments.x
           ,iType,FnResType.x
           ]);
        end;
@@ -413,10 +414,13 @@ begin
   //set arguments parent
   ListFirst(FnCall,lArguments,p,p0);
   while p.x<>0 do
-   begin
-    p.s(iParent,FnCall);//assert was 0
-    ListNext(p,p0);
-   end;
+    if p.NodeType=nCallArg then
+     begin
+      p.s(iParent,FnCall);//assert was 0
+      ListNext(p,p0);
+     end
+    else
+      p.x:=0;//Source.Error?
 end;
 
 function StratoFnCallFindVirtual(FnCall,SubjectType:rItem;
@@ -437,7 +441,7 @@ begin
      begin
       //instance? get instance class
       xp:=pointer(SubjectData^);
-      dec(cardinal(xp),SystemWordSize);//assert object._baseclass offset -4
+      dec(xValue(xp),SystemWordSize);//assert object._baseclass offset -4
       q.x:=PxValue(xp)^;
      end;
   end;
@@ -557,7 +561,7 @@ begin
       ]);
     //assert SameType(p.r(iType),q.r(iType))
     ListNext(p,p0);
-    ListNext(q,xxr(0));
+    ListNext(q,xx0);
    end;
   //if (p.x<>0) and (q.x=0) then raise?error?
 end;

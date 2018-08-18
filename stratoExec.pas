@@ -2,11 +2,15 @@ unit stratoExec;
 
 interface
 
-uses SysUtils, stratoDecl, stratoSphere, stratoDebug, stratoDebugView;
+uses SysUtils, ComCtrls, stratoDecl, stratoSphere, stratoDebug, stratoDebugView;
+
+const
+  MaxResolveCB=8;
 
 type
   TStratoMachine=class(TObject)
   private
+    stackBase,stackTop,//TODO: 'TStratoTread'?
     FMem,FMemPastGlobals,FMemIndex:pointer;
     FMemSize:cardinal;
     FGlobals:array of record Item:rItem; ByteSize:cardinal; end;
@@ -17,6 +21,14 @@ type
     procedure Perform(Entry:rItem);
     procedure LiteralToMemory(p:rItem;ptr:pointer);
     procedure PerformSysCall(Fn:rItem;Data:pointer);
+  protected
+    //used by FDebugView
+    resolveCB:array[0..MaxResolveCB-1] of record
+      cb:rItem;
+      cp,cq,_reserved1:pointer;
+    end;
+    procedure lvStackData(Sender: TObject; li: TListItem);
+    procedure lvMemData(Sender: TObject; li: TListItem);
   public
     constructor Create(DoDebug:boolean=false);
     destructor Destroy; override;
@@ -25,7 +37,7 @@ type
 
 implementation
 
-uses Windows, stratoFn, stratoTokenizer, ComCtrls, stratoLogic, stratoParse,
+uses Windows, CommCtrl, stratoFn, stratoTokenizer, stratoLogic, stratoParse,
   stratoTools;
 
 const
@@ -47,6 +59,11 @@ type
 }
 {$ENDIF}
 
+procedure pAlign(var p:pointer); inline;
+begin
+  inc(xValue(p),xValue(p) xor (SystemWordSize-1));
+end;
+
 { TStratoMachine }
 
 constructor TStratoMachine.Create(DoDebug:boolean);
@@ -62,7 +79,11 @@ begin
   FData:=TStratoParser.Create(nil,false);
   //TODO: restore previous position
   if DoDebug then
-    FDebugView:=TfrmDebugView.Create(nil)
+   begin
+    FDebugView:=TfrmDebugView.Create(nil);
+    FDebugView.lvStack.OnData:=lvStackData;
+    FDebugView.lvMem.OnData:=lvMemData;
+   end
   else
     FDebugView:=nil;
 end;
@@ -112,11 +133,13 @@ begin
       p2:=p1.r(iValue);
       if p2.x<>0 then LiteralToMemory(p2,FMemPastGlobals); //else zeroes?
       inc(xValue(FMemPastGlobals),bs);
+      pAlign(FMemPastGlobals);
       ListNext(p,p0);
      end;
    end;
 
-  FMemIndex:=FMemPastGlobals;//TODO: plus margin? 
+  //TODO: plus margin?
+  FMemIndex:=FMemPastGlobals;
 
   //TODO: halt on unhandled exception?
   //TODO: re-construct correct order based on dependencies?
@@ -140,60 +163,56 @@ begin
   if FDebugView<>nil then FDebugView.Done;
 end;
 
-type
-  qItem=type xItem;
-
 procedure TStratoMachine.Perform(Entry:rItem);
-var
-  stackBase,stackTop:pointer;
+
   procedure Push(i:cardinal); overload;
   begin
-    if cardinal(stackTop)>=cardinal(stackBase)+InitialStackSize then
+    if xValue(stackTop)>=xValue(stackBase)+InitialStackSize then
       raise Exception.Create('Stack overflow');//TODO: Throw
     Move(i,stackTop^,SystemWordSize);
-    inc(cardinal(stackTop),SystemWordSize);
+    inc(xValue(stackTop),SystemWordSize);
   end;
   procedure Push(p:pointer); overload;
   begin
-    if cardinal(stackTop)>=cardinal(stackBase)+InitialStackSize then
+    if xValue(stackTop)>=xValue(stackBase)+InitialStackSize then
       raise Exception.Create('Stack overflow');//TODO: Throw
     Move(p,stackTop^,SystemWordSize);
-    inc(cardinal(stackTop),SystemWordSize);
+    inc(xValue(stackTop),SystemWordSize);
   end;
   procedure Push(q:rItem); overload;
   begin
-    if cardinal(stackTop)+1>=cardinal(stackBase)+InitialStackSize then
+    if xValue(stackTop)+1>=xValue(stackBase)+InitialStackSize then
       raise Exception.Create('Stack overflow');//TODO: Throw
     Move(q,stackTop^,SystemWordSize);
-    inc(cardinal(stackTop),SystemWordSize);
+    inc(xValue(stackTop),SystemWordSize);
   end;
   procedure ReserveStack(s:cardinal);
   begin
     //ATTENTION: caller must prevent natural popping from the reserved memory
-    if cardinal(stackTop)+s>=cardinal(stackBase)+InitialStackSize then
+    if xValue(stackTop)+s>=xValue(stackBase)+InitialStackSize then
       raise Exception.Create('Stack overflow');//TODO: Throw
     ZeroMemory(stackTop,s);//?
-    inc(cardinal(stackTop),s);
+    inc(xValue(stackTop),s);
   end;
   procedure Pop(var i:cardinal); overload;
   begin
     if stackTop=stackBase then
       raise Exception.Create('Stack underflow');//TODO: Throw
-    dec(cardinal(stackTop),SystemWordSize);
+    dec(xValue(stackTop),SystemWordSize);
     Move(stackTop^,i,SystemWordSize);
   end;
   procedure Pop(var p:pointer); overload;
   begin
     if stackTop=stackBase then
       raise Exception.Create('Stack underflow');//TODO: Throw
-    dec(cardinal(stackTop),SystemWordSize);
+    dec(xValue(stackTop),SystemWordSize);
     Move(stackTop^,p,SystemWordSize);
   end;
   procedure Pop(var q:rItem); overload;
   begin
     if stackTop=stackBase then
       raise Exception.Create('Stack underflow');//TODO: Throw
-    dec(cardinal(stackTop),SystemWordSize);
+    dec(xValue(stackTop),SystemWordSize);
     Move(stackTop^,q,SystemWordSize);
   end;
 
@@ -201,30 +220,15 @@ var
   begin
     if x=stackBase then
       raise Exception.Create('Stack underflow');//TODO: Throw
-    dec(cardinal(x),SystemWordSize);
+    dec(xValue(x),SystemWordSize);
     Move(x^,p,SystemWordSize);
   end;
   procedure Peek(var x:pointer;var p:pointer); overload;
   begin
     if x=stackBase then
       raise Exception.Create('Stack underflow');//TODO: Throw
-    dec(cardinal(x),SystemWordSize);
+    dec(xValue(x),SystemWordSize);
     Move(x^,p,SystemWordSize);
-  end;
-
-  function PtrToStr(p:pointer):string;
-  begin
-    Result:=Format('$%.8x',[cardinal(p)]);
-  end;
-  function ItemToStrX(p:xValue):string;
-  begin
-    if p<200 then
-      Result:=IntToStr(p)
-    else
-    if p>=BlocksCount * StratoSphereBlockBase then
-      Result:=Format('$%.8x',[p])
-    else
-      Result:=ItemToStr(xxr(p));
   end;
 
 var
@@ -279,14 +283,11 @@ var
   end;
 
   function RefreshDebugView: boolean;
-  const
-    MaxResolveCB=8;
   var
-    li,li1:TListItem;
-    p,q:pointer;
-    cp0:array[0..MaxResolveCB-1] of pointer;
-    p1,q1,q2,cv,cv0:rItem;
-    sx,sy,ii,j,cpX:cardinal;
+    li:TListItem;
+    p:pointer;
+    p1,q1,q2:rItem;
+    i,sx,sy:cardinal;
   begin
     //TODO: move this to other unit
     inc(OpCount);
@@ -315,134 +316,50 @@ var
     Result:=false;
     if (FDebugView<>nil) and (FDebugView.CheckBreakPoint(ip)) then
      begin
-      li:=nil;//default;
-      FDebugView.lvStack.Items.BeginUpdate;
-      try
-        FDebugView.lvStack.Items.Clear;
-        //TODO: work up stack to list cb's first, then resolve local var names (new column)
-        p:=stackBase;
-        cpX:=0;
-        for j:=0 to MaxResolveCB-1 do cp0[j]:=nil;
-        cv.x:=0;
-        while cardinal(p)<cardinal(stackTop) do
-         begin
-          li:=FDebugView.lvStack.Items.Add;
-          li.Caption:=PtrToStr(p);
-          p1.x:=PCardinal(p)^;
-          li.SubItems.Add(ItemToStrX(p1.x));
-          if cv.x=0 then
-            if (p1.x<200) or (p1.x>=BlocksCount * StratoSphereBlockBase) then
-              li.SubItems.Add('')
-            else
-             begin
-              if p1.NodeType=nCodeBlock then
-               begin
-                q:=pointer(PxValue(cardinal(p)-SystemWordSize)^);
-                j:=0;
-                while (j<>MaxResolveCB) and (cp0[j]<>q) do inc(j);
-               end
-              else
-                j:=MaxResolveCB;
-              try
-                if j<>MaxResolveCB then
-                 begin
-                  cp0[cpX]:=pointer(cardinal(p)+SystemWordSize);
-                  ListFirst(p1,lLocals,cv,cv0);
-                  if cv.x=0 then
-                   begin
-                    li.SubItems.Add(StratoDumpThing(p1));
-                    inc(cpX);
-                    if cpX=MaxResolveCB then cpX:=0;
-                   end
-                  else
-                    li.SubItems.Add('{ '+StratoDumpThing(p1.r(iParent)));
-                 end
-                else
-                  li.SubItems.Add(StratoDumpThing(p1));
-              except
-                on e:Exception do
-                  li.SubItems.Add('! ['+e.ClassName+']'+e.Message);
-              end;
-             end
-          else
-          if cardinal(cp0[cpX])+cv.v(vOffset)>cardinal(p) then
-            li.SubItems.Add('')
-          else
-           begin
-            ii:=ByteSize(cv);
-            if ii>SystemWordSize*8 then
-             begin
-              li.SubItems.Add(#$85' '+StratoDumpThing(cv)+
-                ' [#'+IntToStr(ii)+']');
-              inc(cardinal(p),ii-SystemWordSize);
-             end
-            else
-              li.SubItems.Add(#$95' '+StratoDumpThing(cv));
-           end;
-          inc(cardinal(p),SystemWordSize);
-          if cv.x<>0 then
-           begin
-            while (cv.x<>0) and (cardinal(cp0[cpX])+cv.v(vOffset)<
-              cardinal(p)) do ListNext(cv,cv0);
-            if cv.x=0 then
-             begin
-              inc(cpX);
-              if cpX=MaxResolveCB then cpX:=0;
-             end;
-           end;
-         end;
 
-        //freshly evaluated literal?
-        if cardinal(vp)=cardinal(stackTop)+SystemWordSize then
-          //and ByteSize(t1)=SystemWordSize?
+      //fill codeblock trace for local variables display
+      i:=0;
+      p:=cp;
+      while i<MaxResolveCB do
+       begin
+        if p=nil then
          begin
-          inc(cardinal(p),SystemWordSize);
-          li1:=FDebugView.lvStack.Items.Add;
-          li1.Caption:=PtrToStr(p)+'*';
-          li1.SubItems.Add(ItemToStrX(PxValue(p)^));
-          li1.SubItems.Add('');
-          //li1.SubItems.Add(ItemToStr(p0));
-          //li1.SubItems.Add(StratoDumpThing(p1));
+          resolveCB[i].cb.x:=0;
+          resolveCB[i].cp:=nil;
+          resolveCB[i].cq:=nil;
          end
         else
-          li1:=li;
-
-      finally
-        FDebugView.lvStack.Items.EndUpdate;
-      end;
-      if li1<>nil then li1.MakeVisible(false);
-      FDebugView.lvStack.Selected:=li;
-
-
-      FDebugView.lvMem.Items.BeginUpdate;
-      try
-        FDebugView.lvMem.Items.Clear;
-        ii:=0;
-        p:=FMem;
-        while (ii<FGlobalsIndex) do
          begin
-          li:=FDebugView.lvMem.Items.Add;
-          li.Caption:=PtrToStr(p);
-          li.SubItems.Add(ItemToStrX(PxValue(p)^));
-          li.SubItems.Add('');
-          li.SubItems.Add(StratoDumpThing(FGlobals[ii].Item));
-          inc(xValue(p),FGlobals[ii].ByteSize);
-          inc(ii);
+          //assert (q>stackBase) and (q<stackTop)
+          resolveCB[i].cp:=p;
+          dec(xValue(p),SystemWordSize);
+          resolveCB[i].cb.x:=PxValue(p)^;
+          if resolveCB[i].cb.NodeType=nCodeBlock then
+           begin
+            //inc(xValue(resolveCB[i].cp),SystemWordSize*8);//???
+            resolveCB[i].cq:=pointer(xValue(resolveCB[i].cp)+resolveCB[i].cb.v(vByteSize));
+            dec(xValue(p),SystemWordSize);
+            p:=PPointer(p)^;
+           end
+          else
+           begin
+            //should not happen: fail? error? message?
+            dec(i);//clear this entry
+            p:=nil;//stop walking up stack
+           end;
          end;
+        inc(i);
+       end;
 
-        while cardinal(p)<cardinal(FMemIndex) do
-         begin
-          //TODO: lookup any vars in locals of codeblocks on stack
-          li:=FDebugView.lvMem.Items.Add;
-          li.Caption:=PtrToStr(p);
-          li.SubItems.Add(ItemToStrX(PxValue(p)^));
-          li.SubItems.Add('');
-          li.SubItems.Add('');
-          inc(xValue(p),SystemWordSize);
-         end;
-      finally
-        FDebugView.lvMem.Items.EndUpdate;
-      end;
+      p:=stackTop;
+      if xValue(vp)>xValue(p) then p:=vp;  //TODO: +ByteSize(vt)?
+
+      i:=(xValue(p)+(SystemWordSize-1)-xValue(stackBase)) div SystemWordSize;
+      FDebugView.lvStack.Items.Count:=i;
+      ListView_EnsureVisible(FDebugView.lvStack.Handle,i-1,false);
+
+      FDebugView.lvMem.Items.Count:=
+        (xValue(FMemIndex)+(SystemWordSize-1)-xValue(FMem)) div SystemWordSize;
 
       FDebugView.txtUpNext.Lines.BeginUpdate;
       try
@@ -457,7 +374,7 @@ var
           FDebugView.txtUpNext.Lines.Add('vp')
         else
           FDebugView.txtUpNext.Lines.Add(Format('vp: $%.8x',
-            [cardinal(vp)]));//,StratoDumpThing(Sphere,p1)]));
+            [xValue(vp)]));//,StratoDumpThing(Sphere,p1)]));
         if vt.x=0 then
           FDebugView.txtUpNext.Lines.Add('vt')
         else
@@ -465,7 +382,7 @@ var
             [ItemToStr(vt),StratoDumpThing(vt)]));
         FDebugView.txtUpNext.Lines.Add(Format(
           'bp: $%.8x, cp: $%.8x, ep: $%.8x, sp: $%.8x',
-          [{cardinal(bp)}0,cardinal(cp),cardinal(ep),cardinal(stackTop)]));
+          [{xValue(bp)}0,xValue(cp),xValue(ep),xValue(stackTop)]));
 {
         if vt<>nil then
          begin
@@ -506,7 +423,8 @@ var
             li.SubItems.Add(StratoDumpThing(p1.rr(iParent,iParent)));//?
             if StratoGetSourceFile(p1,sy,sx,q1,q2) and (sy<>0) then
              begin
-              li.SubItems.Add(BinaryData(xxr(SourceFiles[rSrc(p1)].FileName)));
+              li.SubItems.Add(UTF8ToString(
+                BinaryData(xxr(SourceFiles[rSrc(p1)].FileName))));
               li.SubItems.Add(IntToStr(sx));
               li.SubItems.Add(IntToStr(sy));
              end;
@@ -604,7 +522,7 @@ begin
                end;
 }
               //code-block done (see also StartCB)
-              stackTop:=cp;//dec(cardinal(stackTop),Sphere.n(cb0,vByteSize)^);
+              stackTop:=cp;//dec(xValue(stackTop),Sphere.n(cb0,vByteSize)^);
               Pop(q1);
               Pop(cp);
              end
@@ -673,7 +591,7 @@ begin
                 case p1.NodeType of
 
                   nOverload,nPropGet,nPropSet:
-                    if xxt(p1.rrr(iBody,lLocals,iNext))=nThis then
+                    if p1.rrr(iBody,lLocals,iNext).NodeType=nThis then
                      begin
                       //assert "@@".vOffset=0
                       //TODO: check SameType(t,ResType("@@"?
@@ -742,7 +660,7 @@ begin
                   Push(xp);//new cp after arguments
                   if ipt=nVCall then Push(p1);//nOverload
                   Push(p1.r(iFirstArgVar));
-                  Push(p2);//nArgument
+                  Push(p2);//nCallArg
                   Next(2,p2.r(iValue));
                  end;
                end;  
@@ -753,7 +671,7 @@ begin
 
             2://store argument value
              begin
-              Pop(p2);//nArgument
+              Pop(p2);//nCallArg
               Pop(q2);//nVarDecl
               if ipt=nVCall then Pop(p1) else p1:=ip.r(iTarget);
               Pop(xp);//new cp after arguments
@@ -785,7 +703,7 @@ begin
                 Push(xp);//new cp after arguments
                 if ipt=nVCall then Push(p1);//nOverload
                 Push(q2);//nVarDecl
-                Push(p2);//nArgument
+                Push(p2);//nCallArg
                 Next(2,p2.r(iValue));
                end;
 
@@ -812,13 +730,13 @@ begin
                  begin
                   xp:=cp;
                   Peek(xp,p2);
-                  while xxt(p2.r(iParent))=nCodeBlock do
+                  while p2.r(iParent).NodeType=nCodeBlock do
                    begin
                     Peek(xp,xp);
                     if xp=nil then p2.x:=0 else Peek(xp,p2);
                    end;
                  end;
-                if xxt(p2.r(iParent))=nCtor then
+                if p2.r(iParent).NodeType=nCtor then
                  begin
                   inc(xValue(xp),SystemWordSize);
                   PxValue(xp)^:=PxValue(vp)^;
@@ -934,7 +852,7 @@ begin
                 RunError(ip,'array to index into didn''t resolve');
               Push(vp);
               //TODO: more than one array index
-              Next(2,ip.rr(lItems,iValue));//nArgument
+              Next(2,ip.rr(lArguments,iValue));//nCalArg
              end;
             2://combine
              begin
@@ -942,7 +860,7 @@ begin
 
               //assert vt=IntrinsicType(itNumber)
               vt:=ip.r(iType);
-              vp:=pointer(cardinal(xp)+cardinal(vp^)*ByteSize(vt));
+              vp:=pointer(xValue(xp)+xValue(vp^)*ByteSize(vt));
              end;
           end;
 
@@ -955,6 +873,7 @@ begin
               if vt.x=0 then
                 RunError(ip,'subject didn''t resolve');
               //TODO: check vt and ip.fSubject.fTypeDecl?
+              Push(vt);
               Push(vp);
               Next(2,ip.r(iTarget));
              end;
@@ -962,9 +881,34 @@ begin
              begin
               Pop(xp);
 
-              //TODO: auto-dereference (when? always?)
-              vp:=pointer(cardinal(xp^)+cardinal(vp));
+              //auto-dereferencing
+              //TODO: calculate deference count parse-time?
+              Pop(p2);//subject type
+              while p2.x<>0 do
+               begin
+                p1:=p2;
+                p2.x:=0;//default
+                case p1.NodeType of
+                  nThis:
+                    xp:=pointer(xValue(xp^));//assert p1.r(iType).NodeType=nClass
+                  nVar,nVarReadOnly:
+                    p2:=p1.r(iType);
+                  nVarByRef:
+                   begin
+                    xp:=pointer(xValue(xp^));
+                    p2:=p1.r(iType);
+                   end;
+                  nPointer:
+                   begin
+                    xp:=pointer(xValue(xp^));
+                    p2:=p1.r(iTarget);
+                   end;
+                  nClass:
+                    xp:=pointer(xValue(xp^));
+                end;
+               end;
 
+              vp:=pointer(xValue(xp)+xValue(vp));
               //vt:=vt;//assert same as ip.fSubject
              end;
           end;
@@ -985,25 +929,25 @@ begin
               x:=0;//default
               case TStratoToken(ip.v(vOperator)) of
                 stOpSizeOf,stQuestionMark:
-                  if xxt(ip.r(iRight))=nThis then
+                  if ip.r(iRight).NodeType=nThis then
                    begin
                     if cp=nil then p2.x:=0 else
                      begin
                       xp:=cp;
                       Peek(xp,p2);
-                      while xxt(p2.r(iParent))=nCodeBlock do
+                      while p2.r(iParent).NodeType=nCodeBlock do
                        begin
                         Peek(xp,xp);
                         if xp=nil then p2.x:=0 else Peek(xp,p2);
                        end;
                      end;
-                    if xxt(p2.r(iParent))=nCtor then
+                    if p2.r(iParent).NodeType=nCtor then
                      begin
                       inc(xValue(xp),SystemWordSize*2); //var "?@@"
                       case TStratoToken(ip.v(vOperator)) of
                         stOpSizeOf:
                           PxValue(Volatile(xxr(IntrinsicTypes[itNumber])))^:=
-                            xxv(xxr(PxValue(xp)^),vByteSize);
+                            xxr(PxValue(xp)^).v(vByteSize);
                         stQuestionMark:
                           PxValue(Volatile(xxr(IntrinsicTypes[itNumber])))^:=
                             PxValue(xp)^;
@@ -1234,6 +1178,8 @@ begin
             2://copy value
              begin
               Pop(xp);//pt? assert =vt
+              if xp=nil then
+                raise Exception.Create('nil pointer assignment');//TODO: proper throw
               case TStratoToken(ip.v(vOperator)) of
                 stOpAssign:Move(vp^,xp^,ByteSize(vt));
                 stOpAssignAdd:
@@ -1552,7 +1498,7 @@ begin
     else
      begin
       //TODO: not ParseInteger here, but store(d) binary?
-      i:=ParseInteger(string(BinaryData(p.r(iValue))));
+      i:=ParseInteger(BinaryData(p.r(iValue)));
       Move(i,ptr^,r.v(vByteSize));
      end;
     //else
@@ -1575,12 +1521,12 @@ begin
     1://xinc
      begin
       p:=pointer(Data^);
-      inc(cardinal(p^));
+      inc(xValue(p^));
      end;
     2://xdec
      begin
       p:=pointer(Data^);
-      dec(cardinal(p^));
+      dec(xValue(p^));
      end;
 
     100://malloc
@@ -1588,12 +1534,12 @@ begin
       p:=Data;
       inc(xValue(p),SystemWordSize);
 
-      if cardinal(FMemIndex)-cardinal(FMem)+cardinal(p^)>FMemSize then
+      if xValue(FMemIndex)-xValue(FMem)+xValue(p^)>FMemSize then
         RunError(Fn,'Out of memory')//TODO:throw
       else
        begin
         pointer(Data^):=FMemIndex;
-        inc(xValue(FMemIndex),cardinal(p^));
+        inc(xValue(FMemIndex),xValue(p^));
         //TODO: align?
         //TODO: mark allocated? (see also deallocation)
        end;
@@ -1608,6 +1554,96 @@ begin
     else
       raise Exception.Create('SysCall: unknown key '+IntToStr(i));
   end;
+end;
+
+procedure TStratoMachine.lvStackData(Sender: TObject; li: TListItem);
+var
+  p:pointer;
+  p1,p2,p0:rItem;
+  i:integer;
+begin
+  p:=stackBase;
+  inc(xValue(p),xValue(li.Index)*SystemWordSize);
+
+  if xValue(p)>=xValue(stackTop) then
+   begin
+    li.Caption:=PtrToStr(p)+'^';
+    i:=MaxResolveCB;
+   end
+  else
+   begin
+    li.Caption:=PtrToStr(p);
+    i:=0;
+    while (i<MaxResolveCB) and (xValue(p)<xValue(resolveCB[i].cp)) do inc(i);
+    if xValue(p)>=xValue(resolveCB[i].cq) then i:=MaxResolveCB;
+   end;
+
+  p1.x:=PxValue(p)^;
+  li.SubItems.Add(ItemToStrX(p1.x));
+
+  if i=MaxResolveCB then
+    if (p1.x<200) or (p1.x>=BlocksCount * StratoSphereBlockBase) then
+      li.SubItems.Add('')
+    else
+      if p1.NodeType=nCodeBlock then
+        li.SubItems.Add('{ '+StratoDumpThing(p1.r(iParent)))
+      else
+        li.SubItems.Add(StratoDumpThing(p1))
+  else
+   begin
+    ListFirst(resolveCB[i].cb,lLocals,p1,p0);
+    if p1.x=0 then
+      li.SubItems.Add('')
+    else
+     begin
+      p2:=p1;
+      while (p1.x<>0) and (xValue(resolveCB[i].cp)+p1.v(vOffset)<=xValue(p)) do
+       begin
+        p2:=p1;
+        ListNext(p1,p0);
+       end;
+      if xValue(resolveCB[i].cp)+p2.v(vOffset)+SystemWordSize>xValue(p) then
+        li.SubItems.Add(#$95' '+StratoDumpThing(p2)+
+          ' [#'+IntToStr(i)+']')
+      else
+        li.SubItems.Add(#$85' '+StratoDumpThing(p2));
+     end;
+   end;
+end;
+
+procedure TStratoMachine.lvMemData(Sender: TObject; li: TListItem);
+var
+  p,q:pointer;
+  i:cardinal;
+begin
+  p:=FMem;
+  inc(xValue(p),xValue(li.Index)*SystemWordSize);
+  li.Caption:=PtrToStr(p);
+  li.SubItems.Add(ItemToStrX(PxValue(p)^));
+  if xValue(p)<xValue(FMemPastGlobals) then
+   begin
+    li.SubItems.Add('');
+
+    i:=0;
+    q:=FMem;
+    while (i<FGlobalsIndex) and (xValue(q)<xValue(p)) do
+     begin
+      inc(xValue(q),FGlobals[i].ByteSize);
+      pAlign(q);
+      inc(i);
+     end;
+    if p=q then
+      li.SubItems.Add(StratoDumpThing(FGlobals[i].Item))
+    else
+      li.SubItems.Add('');
+
+   end
+  else
+   begin
+    //TODO: lookup any vars in locals of codeblocks on stack
+    li.SubItems.Add('');
+    li.SubItems.Add('');
+   end;
 end;
 
 end.

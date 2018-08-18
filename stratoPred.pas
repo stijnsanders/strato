@@ -33,6 +33,9 @@ type
     pShift,
     pAddSub,
     pMulDiv,
+
+      p_POpen,
+
     pUnary,pTypeOf,pSizeOf,pAddressOf
   );
 

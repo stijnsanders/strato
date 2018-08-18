@@ -10,13 +10,15 @@ is_palindrome(x:number):bool{
 	:d:number[10];
 	:y:=x;
 	:i:number;
-	&(i:=0;i<10;i++){
+	i:=0;
+	## i<10 {
 		d[i]:=x%10;
 		x:=x/10;
+		i++;
 	}
-	&{i--;}(i<>0&&d[i]==0);
+	##{i--;} i<>0 && d[i]==0;
 	:j:=0;
-	&(i>j&&d[i]==d[j]){
+	## i>j && d[i]==d[j] {
 		i--;
 		j++;
 	}
@@ -28,9 +30,9 @@ is_palindrome(x:number):bool{
 	:b:=999;
 	:c:number;
 	:d:=0;
-	&(a>900 && b>900){
+	## a>900 && b>900 {
 		c:=a*b;
-	  is_palindrome(c)&&c>d d:=c;;
+		is_palindrome(c) && c>d d:=c;;
 		a--;
 		a<b {b--;a:=999;} {}
 	}

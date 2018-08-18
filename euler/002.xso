@@ -16,7 +16,7 @@ do not exceed four million, find the sum of the even-valued terms.
 	:b:=2;
 	:c:=0;
 	:sum:=2;//first even term is the 2 to start with!
-	&(c<4000000){
+	## c<4000000 {
 		c:=a+b;
 		a:=b;
 		b:=c;

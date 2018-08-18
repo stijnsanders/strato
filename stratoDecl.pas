@@ -216,7 +216,7 @@ const
 
     nCast,                     iParent,iNext,vSrcPos,iSubject,iType,
     nAddressOf,nDereference,   iParent,iNext,vSrcPos,iSubject,iReturnType,
-    nArrayIndex,               iParent,iNext,vSrcPos,iSubject,lItems,iType,
+    nArrayIndex,               iParent,iNext,vSrcPos,iSubject,lArguments,iType,
     nField,                    iParent,iNext,vSrcPos,iSubject,iTarget,
 
     nAssign,                   iParent,iNext,vSrcPos,vOperator,iTarget,iValue,

@@ -74,7 +74,7 @@ begin
       if (b<32) or (b>126) then
         Result:=Result+'?'
       else
-        Result:=Result+AnsiChar(b);
+        Result:=Result+char(AnsiChar(b));
    end;
   Result:=Result+'"';
 end;
@@ -165,7 +165,7 @@ begin
       nCast          :d:='cast $3 into $4';
       //nAddressOf     :d:='addr $3 t=$4';
       //nDereference   :d:='dref $3 t=$4';
-      nArrayIndex    :d:='x[]  $3[$4]';
+      nArrayIndex    :d:='x[]  $3[$4] t=$5';
       nField         :d:='x.y  $3.$4';
 
       nAssign        :d:=':=   $4 *3 $5';
@@ -200,15 +200,15 @@ begin
         case d[i-1] of
           '?':
             if d[i]='?' then
-              Result:=Result+FQN(p)
+              Result:=Result+UTF8ToString(FQN(p))
             else
-              Result:=Result+FQN(xxr(ii));
+              Result:=Result+UTF8ToString(FQN(xxr(ii)));
           '$':Result:=Result+ItemToStr(xxr(ii));
           '#':Result:=Format('%s#%d',[Result,ii]);
           '@':Result:=Format('%s@%d',[Result,ii]);
           '*':Result:=Result+TokenName[TStratoToken(ii)];
           'X':Result:=Result+DictKeyToStr(ii);
-          '!':Result:=Result+GetName(ii);
+          '!':Result:=Result+UTF8ToString(GetName(ii));
           //'\':Result:=Result+d[i];
           else
            begin

@@ -1,9 +1,9 @@
 object frmDebugView: TfrmDebugView
   Left = 337
   Top = 165
-  Width = 640
-  Height = 567
   Caption = 'Strato Debug View'
+  ClientHeight = 528
+  ClientWidth = 624
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -11,7 +11,6 @@ object frmDebugView: TfrmDebugView
   Font.Name = 'Lucida Console'
   Font.Style = []
   OldCreateOrder = False
-  Position = poDefaultPosOnly
   OnClose = FormClose
   PixelsPerInch = 96
   TextHeight = 13
@@ -22,14 +21,17 @@ object frmDebugView: TfrmDebugView
     Height = 528
     ActivePage = txContext
     Align = alClient
-    TabIndex = 0
     TabOrder = 0
     object txContext: TTabSheet
       BorderWidth = 4
       Caption = 'Context'
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       DesignSize = (
         608
-        492)
+        491)
       object lblUpNext: TLabel
         Left = 0
         Top = 248
@@ -83,30 +85,23 @@ object frmDebugView: TfrmDebugView
           Columns = <
             item
               Caption = '@'
-              Width = -1
-              WidthType = (
-                -1)
+              Width = 90
             end
             item
               Caption = 'x'
-              Width = -1
-              WidthType = (
-                -1)
+              Width = 90
             end
             item
               Alignment = taRightJustify
               Caption = 'v'
-              Width = -1
-              WidthType = (
-                -1)
+              Width = 90
             end
             item
               Caption = 'What'
-              Width = -1
-              WidthType = (
-                -1)
+              Width = 800
             end>
           HideSelection = False
+          OwnerData = True
           ReadOnly = True
           RowSelect = True
           TabOrder = 1
@@ -121,24 +116,19 @@ object frmDebugView: TfrmDebugView
           Columns = <
             item
               Caption = '#'
-              Width = -1
-              WidthType = (
-                -1)
+              Width = 90
             end
             item
               Alignment = taRightJustify
               Caption = 'ip'
-              Width = -1
-              WidthType = (
-                -1)
+              Width = 90
             end
             item
               Caption = 'What'
-              Width = -1
-              WidthType = (
-                -1)
+              Width = 800
             end>
           HideSelection = False
+          OwnerData = True
           ReadOnly = True
           RowSelect = True
           TabOrder = 0
@@ -228,11 +218,15 @@ object frmDebugView: TfrmDebugView
       BorderWidth = 4
       Caption = 'Trace'
       ImageIndex = 2
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       object lvStackTrace: TListView
         Left = 0
         Top = 0
         Width = 608
-        Height = 492
+        Height = 491
         Align = alClient
         Columns = <
           item
@@ -292,11 +286,15 @@ object frmDebugView: TfrmDebugView
       BorderWidth = 4
       Caption = 'Trail'
       ImageIndex = 1
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       object lvTrail: TListView
         Left = 0
         Top = 0
         Width = 608
-        Height = 492
+        Height = 491
         Align = alClient
         Columns = <
           item

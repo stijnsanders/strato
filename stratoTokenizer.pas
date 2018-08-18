@@ -92,7 +92,7 @@ procedure StratoTokenizeInit(const Code: UTF8string; LineIndex:cardinal;
 procedure StratoTokenizeNext(const Code: UTF8string; LineIndex: cardinal;
   const CurrentToken:TStratoSourceToken; var NextToken:TStratoSourceToken);
 
-function ParseInteger(const lit: string): Int64;
+function ParseInteger(const lit: UTF8String): Int64;
 
 implementation
 
@@ -437,11 +437,11 @@ begin
   //SetLength(Result,ri);
 end;
 
-function ParseInteger(const lit: string): Int64;
+function ParseInteger(const lit: UTF8string): Int64;
 var
   neg:boolean;
   i,l:integer;
-  c:char;
+  c:AnsiChar;
 begin
   i:=1;
   l:=Length(lit);

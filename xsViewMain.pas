@@ -5,7 +5,7 @@ interface
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, ComCtrls, Menus, stratoSphere, ExtCtrls, StdCtrls, ImgList,
-  stratoDecl, AppEvnts;
+  stratoDecl, AppEvnts, System.ImageList;
 
 type
   TXsTreeNode=class(TTreeNode)
@@ -225,7 +225,7 @@ begin
      begin
       src:=@SourceFiles[i];
       if src.FileName=0 then s:='' else
-        s:=BinaryData(xxr(src.FileName));
+        s:=UTF8ToString(BinaryData(xxr(src.FileName)));
 
       n:=TreeView1.Items.AddChild(nil,Format(
         '%s #%d',[s,src.FileSize])) as TXsTreeNode;
@@ -357,10 +357,10 @@ var
   tw:cardinal;
 begin
   inherited;
-  if ParamCount<>0 then LoadFile(ParamStr(1));
   w1:=ClientWidth;
   w2:=txtSourceView.Width;
   tw:=12;
+  if ParamCount<>0 then LoadFile(ParamStr(1));
   txtSourceView.Perform(EM_SETTABSTOPS,1,integer(@tw));
 end;
 
@@ -578,9 +578,9 @@ begin
        end;
       nArrayIndex:
        begin
+        n.JumpIndex:=p.r(iType);
         JumpNode(n,':array=',p.r(iSubject));
-        ListNode(n,':index->',p.r(lItems));
-        //TODO: multiple Indexes?
+        ListNode(n,':index->',p.r(lArguments));
        end;
       nField:
        begin
@@ -778,7 +778,7 @@ begin
   s:=txtGoTo.Text;
   l:=Length(s);
   i:=1;
-  while (i<=l) and (s[i] in ['0'..'9']) do inc(i);
+  while (i<=l) and (AnsiChar(s[i]) in ['0'..'9']) do inc(i);
   if i<=l then
     p.x:=(StrToInt(Copy(s,1,i-1)) * StratoSphereBlockBase)
          +StrToInt(Copy(s,i+1,l-i))
@@ -861,7 +861,8 @@ begin
             FSrcFile:=nil;//in case of error
             //TODO: resolve relative path
             //TODO: cache several?
-            FSrcPath:=ResolveKnownPath(BinaryData(xxr(src.FileName)));
+            FSrcPath:=ResolveKnownPath(UTF8ToString(
+              BinaryData(xxr(src.FileName))));
             //TODO: check signature/timestamp
             txtSourceView.Lines.LoadFromFile(FSrcPath);
             FSrcFile:=src;

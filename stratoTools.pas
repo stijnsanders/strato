@@ -4,6 +4,8 @@ interface
 
 uses stratoDecl, stratoSphere;
 
+function IntToStr8(x:int64):UTF8String;
+
 procedure AddKnownPath(const Key,Path:string);
 
 function AddSourceFile(var Data:PxSourceFile):cardinal;
@@ -22,6 +24,43 @@ function AddBinaryData(src:cardinal;const x:UTF8String):xItem;
 implementation
 
 uses Windows, SysUtils, Classes;
+
+function IntToStr8(x:int64):UTF8String;
+var
+  i,j:integer;
+  c:AnsiChar;
+begin
+  if x=0 then
+    Result:='0'
+  else
+   begin
+    SetLength(Result,24);
+    i:=0;
+    j:=1;
+    if x<0 then
+     begin
+      x:=-x;
+      inc(i);
+      inc(j);
+      Result[i]:='-';
+     end;
+    while x<>0 do
+     begin
+      inc(i);
+      byte(Result[i]):=$30+(x mod 10);
+      x:=x div 10;
+     end;
+    SetLength(Result,i);
+    while j<i do
+     begin
+      c:=Result[j];
+      Result[j]:=Result[i];
+      Result[i]:=c;
+      dec(i);
+      inc(j);
+     end;
+   end;
+end;
 
 const
   SourceFilesGrowStep=32;

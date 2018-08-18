@@ -4,7 +4,8 @@ interface
 
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, StdCtrls, ComCtrls, ExtCtrls, stratoDecl, stratoSphere, ActnList;
+  Dialogs, StdCtrls, ComCtrls, ExtCtrls, stratoDecl, stratoSphere, ActnList,
+  System.Actions;
 
 type
   TfrmDebugView = class(TForm)
@@ -63,11 +64,32 @@ type
     procedure Done;
   end;
 
+function PtrToStr(p:pointer):string;
+function ItemToStrX(p:xValue):string;
+
 implementation
 
 uses Clipbrd, stratoTools;
 
 {$R *.dfm}
+
+function PtrToStr(p:pointer):string;
+begin
+  Result:=Format('$%.8x',[cardinal(p)]);
+end;
+
+function ItemToStrX(p:xValue):string;
+begin
+  if p<200 then
+    Result:=IntToStr(p)
+  else
+  if p>=BlocksCount * StratoSphereBlockBase then
+    Result:=Format('$%.8x',[p])
+  else
+    Result:=ItemToStr(xxr(p));
+end;
+
+{ TfrmDebugView }
 
 procedure TfrmDebugView.FormClose(Sender: TObject;
   var Action: TCloseAction);
@@ -123,17 +145,17 @@ begin
     while (i<=l) do
      begin
       k1:=0;
-      while (i<=l) and (s[i] in ['0'..'9']) do
+      while (i<=l) and (AnsiChar(s[i]) in ['0'..'9']) do
        begin
         k1:=k1*10+(byte(s[i]) and $F);
         inc(i);
        end;
-      if (i<l) and (s[i]<>' ') and (s[i+1] in ['0'..'9']) then
+      if (i<l) and (s[i]<>' ') and (AnsiChar(s[i+1]) in ['0'..'9']) then
        begin
         //assert s[i]=ItemToStrMask[3]
         inc(i);
         k2:=0;
-        while (i<=l) and (s[i] in ['0'..'9']) do
+        while (i<=l) and (AnsiChar(s[i]) in ['0'..'9']) do
          begin
           k2:=k2*10+(byte(s[i]) and $F);
           inc(i);
@@ -148,7 +170,7 @@ begin
         raise Exception.Create('Maximum breakpoints exceeded');
       FBreakAt[j]:=xxr(k1*StratoSphereBlockBase+k2);
       inc(j);
-      while (i<=l) and not(s[i] in ['0'..'9']) do inc(i);
+      while (i<=l) and not(AnsiChar(s[i]) in ['0'..'9']) do inc(i);
      end;
     SetLength(FBreakAt,j);
     if j=0 then
@@ -206,7 +228,8 @@ begin
         FSrc:=cardinal(-1);//in case of error
         //TODO: resolve relative path
         //TODO: cache several?
-        FSrcPath:=ResolveKnownPath(BinaryData(xxr(SourceFiles[Src].FileName)));
+        FSrcPath:=ResolveKnownPath(UTF8ToString(
+          BinaryData(xxr(SourceFiles[Src].FileName))));
         //TODO: check signature/timestamp
         FSrcData.LoadFromFile(FSrcPath);
         FSrc:=Src;

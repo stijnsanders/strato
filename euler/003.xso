@@ -7,6 +7,15 @@ The prime factors of 13195 are 5, 7, 13 and 29.
 What is the largest prime factor of the number 600851475143 ?
 */
 
+//currently only casts of the same byte size is allowed
+u64t={lo,hi:u32};
+u64x(x:number):u64{
+  :r:u64t;
+  r.lo:=x:u32;
+  r.hi:=0:u32;
+  u64x:u64t:=r;
+}
+
 
 pcount=1000;
 {
@@ -26,14 +35,14 @@ pcount=1000;
   primes[0]:=2;
   next[0]:=2;
 
-  &(z<pcount){
+  ## z<pcount {
     x+=2;
     y:=0;
-    &(y<z&&next[y]<>x){
+    ## y<z && next[y]<>x {
       next[y]<x next[y]+=primes[y];;
       next[y]<>x y++;;
     }
-    y==z{
+    y==z {
       primes[y]:=x;
       next[y]:=x;
       z++;
@@ -41,7 +50,8 @@ pcount=1000;
   }
 
   //find largest factor
-  &(x:=pcount-1;x<>0&&a%primes[x]:u64!=0:u64;x--);
+  x:=pcount-1;
+  ## x<>0&&a%u64x(primes[x])!=0:u64 x--;
 
   x==0
     __writeln("no factor found");

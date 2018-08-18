@@ -81,8 +81,8 @@ var
                 else
                 if vt.x=IntrinsicTypes[itNumber] then
                  begin
-                  i:=ParseInteger(string(vv));
-                  vv:=UTF8String(IntToStr(not(i)));
+                  i:=ParseInteger(vv);
+                  vv:=IntToStr8(not(i));
                  end
                 else
                   Parser.Source.Error('unsupported type for ''not''');
@@ -90,24 +90,24 @@ var
                 Parser.Source.Error('unknown unary operator');
             end;
           pSizeOf:
-            vv:=IntToStr(ByteSize(vt));
+            vv:=IntToStr8(ByteSize(vt));
           pMulDiv,pAddSub,pShift,
           pLogicalOr,pLogicalXor,pLogicalAnd,//TODO:
           pBitwiseOr,pBitwiseXor,pBitwiseAnd,
           pEqual,pComparative:
             if vt.x=IntrinsicTypes[itNumber] then
              begin
-              i:=ParseInteger(string(vv));
-              j:=ParseInteger(string(ww));
+              i:=ParseInteger(vv);
+              j:=ParseInteger(ww);
               case v0[1] of
-                '*':vv:=UTF8String(IntToStr(i*j));
-                '/':vv:=UTF8String(IntToStr(i div j));
-                '%':vv:=UTF8String(IntToStr(i mod j));
-                '+':vv:=UTF8String(IntToStr(i+j));
-                '-':vv:=UTF8String(IntToStr(i-j));
-                '&':vv:=UTF8String(IntToStr(i and j));
-                '|':vv:=UTF8String(IntToStr(i or j));
-                'X':vv:=UTF8String(IntToStr(i xor j));
+                '*':vv:=IntToStr8(i *   j);
+                '/':vv:=IntToStr8(i div j);
+                '%':vv:=IntToStr8(i mod j);
+                '+':vv:=IntToStr8(i +   j);
+                '-':vv:=IntToStr8(i -   j);
+                '&':vv:=IntToStr8(i and j);
+                '|':vv:=IntToStr8(i or  j);
+                'X':vv:=IntToStr8(i xor j);
                 '=':
                  begin
                   vt.x:=IntrinsicTypes[itBoolean];
@@ -135,16 +135,16 @@ var
                  end;
                 's':
                   if v0='shl' then
-                    vv:=UTF8String(IntToStr(i shl j))
+                    vv:=IntToStr8(i shl j)
                   else
-                    vv:=UTF8String(IntToStr(i shr j));
+                    vv:=IntToStr8(i shr j);
                 'r':
                   if v0='rol' then
-                    vv:=UTF8String(IntToStr((i shl j) or (i shr (
-                      SystemWordSize*8-j))))
+                    vv:=IntToStr8((i shl j) or (i shr (
+                      SystemWordSize*8-j)))
                   else
-                    vv:=UTF8String(IntToStr((i shr j) or (i shl (
-                      SystemWordSize*8-j))));
+                    vv:=IntToStr8((i shr j) or (i shl (
+                      SystemWordSize*8-j)));
                 else
                   Parser.Source.Error('unknown operator');
               end;
@@ -316,7 +316,7 @@ begin
    begin
     Result.x:=0;
     if vt.x=IntrinsicTypes[itNumber] then
-      NeedValue^:=ParseInteger(string(vv))
+      NeedValue^:=ParseInteger(vv)
     else
      begin
       NeedValue^:=0;//default

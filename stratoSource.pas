@@ -35,6 +35,7 @@ type
     function GetStr: UTF8String;
     function GetStrs: UTF8String;
     procedure Error(const msg: string);
+    procedure ErrorN(const msg: string;const nn: UTF8String);
     function SrcPos: cardinal;
     property FilePath:string read FFilePath;
     property FileSize:cardinal read FFileSize;
@@ -428,6 +429,11 @@ begin
   Writeln(ErrOutput,Format('%s(%d:%d): %s',[FFilePath,x,y,msg]));//Index?
   //raise?
   if @FOnError<>nil then FOnError(Self,x,y,msg);
+end;
+
+procedure TStratoSource.ErrorN(const msg:string;const nn:UTF8String);
+begin
+  Error(msg+' "'+UTF8ToString(nn)+'"');
 end;
 
 function TStratoSource.SrcPos: cardinal;

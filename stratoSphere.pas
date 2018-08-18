@@ -38,7 +38,7 @@ var
 function SourceFile(x:cardinal):PxSourceFile;
 
 type
-  rItem=object
+  rItem=record
     x:xItem;
     function r(Field:xTypeNr):rItem; //reference
     function v(Field:xTypeNr):xValue; //value
@@ -55,9 +55,10 @@ type
 
   EStratoFieldIndexNotFound=class(Exception);
 
+const
+  xx0:rItem=(x:0);
+
 function xxr(x:xItem):rItem;
-function xxv(p:rItem;f:xTypeNr):xValue;
-function xxt(x:rItem):xTypeNr;
 function rSrc(p:rItem):cardinal;
 function ItemToStr(p:rItem):string;
 function BinaryData(p:rItem):UTF8String;
@@ -87,20 +88,9 @@ begin
       [x,SourceFilesCount]);
 end;
 
-function xxr(x:xItem):rItem;
+function xxr(x:xItem):rItem; inline;
 begin
   Result.x:=x;
-end;
-
-//sometimes required to call methods on function returning rItem:
-function xxv(p:rItem;f:xTypeNr):xValue;
-begin
-  Result:=p.v(f);
-end;
-
-function xxt(x:rItem):xTypeNr;
-begin
-  Result:=x.NodeType;
 end;
 
 function rSrc(p:rItem):cardinal;
@@ -217,21 +207,42 @@ end;
 
 function GetName(p:xName):UTF8String;
 var
-  v,j:cardinal;
+  v,i,j,l:cardinal;
   q:rItem;
 begin
   //TODO: build then reverse?
   Result:='';
+  i:=0;
+  l:=0;
   q.x:=p;
   while (q.x mod StratoSphereBlockBase)<>0 do
    begin
     v:=q.v(vKey);
     for j:=0 to 3 do
      begin
-      if (v and $FF)<>0 then Result:=AnsiChar(v and $FF)+Result;
+      if (v and $FF)<>0 then //if v<>0 then?
+       begin
+        if i=l then
+         begin
+          inc(l,$100);//grow
+          SetLength(Result,l);
+         end;
+        inc(i);
+        byte(Result[i]):=byte(v and $FF);
+       end;
       v:=v shr 8;
      end;
     q:=q.r(iParent);
+   end;
+  SetLength(Result,i);
+  j:=1;
+  while (j<i) do
+   begin
+    v:=byte(Result[i]);
+    Result[i]:=Result[j];
+    byte(Result[j]):=byte(v);
+    dec(i);
+    inc(j);
    end;
 end;
 
@@ -248,7 +259,7 @@ begin
        begin
         nx:=p.v(iName);
         if nx=0 then
-          Result:=#$AB+ItemToStr(p)+#$BB'.'+Result
+          Result:=UTF8String(#$AB+ItemToStr(p)+#$BB'.')+Result
         else
           Result:=GetName(nx)+'.'+Result;
        end;

@@ -59,7 +59,7 @@ type
     procedure ParseRecord;
 
   protected
-    cb,rd:rItem;//TODO: use a separate stack for this!
+    cb,rd:rItem;
     cbInhCalled:boolean;
 
     procedure ID(var n:xName;var nn:UTF8String;var SrcPos:xSrcPos);
@@ -363,8 +363,8 @@ end;
 procedure TStratoParser.InlineError(Sender: TObject; Line, LPos: cardinal;
   const ErrorMsg: string);
 begin
-  AddBinaryData(FSrc,Format('### %s(%d:%d): %s',
-    [(Sender as TStratoSource).FilePath,Line,LPos,ErrorMsg]));
+  AddBinaryData(FSrc,UTF8Encode(Format('### %s(%d:%d): %s',
+    [(Sender as TStratoSource).FilePath,Line,LPos,ErrorMsg])));
 end;
 
 procedure TStratoParser.DeclareIntrinsicTypes(ns:rItem);
@@ -445,7 +445,7 @@ begin
     else
      begin
       ReplaceWith.s(iNext,Subject.r(iNext));
-      Subject.s(iNext,xxr(0));
+      Subject.s(iNext,xx0);
       if q.x=0 then q:=p0;
       q.s(iNext,ReplaceWith);
       if Subject.x=p0.x then Parent.s(lItems,ReplaceWith);
@@ -478,13 +478,14 @@ begin
   SetLength(stack,stackSize);
   luxIndex:=0;
   luxSize:=0;
-  //TODO separate stack with cb/rd and Parse*-pointer
+
+  //parse header then body
+  ParseHeader;
+
   cb.x:=0;
   cbInhCalled:=false;//see also CbStart
   rd.x:=0;
 
-  //parse header then body
-  ParseHeader;
   while not Source.IsNext([st_EOF]) do
     if cb.x=0 then
       if rd.x=0 then
@@ -493,6 +494,19 @@ begin
         ParseRecord
     else
       ParseLogic;
+{
+
+    case pc of
+      pcDeclarative:
+        ParseDeclaration;
+      pcRecord:
+        ParseRecord;
+      pcImperative:
+        ParseLogic;
+      else
+        Source.Error('Parse class not supported');
+    end;
+    }
   //TODO: flag sourcefile done
 end;
 
@@ -524,7 +538,7 @@ begin
     while Source.IsNext([stAt]) do
       case Source.Token of
         stNumericLiteral:
-          Sphere.MarkIndex(ParseInteger(string(Source.GetID(SrcPos1))))
+          Sphere.MarkIndex(ParseInteger(Source.GetID(SrcPos1)))
         stIdentifier:
           if not LookUpNameSpace(module,nx,SrcPos1) then
             module:=Sphere.Add(nNameSpace,[iParent,?,vSrcPos,SrcPos1,vName,nx]);
@@ -552,7 +566,7 @@ begin
   else
    begin
     SetLength(Imports,1);
-    ListFirst(xxr(0),lSourceFile_NameSpaces,p,p0);//not FBase!
+    ListFirst(xx0,lSourceFile_NameSpaces,p,p0);//not FBase!
     Imports[0].ns:=p;//'Strato'
     Imports[0].alias:=0;
     //TODO: list dependency (+ check cyclic)
@@ -646,7 +660,7 @@ begin
                 ,vSrcPos,SrcPos
                 ,iInheritsFrom,q.x
                 ],p) then
-                Source.Error('duplicate identifier "'+nn+'"');
+                Source.ErrorN('duplicate identifier',nn);
               if q.NodeType=nClass then
                 p.a(vByteSize,q.v(vByteSize))
               else
@@ -664,7 +678,7 @@ begin
               ,vSrcPos,SrcPos
               ,iType,q.x
               ],r) then
-              Source.Error('duplicate identifier "'+nn+'"');
+              Source.ErrorN('duplicate identifier',nn);
             if Source.IsNext([stDefine]) then
               r.s(iValue,ParseLiteral(Source.Token,nil));
             //TODO: check InitialValue.EvaluatesTo with EvaluatesTo
@@ -695,7 +709,7 @@ begin
               [iParent,p.x
               ,vSrcPos,SrcPos
               ],p) then
-              Source.Error('duplicate identifier "'+nn+'"');
+              Source.ErrorN('duplicate identifier',nn);
             ParseEnumeration(p);
            end
           else
@@ -724,7 +738,7 @@ begin
                           ,iValue,q.x
                           ,iType,r.x
                           ],q) then
-                          Source.Error('duplicate identifier "'+nn+'"');
+                          Source.ErrorN('duplicate identifier',nn);
                      end;
                     nConstant:
                      begin
@@ -738,7 +752,7 @@ begin
                           ,iValue,q.x
                           ,iType,q.r(iType).x
                           ],q) then
-                          Source.Error('duplicate identifier "'+nn+'"');
+                          Source.ErrorN('duplicate identifier',nn);
                      end;
                     nLiteral:
                       if not Add(p,lItems,nConstant,nx,
@@ -747,7 +761,7 @@ begin
                         ,iValue,q.x
                         ,iType,q.r(iType).x
                         ],q) then
-                        Source.Error('duplicate identifier "'+nn+'"');
+                        Source.ErrorN('duplicate identifier',nn);
                     nType,nRecord,nEnum:
                       if Source.IsNext([stBOpen]) then //array
                         if Source.IsNext([stBClose]) then //dyn array
@@ -766,7 +780,7 @@ begin
                             ,iType,q.x
                             ,vByteSize,i
                             ],r) then
-                            Source.Error('duplicate identifier "'+nn+'"');
+                            Source.ErrorN('duplicate identifier',nn);
                          end
                       else //type alias
                         if not Add(p,lItems,nTypeAlias,nx,
@@ -774,7 +788,7 @@ begin
                           ,vSrcPos,SrcPos
                           ,iType,q.x
                           ],q) then
-                          Source.Error('duplicate identifier "'+nn+'"');
+                          Source.ErrorN('duplicate identifier',nn);
                     else
                       Source.Error('unsupported type or constant reference');
                   end;
@@ -789,7 +803,7 @@ begin
                   ,vSrcPos,SrcPos
                   ,iValue,q.x
                   ],p) then
-                  Source.Error('duplicate identifier "'+nn+'"');
+                  Source.ErrorN('duplicate identifier',nn);
                 if Source.IsNext([stColon]) then //here or in ParseLiteral?
                   q.s(iType,LookUpDecl_Type('literal type'));
                 p.s(iType,q.r(iType));
@@ -801,7 +815,7 @@ begin
                   [iParent,p.x
                   ,vSrcPos,SrcPos
                   ],q) then
-                  Source.Error('duplicate identifier "'+nn+'"');
+                  Source.ErrorN('duplicate identifier',nn);
                 rd:=q;//switch to ParseRecord
                end;
 
@@ -811,7 +825,7 @@ begin
                   ,vSrcPos,SrcPos
                   ,iTarget,LookUpDecl_Type('pointer type').x
                   ],q) then
-                  Source.Error('duplicate identifier "'+nn+'"');
+                  Source.ErrorN('duplicate identifier',nn);
 
               stQuestionMark://class reference "p.x=?q"
                begin
@@ -823,7 +837,7 @@ begin
                   ,vSrcPos,SrcPos
                   ,iTarget,q.x
                   ],q) then
-                  Source.Error('duplicate identifier "'+nn+'"');
+                  Source.ErrorN('duplicate identifier',nn);
                end;
 
 {//moved into ParseLiteral...
@@ -834,7 +848,7 @@ begin
                   ,vSrcPos,SrcPos
                   ,iType,IntrinsicType(itNumber)
                   ],p) then
-                  Source.Error('duplicate identifier "'+nn+'"');
+                  Source.ErrorN('duplicate identifier',nn);
                 if Source.IsNext([stNumericLiteral]) then
                  begin
                   q:=IntrinsicType(itNumber);
@@ -887,7 +901,7 @@ begin
                     StratoFnAdd(Self,nOverload,r0,q,SrcPos);
                    end
                   else
-                    Source.Error('duplicate identifier "'+nn+'"');
+                    Source.ErrorN('duplicate identifier',nn);
                 end;
               //TODO: Source.IsNext([stAOpen])?
              end;
@@ -918,7 +932,7 @@ begin
                    end;
                   else
                    begin
-                    Source.Error('duplicate identifier "'+nn+'"');
+                    Source.ErrorN('duplicate identifier',nn);
                     r0:=Add(nMember,
                       [iParent,p.x
                       ,iName,nx
@@ -1018,7 +1032,7 @@ begin
             [iParent,p.x
             ,vSrcPos,SrcPos
             ],p) then
-            Source.Error('duplicate identifier "'+nn+'"');
+            Source.ErrorN('duplicate identifier',nn);
           ParseInterfaceDecl(p);
          end;
         else
@@ -1066,11 +1080,10 @@ begin
 
     stCOpen:
      begin
-      SrcPos:=Source.SrcPos;
-      cb:=Add(nCodeBlock,
+      CbStart(Add(nCodeBlock,
         [iParent,SourceFiles[FSrc].Local
-        ,vSrcPos,SrcPos
-        ]);
+        ,vSrcPos,Source.SrcPos
+        ]));
       with SourceFile(FSrc)^ do
         if InitializationBlock=0 then
           InitializationBlock:=cb.x
@@ -1108,7 +1121,7 @@ begin
         if Source.IsNext([stAt,stNumericLiteral]) then
          begin
           Source.Token;//stNumericLiteral
-          p.s(vByteSize,ParseInteger(string(Source.GetID(cardinal(SrcPos)))));
+          p.s(vByteSize,ParseInteger(Source.GetID(cardinal(SrcPos))));
          end;
         Source.Skip(stSemiColon);
        end
@@ -1140,14 +1153,15 @@ type
 const
   OffsetUseDefault=cardinal(-1);
 var
-  p,q,r:rItem;
-  offset,i,j,s:cardinal;
+  p,q,r,pUntyped:rItem;
+  offset,i,j:cardinal;
   st:TStratoToken;
   b,neg:boolean;
   fn:UTF8String;
   nx:xName;
   SrcPos,SrcPos1:xSrcPos;
 begin
+  pUntyped.x:=0;//see stComma below
   while (cb.x=0) and (rd.x<>0) and Source.NextToken(st) do
   case st of
 
@@ -1225,7 +1239,12 @@ begin
          end;
        end;
       //TODO: else if Source.IsNext([stCOpen]) then tt:=ttProperty?
-      Source.Skip(stSemiColon);
+      if Source.IsNext([stSemiColon]) then
+        if p.x=0 then
+         begin
+          Source.Error('record field requires type declaration');
+          pUntyped.x:=0;
+         end;
 
       //register field with record
       nx:=AddName(fn);
@@ -1233,29 +1252,41 @@ begin
         [iParent,rd.x
         ,vSrcPos,SrcPos
         ,iType,p.x
+        ,vOffset,offset
         ],r) then
-        Source.Error('duplicate record field "'+fn+'"');
-      if p.x=0 then s:=0 else s:=ByteSize(p);
-      if offset=OffsetUseDefault then
-        r.s(vOffset,rd.a(vByteSize,s))
-      else
-       begin
-        if integer(offset)<0 then
+        Source.ErrorN('duplicate record field',fn);
+      if pUntyped.x=0 then pUntyped:=r;
+
+      if p.x<>0 then
+        while pUntyped.x<>0 do
          begin
-          if rd.x<>IntrinsicType(itObject).x then
-           begin
-            offset:=-integer(offset);
-            Source.Error('negative record field offset not allowed');
-           end;
-         end
-        else
-         begin
-          i:=offset+s;
-          if i>rd.v(vByteSize) then rd.s(vByteSize,i);
+          offset:=pUntyped.v(vOffset);
+          if offset=OffsetUseDefault then
+            offset:=rd.a(vByteSize,ByteSize(p))
+          else
+            if integer(offset)<0 then
+             begin
+              if rd.x<>IntrinsicType(itObject).x then
+               begin
+                offset:=-integer(offset);
+                Source.Error('negative record field offset not allowed');
+               end;
+             end
+            else
+             begin
+              i:=offset+ByteSize(p);
+              if i>rd.v(vByteSize) then rd.s(vByteSize,i);
+             end;
+          if pUntyped.x<>r.x then pUntyped.s(iType,p);
+          pUntyped.s(vOffset,offset);
+
+          ListNext(pUntyped,r);
          end;
-        r.s(vOffset,offset);
-       end;
+
      end;
+
+    stComma:
+      if pUntyped.x=0 then Source.Error('unexpected ","');
 
     //stQuestionMark: nested interface?
     //more?
@@ -1300,18 +1331,20 @@ var
         ,iParent,Signature.x
         ,vSrcPos,SrcPos
         ],r) then
-        Source.Error('duplicate argument "'+argName+'"');
+        Source.ErrorN('duplicate argument',argName);
       if InitialValue.x<>0 then
         Source.Error('default value on argument by reference not supported');
      end
     else
+     begin
       if not Add(Signature,lArguments,nSigArg,AddName(argName),
         [iType,p.x
         ,iValue,InitialValue.x
         ,iParent,Signature.x
         ,vSrcPos,SrcPos
         ],r) then
-        Source.Error('duplicate argument "'+argName+'"');
+        Source.ErrorN('duplicate argument',argName);
+     end;
     byref:=false;
     if (p.x=0) and (NoType.x=0) then NoType:=r;
   end;
@@ -1362,7 +1395,7 @@ begin
               ;//skip
            end;
           stComma:
-            AddArgument(xxr(0));
+            AddArgument(xx0);
           stDefine://"="
            begin
             q:=ParseLiteral(Source.Token,nil);
@@ -1421,12 +1454,12 @@ begin
           q.s(iValue,Add(nLiteral,
             [vSrcPos,SrcPos
             ,iType,IntrinsicType(itNumber).x
-            ,iValue,AddBinaryData(FSrc,IntToStr(i))
+            ,iValue,AddBinaryData(FSrc,IntToStr8(i))
             ]));
           inc(i);
          end
         else
-          Source.Error('duplicate enumeration entry "'+nn+'"');
+          Source.ErrorN('duplicate enumeration entry',nn);
        end;
       stComma,stSemiColon:;//ignore
       stPClose:;//done
@@ -1456,7 +1489,7 @@ begin
               ,iParent,p.x
               ,vSrcPos,SrcPos
               ],q) then
-              Source.Error('duplicate interface field "'+nn+'"');
+              Source.ErrorN('duplicate interface field',nn);
           stPOpen://signature
             StratoFnAdd(Self,nOverload,Fn(p,nx),
               ParseSignature(p,nx,stPClose,SrcPos),SrcPos);
@@ -1494,7 +1527,7 @@ begin
     stIdentifier:
      begin
       ID(nx,nn,SrcPos);
-      fn:=nn+'.';
+      fn:=UTF8ToString(nn)+'.';
       ns:=Add(FBase,lSourceFile_NameSpaces,nNameSpace,
         [iName,nx
         ,vSrcPos,SrcPos
@@ -1503,14 +1536,14 @@ begin
        begin
         Source.Token;//stIdentifier
         ID(nx,nn,SrcPos);
-        fn:=fn+nn+'.';
+        fn:=fn+UTF8ToString(nn)+'.';
         ns:=Add(ns,lItems,nNameSpace,
           [iParent,ns.x
           ,iName,nx
           ,vSrcPos,SrcPos
           ]);
        end;
-      fn:=fn+'xs';
+      fn:=fn+'xso';
       if not FindKnownFile(fn) then
         Source.Error('import not found "'+fn+'"');
      end;
@@ -1519,7 +1552,7 @@ begin
       //TODO: resolve relative path, list of paths, system paths
       //TODO: allow duplicates? detect by full path?
       SrcPos:=Source.SrcPos;
-      fn:=string(Source.GetStr);
+      fn:=UTF8ToString(Source.GetStr);
      end;
     else Source.Error('unsupported import subject syntax');
   end;
@@ -1527,7 +1560,7 @@ begin
   if Source.IsNext([stAt,stNumericLiteral]) then
    begin
     Source.Token;//stNumericLiteral
-    i:=ParseInteger(string(Source.GetID(SrcPos1)))
+    i:=ParseInteger(Source.GetID(SrcPos1))
     ...
    end
   else
@@ -1539,8 +1572,8 @@ begin
     fn:=ResolveKnownPath(fn);
     fn1:=StripKnownPath(fn);
     i:=0;
-    while (i<SourceFilesCount) and (AnsiCompareText(fn1,
-      BinaryData(xxr(SourceFiles[i].FileName)))<>0) do inc(i);
+    while (i<SourceFilesCount) and (CompareText(fn1,
+      UTF8ToString(BinaryData(xxr(SourceFiles[i].FileName))))<>0) do inc(i);
     if i<SourceFilesCount then
       ns.x:=SourceFiles[i].Local
     else
@@ -2168,7 +2201,7 @@ begin
           ,iPredicate,p1.x
           ,iDoTrue,p.x
           ,iReturnType,pt.x
-          ]),xxr(0),SrcPos);
+          ]),xx0,SrcPos);
         p.x:=0;
         pt.x:=0;
        end;
@@ -2207,13 +2240,15 @@ begin
           ,iPredicate,p.x
           //,iBody,//see pIterationZ
           //,iReturnType,//see pIterationZ
-          ]),xxr(0),SrcPos);
+          ]),xx0,SrcPos);
        end
       else if p.NodeType=nRange then
        begin
         if Peek=pUnTypedVar then
          begin
           Pop(z,q1,q2,SrcPos1);
+          if q1.x<>q2.x then
+            Source.Error('unexpected multiple iterators');//TODO: ?
           q1.s(iType,pt);//assert q1=p1
           q1.s(vOffset,cb.a(vByteSize,ByteSize(pt)));
          end;
@@ -2226,14 +2261,14 @@ begin
             ,iLeft,p1.x //iterator
             ,iRight,p.x //range
             ]).x
-          ]),xxr(0),SrcPos);
+          ]),xx0,SrcPos);
         //TODO: more checks on nRangeIndex?
        end
       else if p.x=0 then
        begin
         if p1.x<>0 then
           Source.Error('unexpected iterator for iteration without predicate');
-        Push(pIterationY,xxr(0),xxr(0),SrcPos);
+        Push(pIterationY,xx0,xx0,SrcPos);
        end
       else
         Push(pIterationZ,Add(nIterPostEval,
@@ -2242,7 +2277,7 @@ begin
           //,iPredicate,//see pIterationZ
           ,iBody,p.x
           ,iReturnType,pt.x
-          ]),xxr(0),SrcPos);
+          ]),xx0,SrcPos);
       p.x:=0;
       pt.x:=0;
      end;
@@ -2256,7 +2291,7 @@ begin
         ,iPredicate,p.x
         //,iBody,//see pIterationZ
         //,iReturnType,//see pIterationZ
-        ]),xxr(0),SrcPos);
+        ]),xx0,SrcPos);
       p.x:=0;
       pt.x:=0;
      end;
@@ -2381,6 +2416,8 @@ begin
         if Peek=pUnTypedVar then
          begin
           Pop(z,q1,q2,SrcPos1);
+          if q1.x<>q2.x then
+            Source.Error('unexpected multiple assignees');//TODO: deconstruction (or tuples?)
           q1.s(iType,pt);
           q1.s(vOffset,cb.a(vByteSize,ByteSize(pt)));
           if q1.x=p1.r(iTarget).x then p2.x:=pt.x;//assert p2.x was 0
@@ -2480,7 +2517,7 @@ end;
 
 procedure TStratoParser.PushUnary(st:TStratoToken;var p:rItem; var pt:rItem);
 begin
-  Push(pUnary,xxr(xValue(st)),xxr(0),Source.SrcPos);
+  Push(pUnary,xxr(xValue(st)),xx0,Source.SrcPos);
   p.x:=0;
   pt.x:=0;
 end;
@@ -2504,7 +2541,7 @@ begin
       //,iRight,//see Combine
       ,iReturnType,pt.x
       ]);
-    Push(pr,p,xxr(0),SrcPos);
+    Push(pr,p,xx0,SrcPos);
    end;
   p.x:=0;
   pt.x:=0;
@@ -2562,7 +2599,7 @@ begin
       LookUpLogic(nx,p,pt,SrcPos);
 
       if p.x=0 then
-        Source.Error('undeclared identifier "'+nn+'"')
+        Source.ErrorN('undeclared identifier',nn)
       else
       if (Peek=pCast) and (pt.x<>0) then
         CombineTop(p,pt)
@@ -2581,7 +2618,7 @@ begin
         LookUpLogic(nx,p,pt,SrcPos);
 
         if p.x=0 then
-          Source.Error('undeclared identifier "'+nn+'"')//TODO: FQN?
+          Source.ErrorN('undeclared identifier',nn)//TODO: FQN?
         else
         if (Peek=pCast) and IsType(pt) then
           CombineTop(p,pt)
@@ -2637,7 +2674,7 @@ begin
             //,vOffset,//see pUnTypedVar
             ],p) then
             Source.Error('duplicate identifier "'+string(nn)+'"');
-          Push(pUnTypedVar,p,xxr(0),SrcPos);
+          Push(pUnTypedVar,p,p,SrcPos);//see also stComma
           pt.x:=0;
          end
         else
@@ -2649,38 +2686,35 @@ begin
           //TODO: tuples...
           pt:=LookUpDecl_Type('type');
           i:=ByteSize(pt);
-          while Peek=pUnTypedVar do
+          Pop(z,p1,p2,SrcPos);
+          while p1.x<>0 do
            begin
-            Pop(z,p2,p0,SrcPos);
-            p2.s(iType,pt);//assert was 0
-            p2.s(vOffset,cb.a(vByteSize,i));
+            p1.s(iType,pt);//assert was 0
+            p1.s(vOffset,cb.a(vByteSize,i));
+            ListNext(p1,p2);
            end;
-          if (p.x<>0) and Source.IsNext([stSemiColon]) then
+          if Source.IsNext([stSemiColon]) then
            begin
             p.x:=0;//don't add as statement
             pt.x:=0;
            end;
          end
         else
+         begin
           //cast
-          if p.x=0 then
-            Source.Error('nothing to cast')
-          else
-           begin
-            Push(pCast,Add(nCast,
-              [iParent,cb.x
-              ,vSrcPos,Source.SrcPos
-              ,iSubject,p.x
-              //,iType,//see Combine pCast
-              ]),pt,Source.SrcPos);
-            p.x:=0;
-            pt.x:=0;
-           end;
+          Push(pCast,Add(nCast,
+            [iParent,cb.x
+            ,vSrcPos,Source.SrcPos
+            ,iSubject,p.x
+            //,iType,//see Combine pCast
+            ]),pt,Source.SrcPos);
+          p.x:=0;
+          pt.x:=0;
+         end;
 
     stPOpen://"("
      begin
-      //see also Juxta()
-      SrcPos:=Combine(p_Juxta,p,pt);
+      SrcPos:=Combine(p_POpen,p,pt);
       if Peek<>pIterationZ then
         if SameType(pt,IntrinsicType(itBoolean)) then
          begin
@@ -2688,7 +2722,7 @@ begin
           p.x:=0;
           pt.x:=0;
          end;
-      Push(pParentheses,p,xxr(0),SrcPos);
+      Push(pParentheses,p,xx0,SrcPos);
       p.x:=0;
       pt.x:=0;
      end;
@@ -2701,7 +2735,7 @@ begin
         Pop(z,p1,p2,SrcPos);
         if p1.x=0 then
          begin
-          if Peek<>pIterationY then
+          if not(Peek in [pIterationX,pIterationY]) then
             if SameType(pt,IntrinsicType(itBoolean)) then
              begin
               //See also Juxta()
@@ -2722,8 +2756,8 @@ begin
           tt:=nOverload;//default
           case p1.NodeType of
             nClass://calling destructor? (detect prefix '-' or '~')
-              if (Peek=pUnary) and (TStratoToken(xxv(Peek1,vOperator))
-                  in [stOpSub,stTilde]) and (IntrinsicTypes[itObject]<>0) then
+              if (Peek=pUnary) and (TStratoToken(Peek1.v(vOperator))
+                in [stOpSub,stTilde]) and (IntrinsicTypes[itObject]<>0) then
                begin
                 Pop(z,p0,p0,SrcPos);
                 tt:=nDtor;
@@ -2741,8 +2775,7 @@ begin
               tt:=nThis;
           end;
           if p.x=0 then
-            StratoFnCallBySignature(Self,tt,p1,p2,cb,SrcPos,
-              p,pt,tt=nThis);
+            StratoFnCallBySignature(Self,tt,p1,p2,cb,SrcPos,p,pt,tt=nThis);
           if p.x=0 then
             Source.Error('no function overload found with these arguments');
          end;
@@ -2753,7 +2786,7 @@ begin
 
     stComma://","
      begin
-      Combine(pParentheses,p,pt);
+      Combine(pUnTypedVar,p,pt);
       case Peek of
         pParentheses,pBrackets:
           if (Peek1.x=0) or (p.x=0) then
@@ -2767,15 +2800,17 @@ begin
             if not(Source.IsNext([stIdentifier,stPeriod]))
               and Source.IsNext([stIdentifier]) then
              begin
+              Pop(z,p1,p2,SrcPos1);
               //new local variable(s)
               ID(nx,nn,SrcPos);
               if not Add(cb,lLocals,nVar,nx,
                 [iParent,cb.x
                 ,vSrcPos,SrcPos
                 ,vOffset,cb.v(vByteSize)
-                ],p1) then
+                ],p2) then
                 Source.Error('duplicate identifier "'+string(nn)+'"');
-              Push(pUnTypedVar,p1,xxr(0),SrcPos);
+              Push(pUnTypedVar,p1,p2,SrcPos);
+              //assert p2 one or more iNext's from p1
              end
             else
               Source.Error('unexpected ","')
@@ -2803,7 +2838,7 @@ begin
         Juxta(p,pt);
         //start code block
         SrcPos:=Source.SrcPos;
-        Push(pCodeBlock,cb,xxr(0),SrcPos);
+        Push(pCodeBlock,cb,xx0,SrcPos);
         cb:=Add(nCodeBlock,
           [iParent,cb.x
           ,vSrcPos,SrcPos
@@ -2862,8 +2897,7 @@ begin
       if stackIndex=0 then
        begin
         //return to declarations
-        cb.x:=0;//clear here for any CbStart below
-
+        cb.x:=0;
         //code block done: checks
         p1:=p.r(iParent);
         case p1.NodeType of
@@ -2874,14 +2908,13 @@ begin
               if p2.x<>IntrinsicType(itObject).x then
                begin
                 StratoFnCallBySignature(Self,nCtor,
-                  p2.r(iInheritsFrom),
-                  p1.rr(iSignature,lArguments),//!!
+                  p2.r(iInheritsFrom),p1.rr(iSignature,lArguments),//!!
                   p,p.v(vSrcPos),p3,pt,true);
                 if (p3.x=0) and (p1.r(iFirstArgVar).x<>0) then
                   //try again for inherited constructor without arguments
                   StratoFnCallBySignature(Self,nCtor,
-                    p2.r(iInheritsFrom),
-                    xxr(0),p,p.v(vSrcPos),p3,pt,true);
+                    p2.r(iInheritsFrom),xx0,
+                    p,p.v(vSrcPos),p3,pt,true);
                 if p3.x=0 then
                   Source.Error('unable to find base constructor')
                 else
@@ -2900,8 +2933,8 @@ begin
               if p2.x<>IntrinsicType(itObject).x then
                begin
                 StratoFnCallBySignature(Self,nDtor,
-                  p2.r(iInheritsFrom),
-                  xxr(0),p,Source.SrcPos,p3,pt,true);
+                  p2.r(iInheritsFrom),xx0,
+                  p,Source.SrcPos,p3,pt,true);
                 if p3.x=0 then
                   Source.Error('unable to find base destructor')
                 else
@@ -2943,6 +2976,14 @@ begin
 
     stSemiColon:
      begin
+      {$IFDEF DEBUG}
+      if Source.IsNext([stSemiColon,stSemiColon]) then
+       begin
+        Source.Skip(stSemiColon);
+        Source.Skip(stSemiColon);
+        asm int 3 end;//for debugging the parser
+       end;
+      {$ENDIF}
       Combine(p_Statement,p,pt);
       if p.x<>0 then
        begin
@@ -3116,9 +3157,8 @@ begin
 
     stHashHash://iteration "##"
      begin
-      //Combine(p???,p,pt);
-      SrcPos:=Source.SrcPos;
-      Push(pIterationX,p,pt,SrcPos);
+      Combine(p_Juxta,p,pt);//?
+      Push(pIterationX,p,pt,Source.SrcPos);
       p.x:=0;
       pt.x:=0;
      end;
@@ -3152,7 +3192,7 @@ begin
       if p.x=0 then //defer
        begin
         Combine(p_Statement,p,pt);
-        Push(pDefer,xxr(0),xxr(0),Source.SrcPos);
+        Push(pDefer,xx0,xx0,Source.SrcPos);
        end
       else
         PushBinary(pShift,st,p,pt);//roll right
@@ -3202,12 +3242,12 @@ begin
           [iParent,cb.x
           ,vSrcPos,SrcPos
           ]);
-      Push(pCatch,p1,xxr(0),SrcPos);
+      Push(pCatch,p1,xx0,SrcPos);
      end;
     stThreeBangs://"!!!"
      begin
       Juxta(p,pt);
-      Push(pThrow,xxr(0),xxr(0),Source.SrcPos);
+      Push(pThrow,xx0,xx0,Source.SrcPos);
      end;
 
     stBOpen://"["
@@ -3216,7 +3256,7 @@ begin
       else
        begin
         //TODO: check p is of type array?
-        Push(pBrackets,p,xxr(0),Source.SrcPos);
+        Push(pBrackets,p,xx0,Source.SrcPos);
         p.x:=0;
         pt.x:=0;
        end;
@@ -3229,13 +3269,13 @@ begin
         if p1.x=0 then
          begin
           //TODO:
+          Source.Error('unsupported "[]" without subject');//TODO: lambda
          end
         else
          begin
-          //TODO:
-          //StratoFnCallAddArgument(Sphere,,,Source.SrcPos);
-          //p1:=StratoFnCallBySignature(Sphere,nPropertyGet,,p1,cb,SrcPos);
-          if p1.x=0 then
+          StratoFnCallAddArgument(Self,p2,p,pt,Source.SrcPos);
+          StratoFnCallBySignature(Self,nPropGet,p1,p2,cb,SrcPos,p,pt,false);
+          if p.x=0 then
             Source.Error('no property overload found with these arguments');
          end;
        end
@@ -3247,7 +3287,7 @@ begin
      begin
       Juxta(p,pt);
       //TODO: if p<>0 then ?
-      Push(pAddressOf,xxr(0),xxr(0),Source.SrcPos);
+      Push(pAddressOf,xx0,xx0,Source.SrcPos);
      end;
 
     stQuestionMark://"?"
@@ -3273,13 +3313,13 @@ begin
          end;
        end;
       if p.x=0 then
-        Push(pTypeOf,xxr(xValue(st)),xxr(0),Source.SrcPos);
+        Push(pTypeOf,xxr(xValue(st)),xx0,Source.SrcPos);
      end;
     stOpSizeOf://"@?"
      begin
       Juxta(p,pt);
       if p.x<>0 then Source.Error('unexpected "?"');
-      Push(pSizeOf,xxr(xValue(st)),xxr(0),Source.SrcPos);
+      Push(pSizeOf,xxr(xValue(st)),xx0,Source.SrcPos);
      end;
 
     stCaret://"^"
@@ -3334,7 +3374,7 @@ begin
             //,vOffset,?
             ]);
          end;
-        Push(pParentheses,p,xxr(0),SrcPos);//see also stPClose
+        Push(pParentheses,p,xx0,SrcPos);//see also stPClose
         cbInhCalled:=true;
         p.x:=0;
         pt.x:=0;
@@ -3363,7 +3403,7 @@ begin
           [iParent,cb.x
           ,vSrcPos,SrcPos1
           ,iTarget,AddBinaryData(FSrc,fqn)
-          ]),xxr(0),SrcPos1);
+          ]),xx0,SrcPos1);
         p.x:=0;
         pt.x:=0;
        end
