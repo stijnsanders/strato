@@ -285,7 +285,7 @@ var
   function RefreshDebugView: boolean;
   var
     li:TListItem;
-    p:pointer;
+    p,p0:pointer;
     p1,q1,q2:rItem;
     i,sx,sy:cardinal;
   begin
@@ -352,7 +352,12 @@ var
        end;
 
       p:=stackTop;
-      if xValue(vp)>xValue(p) then p:=vp;  //TODO: +ByteSize(vt)?
+      if vp<>nil then
+       begin
+        p0:=vp;
+        inc(xValue(p0),ByteSize(vt));
+        if xValue(p0)>xValue(p) then p:=p0;
+       end;
 
       i:=(xValue(p)+(SystemWordSize-1)-xValue(stackBase)) div SystemWordSize;
       FDebugView.lvStack.Items.Count:=i;
@@ -961,8 +966,7 @@ begin
             1://TODO: move to runtime/namespaces/intrinsics
               case TStratoToken(ip.v(vOperator)) of
                 stOpSub,stOpInc,stOpDec,stTilde:
-                  if (vt.x>=IntrinsicTypes[itNumber]) and
-                     (vt.x<IntrinsicTypes[itString]) then
+                  if IsIntrinsicNumeric(vt) then
                    begin
                     x:=ByteSize(vt);
                     xx:=0;
@@ -1063,10 +1067,7 @@ begin
                   else
                     RunError(ip,'Unknown operation');
                 stOpAdd:
-                  if (vt.x>=IntrinsicTypes[itNumber]) and
-                     (vt.x<IntrinsicTypes[itString]) and
-                     (p1.x>=IntrinsicTypes[itNumber]) and
-                     (p1.x<IntrinsicTypes[itString]) then
+                  if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
                    begin
                     x:=ByteSize(p1);
                     xx:=0;
@@ -1090,10 +1091,7 @@ begin
                   else
                     RunError(ip,'Unknown operation');
                 stOpSub,stOpMul,stOpDiv,stOpMod:
-                  if (vt.x>=IntrinsicTypes[itNumber]) and
-                     (vt.x<IntrinsicTypes[itString]) and
-                     (p1.x>=IntrinsicTypes[itNumber]) and
-                     (p1.x<IntrinsicTypes[itString]) then
+                  if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
                    begin
                     x:=ByteSize(p1);
                     xx:=0;
@@ -1112,10 +1110,7 @@ begin
                   else
                     RunError(ip,'Unknown operation');
                 stOpLT,stOpLTE,stOpGT,stOpGTE:
-                  if (vt.x>=IntrinsicTypes[itNumber]) and
-                     (vt.x<IntrinsicTypes[itString]) and
-                     (p1.x>=IntrinsicTypes[itNumber]) and
-                     (p1.x<IntrinsicTypes[itString]) then
+                  if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
                    begin
                     x:=ByteSize(p1);
                     xx:=0;
@@ -1245,23 +1240,31 @@ begin
            begin
             //TODO: move these specifics over to runtime (with intrinsics? syscalls?)
             p1:=ip.r(iType);//TODO: check ByteSize?
-            if (vt.x=IntrinsicTypes[itString]) and (p1.x=IntrinsicTypes[itNumber]) then
+            if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
              begin
-              if not TryStrToInt(string(
-                BinaryData(xxr(PxValue(vp)^))),integer(x)) then
-                RunError(ip,'invalid integer value');//TODO: raise
-              PxValue(Volatile(p1))^:=x;//Move(x,vp^,SystemWordSize);
+              //TODO: zero-extend sign-extend
+              x:=ByteSize(vt);
+              xx:=0;
+              Move(vp^,xx,x);
+              Move(xx,Volatile(p1)^,ByteSize(p1));
              end
             else
-            if (vt.x=IntrinsicTypes[itNumber]) and (p1.x=IntrinsicTypes[itString]) then
+            if (vt.x=IntrinsicTypes[itString]) and IsIntrinsicNumeric(p1) then
              begin
-              //TODO: int..intLast?
+              if not TryStrToInt64(string(
+                BinaryData(xxr(PxValue(vp)^))),xx) then
+                RunError(ip,'invalid integer value');//TODO: raise
+              PxValue(Volatile(p1))^:=xx;//Move(xx,vp^,ByteSize(p1));
+             end
+            else
+            if IsIntrinsicNumeric(vt) and (p1.x=IntrinsicTypes[itString]) then
+             begin
               x:=ByteSize(vt);
               xx:=0;
               Move(vp^,xx,x);
               q1.x:=AddBinaryData((FData as TStratoParser).SrcIndex,
                 UTF8String(IntToStr(xx)));
-              PxValue(Volatile(p1))^:=q1.x;//Move(q1,vp^,SystemWordSize);
+              PxValue(Volatile(p1))^:=q1.x;//Move(q1,vp^,ByteSize(p1));
              end
             else
             if (vt.x=IntrinsicTypes[itBoolean]) and (p1.x=IntrinsicTypes[itString]) then

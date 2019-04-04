@@ -2458,7 +2458,7 @@ begin
       if pt.x=0 then //if pt<>IntrinsicType(itType)?
         Source.Error('invalid cast')
       else
-        if ByteSize(p)<>ByteSize(p2) then
+        if (ByteSize(p)<>ByteSize(p2)) and not(IsIntrinsicNumeric(p) and IsIntrinsicNumeric(p2)) then
           Source.Error('cast type size mismatch');
       p1.s(iType,p);
       pt:=p;

@@ -75,6 +75,8 @@ procedure ListNone(var ListItem,ListDelim:rItem);
 function NodeTypeToStr(f:xTypeNr):string;
 function NodeFieldToStr(f:xTypeNr):string;
 
+function IsIntrinsicNumeric(i:rItem):boolean;
+
 implementation
 
 uses Classes;
@@ -670,6 +672,14 @@ begin
 
     else Result:=Format('%.3x',[f]);
   end;
+end;
+
+function IsIntrinsicNumeric(i:rItem):boolean; inline;
+begin
+  //assert IntrinsicTypes[itNumber]<>0
+  //assert IntrinsicTypes[itString]<>0
+  //assert intrinsic numeric types inbetween
+  Result:=(i.x>=IntrinsicTypes[itNumber]) and (i.x<IntrinsicTypes[itString]);
 end;
 
 initialization
