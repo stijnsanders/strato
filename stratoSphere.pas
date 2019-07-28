@@ -573,7 +573,7 @@ end;
 
 function NodeTypeToStr(f:xTypeNr):string;
 begin
-  case f of
+    case f of
     nNameSpace   :Result:='NameSpace';
     nType        :Result:='Type';
     nLiteral     :Result:='Literal';
@@ -660,7 +660,7 @@ begin
 
     lItems           :Result:='lItems';
     lArguments       :Result:='lArguments';
-    lTypes           :Result:='lTypes';
+    lCatchTypes      :Result:='lCatchTypes';
     lLocals          :Result:='lLocals';
 
     vTypeNr          :Result:='vTypeNr';

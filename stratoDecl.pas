@@ -111,7 +111,7 @@ const
 
     lItems           = 200;
     lArguments       = 201;
-    lTypes           = 202;
+    lCatchTypes      = 202;
     lLocals          = 203;
 
     vTypeNr          = 000;
@@ -230,7 +230,7 @@ const
     nTry,                      iParent,iNext,vSrcPos,
     nThrow,                    iParent,iNext,vSrcPos,iSubject,
     nDefer,                    iParent,iNext,vSrcPos,lItems,
-    nCatch,                    iParent,iNext,vSrcPos,lTypes,iTarget,iBody,
+    nCatch,                    iParent,iNext,vSrcPos,lCatchTypes,iTarget,iBody,
 
     n_TypeNr_Low);
 

@@ -1379,11 +1379,16 @@ begin
           stColon://argument type
            begin
             p:=LookUpDecl_Type('argument type');
-            while NoType.x<>0 do
+            if NoType.x<>0 then
              begin
-              //assert NoType.TypeDecl=nil
-              NoType.s(iType,p);
-              NoType:=NoType.r(iNext);
+              repeat
+                //assert NoType.TypeDecl=nil
+                NoType.s(iType,p);
+                q:=NoType;
+                NoType:=NoType.r(iNext);
+              until q.x=Signature.r(lArguments).x;
+              q.x:=0;
+              NoType.x:=0;
              end;
             if Source.IsNext([stDefine]) then //default value
              begin
@@ -3229,7 +3234,7 @@ begin
           ,vSrcPos,SrcPos
           ]);
         repeat
-          Add(p1,lTypes,nTypeAlias,
+          Add(p1,lCatchTypes,nTypeAlias,
             [iParent,p1.x
             ,vSrcPos,Source.SrcPos
             ,iTarget,LookUpDecl_Type('catch filter').x

@@ -632,7 +632,7 @@ begin
         BuildNode(n,p.r(iSubject));
       nCatch:
        begin
-        ListNode(n,':t->',p.r(lTypes));
+        ListNode(n,':t->',p.r(lCatchTypes));
         JumpNode(n,':e=',p.r(iTarget));
         BuildNode(n,p.r(iBody));
        end;
