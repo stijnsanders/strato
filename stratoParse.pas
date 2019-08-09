@@ -53,15 +53,16 @@ type
     luxSize,luxIndex:cardinal;
     lux:array of rItem;
 
+    cb,rd:rItem;
+    cbInheritedCalled:boolean;
+    CurrentSyntaxClass:TSyntaxClass;
+
     procedure ParseHeader;
     procedure ParseImport;
     procedure ParseDeclaration;
     procedure ParseRecord;
 
   protected
-    cb,rd:rItem;
-    cbInhCalled:boolean;
-
     procedure ID(var n:xName;var nn:UTF8String;var SrcPos:xSrcPos);
 
     function CbStart(pp:rItem):rItem;//nCodeBlock
@@ -96,7 +97,8 @@ type
 
     procedure ParseLogic;
 
-    procedure LookUpLogic(nx:xName;var p:rItem;var pt:rItem;SrcPos:xSrcPos);
+    procedure LookUpLogic(nx:xName;var p:rItem;var pt:rItem;
+      SrcPos:xSrcPos);
 
     function CombineTop(var p:rItem;var pt:rItem):xSrcPos;
     function Combine(zz:TPrecedence;var p:rItem;var pt:rItem):xSrcPos;
@@ -107,7 +109,6 @@ type
 
     procedure CheckPassed(p:rItem);
     function IsType(p:rItem):boolean;
-    procedure CbAdd(p:rItem);
 
     procedure CheckType_Selection(p,pt:rItem);
     procedure CheckType_Operator(p,pt:rItem);
@@ -481,32 +482,22 @@ begin
 
   //parse header then body
   ParseHeader;
-
   cb.x:=0;
-  cbInhCalled:=false;//see also CbStart
+  cbInheritedCalled:=false;//see also CbStart
   rd.x:=0;
-
+  CurrentSyntaxClass:=scDeclarative;
   while not Source.IsNext([st_EOF]) do
-    if cb.x=0 then
-      if rd.x=0 then
-        ParseDeclaration
-      else
-        ParseRecord
-    else
-      ParseLogic;
-{
-
-    case pc of
-      pcDeclarative:
+    case CurrentSyntaxClass of
+      scDeclarative:
         ParseDeclaration;
-      pcRecord:
+      scDeclarative_Record:
         ParseRecord;
-      pcImperative:
+      scImperative:
         ParseLogic;
       else
-        Source.Error('Parse class not supported');
+        raise Exception.Create('Syntax Class not supported');
     end;
-    }
+
   //TODO: flag sourcefile done
 end;
 
@@ -571,6 +562,7 @@ begin
     Imports[0].alias:=0;
     //TODO: list dependency (+ check cyclic)
    end;
+  CurrentSyntaxClass:=scDeclarative;
 end;
 
 procedure TStratoParser.ParseDeclaration;
@@ -582,7 +574,7 @@ var
   i:cardinal;
   SrcPos:xSrcPos;
 begin
-  while (cb.x=0) and (rd.x=0) and Source.NextToken(st) do
+  while (CurrentSyntaxClass=scDeclarative) and Source.NextToken(st) do
   case st of
 
     stThreeLT: //import a namespace
@@ -668,6 +660,7 @@ begin
              end;
             Source.Token;//stCOpen
             rd:=p;//switch to ParseRecord
+            CurrentSyntaxClass:=scDeclarative_Record;
            end
           else
 
@@ -699,7 +692,8 @@ begin
            end;
 
           //done
-          if (cb.x=0) and (rd.x=0) then Source.Skip(stSemiColon);
+          if CurrentSyntaxClass=scImperative then
+            Source.Skip(stSemiColon);
          end;
 
         stDefine://type, constant or enum "p.x="
@@ -817,6 +811,7 @@ begin
                   ],q) then
                   Source.ErrorN('duplicate identifier',nn);
                 rd:=q;//switch to ParseRecord
+                CurrentSyntaxClass:=scDeclarative_Record;
                end;
 
               stCaret://pointer type "p.x=^q"
@@ -962,6 +957,7 @@ begin
             else
               Source.Error('only one master base class allowed');
             rd:=p;//switch to ParseRecord
+            CurrentSyntaxClass:=scDeclarative_Record;
            end
           else
             Source.Error('unsupported declaration syntax');
@@ -1162,7 +1158,7 @@ var
   SrcPos,SrcPos1:xSrcPos;
 begin
   pUntyped.x:=0;//see stComma below
-  while (cb.x=0) and (rd.x<>0) and Source.NextToken(st) do
+  while (CurrentSyntaxClass=scDeclarative_Record) and Source.NextToken(st) do
   case st of
 
     stIdentifier:
@@ -1294,8 +1290,8 @@ begin
     stCClose:
      begin
       //'pop'
-      p:=rd.r(iParent);
-      if p.NodeType=nRecord then rd:=p else rd.x:=0;
+      CurrentSyntaxClass:=scDeclarative;
+      //TODO: nested records???
      end;
 
     stPOpen:
@@ -1968,24 +1964,11 @@ begin
    end;
 
   //switch to ParseLogic
-  //assert cb=0
+  //assert cb.x=0
   cb:=p0;
-  cbInhCalled:=false;
-  //more?
+  cbInheritedCalled:=false;
+  CurrentSyntaxClass:=scImperative;
   Result:=pp;
-end;
-
-procedure TStratoParser.CbAdd(p:rItem);
-begin
-  if p.x<>0 then
-   begin
-    {$IFDEF DEBUG}
-    if p.r(iNext).x<>0 then
-      raise Exception.Create('broken chain detected');
-    {$ENDIF}
-    //TODO: nAlias here?
-    Append(cb,lItems,p);
-   end;
 end;
 
 procedure TStratoParser.Push(pr:TPrecedence;p1,p2:rItem;sp:xSrcPos);
@@ -2583,18 +2566,32 @@ procedure TStratoParser.ParseLogic;
 var
   nx:xName;
   nn,fqn:UTF8String;
-  p,p0,p1,p2,p3:rItem;
-  pt,q:rItem;
+  p,p0,p1,p2,p3,pt,q:rItem;
   tt:xTypeNr;
   st:TStratoToken;
   SrcPos,SrcPos1:xSrcPos;
   z:TPrecedence;
   i:cardinal;
+
+  procedure CbAdd(p:rItem);
+  begin
+    if p.x<>0 then
+     begin
+      {$IFDEF DEBUG}
+      if p.r(iNext).x<>0 then
+        raise Exception.Create('broken chain detected');
+      {$ENDIF}
+      //TODO: nAlias here?
+      Append(cb,lItems,p);
+     end;
+  end;
+
+
 begin
   stackIndex:=0;
   p.x:=0;
   pt.x:=0;
-  while (cb.x<>0) and Source.NextToken(st) do
+  while (CurrentSyntaxClass=scImperative) and Source.NextToken(st) do
   case st of
 
     stIdentifier:
@@ -2848,6 +2845,7 @@ begin
           [iParent,cb.x
           ,vSrcPos,SrcPos
           ]);
+        //CurrentSyntaxClass:=scImperative;
        end;
 
     stCClose://"}"
@@ -2899,15 +2897,18 @@ begin
           Source.Error('unexpected "}"');//+xDisplay(p)?
        end;
       p:=cb;//keep a copy
-      if stackIndex=0 then
+      if Peek<>pCodeBlock then //if stackIndex=0 then
        begin
+//TODO: move to Combine
+//TODO: rework as a 'return code pointer'?
         //return to declarations
         cb.x:=0;
+        CurrentSyntaxClass:=scDeclarative;
         //code block done: checks
         p1:=p.r(iParent);
         case p1.NodeType of
           nCtor://constructor block done? check inherited called
-            if not cbInhCalled then
+            if not cbInheritedCalled then
              begin
               p2:=p1.rr(iParent,iParent);//nCtors>nClass
               if p2.x<>IntrinsicType(itObject).x then
@@ -2932,7 +2933,7 @@ begin
                end;
              end;
           nDtor://destructor block done? check inherited called
-            if not cbInhCalled then
+            if not cbInheritedCalled then
              begin
               p2:=p1.r(iParent);//nClass
               if p2.x<>IntrinsicType(itObject).x then
@@ -3030,7 +3031,7 @@ begin
      end;
     stOpEQ,stOpNEQ:
       PushBinary(pEqual,st,p,pt);
-    stOpLT,stOpLTE,stOpGT,stOpGTE,stOpTypeIs:
+    stOpLT,stOpLTE,stOpGT,stOpGTE,stOpWhatIs:
       PushBinary(pComparative,st,p,pt);
     //TODO: stOpLT: if not Combine(pComparative,p) then support inline HTML?
     stOpAdd:
@@ -3380,7 +3381,7 @@ begin
             ]);
          end;
         Push(pParentheses,p,xx0,SrcPos);//see also stPClose
-        cbInhCalled:=true;
+        cbInheritedCalled:=true;
         p.x:=0;
         pt.x:=0;
        end
@@ -3483,7 +3484,7 @@ begin
   p.s(iReturnType,IntrinsicType(itBoolean));
   if (q.x<>0) and (pt.x<>0) then
    begin
-    if TStratoToken(p.v(vOperator))=stOpTypeIs then
+    if TStratoToken(p.v(vOperator))=stOpWhatIs then
       ok:=true
     else
       ok:=(q.x=pt.x)

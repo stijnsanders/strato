@@ -72,11 +72,13 @@ type
     stOpShr, //">>"
     stOpRange, //".."
 
-    stThreeLT,//"<<<" stOpRol
-    stThreeGT,//">>>" stOpRor
+    stThreeLT,//"<<<" stOpRol, 'import'
+    stThreeGT,//">>>" stOpRor, 'export'
 
     stOpSizeOf,//"@?"
-    stOpTypeIs,//"?="
+    stOpWhatIs,//"?="
+
+    stOp_Last, //all operators in [stOpAssign..stOp_Last]
 
     st_EOF, //(past) end of file
     st_Unknown
@@ -378,7 +380,7 @@ begin
         end;
       '=':
         case CodeNext(1) of
-          //'?':Add(2,stOpTypeIs);
+          //'?':Add(2,stOpWhatIs);
           //'>':Add(2,stFatArrow);//TODO
           '=':Add(2,stOpEq);
           else Add(1,stDefine);
@@ -390,7 +392,7 @@ begin
               '?':Add(3,stThreeWhats);
               else Add(2,stWhatWhat);
             end;
-          '=':Add(2,stOpTypeIs);
+          '=':Add(2,stOpWhatIs);
           //':':Add(2,stOpElvis);//TODO: https://en.wikipedia.org/wiki/Elvis_operator
           //'.':Add(2,stWhatPeriod);
           else Add(1,stQuestionMark);//stOpIf

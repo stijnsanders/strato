@@ -18,12 +18,15 @@ uses
   stratoLogic in 'stratoLogic.pas',
   stratoDebug in 'stratoDebug.pas',
   stratoExec in 'stratoExec.pas',
-  stratoDebugView in 'stratoDebugView.pas' {frmDebugView};
+  stratoDebugView in 'stratoDebugView.pas' {frmDebugView},
+  stratoGenPas in 'stratoGenPas.pas',
+  stratoGenTools in 'stratoGenTools.pas';
 
 var
   s:TStratoSource;
   p:TStratoParser;
   m:TStratoMachine;
+  g:TStratoGenPascal;
   i,j,k,l,ec:integer;
   x:string;
 
@@ -46,7 +49,7 @@ var
 
 var
   DoRun,DoDebug,DoRunTime,DoInlineErrors,DoDumpHRF,DoDumpHRR:boolean;
-  DoDump,DoDumpHR,LastFN:string;
+  DoDump,DoDumpHR,DoPascal,LastFN:string;
 
 begin
   if ParamCount=0 then
@@ -65,6 +68,7 @@ begin
     Writeln('  -E             inline errors into sphere as binary entries');
     Writeln('  -D             enable debug viewer');
     Writeln('  -X             shorthand for -EUHD');
+    Writeln('  -P <filename>  generate Pascal source');
 
     //TODO: export LLVMIR
     //TODO: params from file
@@ -83,6 +87,7 @@ begin
       DoDumpHR:='';
       DoDumpHRF:=false;
       DoDumpHRR:=true;
+      DoPascal:='';
       LastFN:='';
 
       ec:=0;
@@ -109,6 +114,11 @@ begin
                 DoRun:=false;
                end;
               'C':DoRun:=false;
+              'P':
+               begin
+                DoRun:=false;
+                DoPascal:=xNext;
+               end;
               'D':DoDebug:=true;
               'U':DoDump:=xNext;
               'H':DoDumpHR:=xNext;
@@ -225,24 +235,37 @@ end;
       if DoDumpHR<>'' then
         StratoDumpSphereData(DoDumpHR,DoDumpHRF,DoDumpHRR);
 
-      //run
-      if DoRun then
-        if ec=0 then
-         begin
+      if ec=0 then
+       begin
 
+        //run
+        if DoRun then
+         begin
           m:=TStratoMachine.Create(DoDebug);
           try
             m.Run;
           finally
             m.Free;
           end;
-
-         end
-        else
-         begin
-          Writeln(ErrOutput,IntToStr(ec)+' error(s)');
-          ExitCode:=1;
          end;
+
+        //generate Pascal source
+        if DoPascal<>'' then
+         begin
+          g:=TStratoGenPascal.Create;
+          try
+            g.GenerateSource(DoPascal);
+          finally
+            g.Free;
+          end;
+         end;
+
+       end
+      else
+       begin
+        Writeln(ErrOutput,IntToStr(ec)+' error(s)');
+        ExitCode:=1;
+       end;
 
     except
       on E: Exception do

@@ -37,8 +37,8 @@ type
 
 implementation
 
-uses Windows, CommCtrl, stratoFn, stratoTokenizer, stratoLogic, stratoParse,
-  stratoTools;
+uses Classes, Windows, CommCtrl, stratoFn, stratoTokenizer, stratoLogic,
+  stratoParse, stratoTools;
 
 const
   InitialMemSize=$100000;//?
@@ -1146,7 +1146,7 @@ begin
                 //TODO: stOpSub,stOpMul,stOpDiv,stOpMod,stOpShl,stOpShr,stThreeLT,stThreeGT:
                 //TODO: stOpNEQ,stOpLT,stOpLTE,stOpGT,stOpGTE:
                 //TODO: stOpAnd,stOpOr,stOpXor
-                //stOpTypeIs:
+                //stOpWhatIs: //'type is'
                 else RunError(ip,'Unknown operator');
               end;
              end;
@@ -1514,6 +1514,10 @@ var
   p:pointer;
   q:rItem;
   i:integer;
+  f:TFileStream;
+  s:UTF8String;
+const
+  UTF8ByteOrderMark:UTF8STring=#$EF#$BB#$BF;
 begin
   q:=Fn.r(iTarget);
   if q.NodeType<>nLiteral then
@@ -1553,6 +1557,36 @@ begin
       begin
        Writeln(string(BinaryData(xxr(PxValue(Data)^))));
       end;
+     201://read a file into a string
+      begin
+       //TODO: try except throw
+       f:=TFileStream.Create(string(BinaryData(xxr(PxValue(Data)^))),
+         fmOpenRead or fmShareDenyWrite);
+       try
+         i:=f.Size-3;
+         s:=#0#0#0;
+         f.Read(s,3);
+         if s<>UTF8ByteOrderMark then
+           RunError(Fn,'Only UTF8-files supported');
+         SetLength(s,i);
+         f.Read(s[1],i);
+       finally
+         f.Free;
+       end;
+      end;
+
+     202://write a string to a file
+      begin
+       f:=TFileStream.Create(string(BinaryData(xxr(PxValue(Data)^))),
+         fmCreate);
+       try
+         f.Write(UTF8ByteOrderMark[1],3);
+         s:=BinaryData(xxr(PxValue(Data)^));
+         f.Write(s[1],Length(s));
+       finally
+         f.Free;
+       end;
+      end
 
     else
       raise Exception.Create('SysCall: unknown key '+IntToStr(i));

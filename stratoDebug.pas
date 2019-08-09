@@ -27,7 +27,7 @@ const
     '==','<>','<','<=','>','>=','&&','||','!','|!',
     '+','-','*','/','%','++','--','<<','>>','..',
     '<<<','>>>','@?','?=',
-    'EOF','');
+    '','EOF','');
 
 function DebugInfo(p:rItem):string;
 var
@@ -285,7 +285,20 @@ var
 }
   procedure xn(zz,z:cardinal);
   begin
-    z:=z mod StratoSphereBlockBase;
+    if z<>0 then
+     begin
+      if (z div StratoSphereBlockBase)<>k then x[zz-6]:='^';
+      z:=z mod StratoSphereBlockBase;
+      while (z<>0) and (zz<>0) do
+       begin
+        x[zz]:=char($30+z mod 10);
+        z:=z div 10;
+        dec(zz);
+       end;
+     end;
+  end;
+  procedure xm(zz,z:cardinal);
+  begin
     while (z<>0) and (zz<>0) do
      begin
       x[zz]:=char($30+z mod 10);
@@ -337,9 +350,9 @@ begin
                     xn(23,p2.x);
                     if py<>0 then
                      begin
-                      xn(29,py);
+                      xm(29,py);
                       x[30]:=':';
-                      xn(33,px);
+                      xm(33,px);
                      end;
                    end;
                   x:=x+StratoDumpThing(p);

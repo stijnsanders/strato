@@ -260,7 +260,7 @@ begin
        end;
     end;
     if vt.x<>0 then
-      if Parser.Source.IsNextBetween(stOpAssign,stOpTypeIs) then
+      if Parser.Source.IsNextBetween(stOpAssign,stOp_Last) then
        begin
         st:=Parser.Source.Token;
         case st of

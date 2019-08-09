@@ -776,6 +776,7 @@ var
 begin
   //TODO: input box
   s:=txtGoTo.Text;
+  txtGoTo.SelectAll;
   l:=Length(s);
   i:=1;
   while (i<=l) and (AnsiChar(s[i]) in ['0'..'9']) do inc(i);

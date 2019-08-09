@@ -45,6 +45,9 @@ __malloc(a:number):pointer{$$100;}
 __realloc(d:pointer;a:number):pointer{$$101;}
 __mfree(d:pointer){$$102;}
 
+__filetostr(fn:string):string{$$201;}
+__strtofile(fn,data:string){$$202;}
+
 //previously "oo.xs"
 
 

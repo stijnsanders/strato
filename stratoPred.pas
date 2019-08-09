@@ -3,8 +3,22 @@ unit stratoPred;
 interface
 
 type
+  TSyntaxClass=(
+    //scHeader, //see ParseHeader
+    scDeclarative,
+    scDeclarative_Record,
+    scImperative,
+    sc_Unknown
+  );
+
   TPrecedence=(
       p___,
+
+      p_Delarative,
+
+    pDeclaration,
+
+      p_Imperative,
     pCodeBlock,
 
       p_Statement,
