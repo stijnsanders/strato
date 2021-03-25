@@ -89,16 +89,17 @@ type
     Index,Length,SrcPos:cardinal;
   end;
 
-procedure StratoTokenizeInit(const Code: UTF8string; LineIndex:cardinal;
-  var FirstToken:TStratoSourcetoken);
-procedure StratoTokenizeNext(const Code: UTF8string; LineIndex: cardinal;
-  const CurrentToken:TStratoSourceToken; var NextToken:TStratoSourceToken);
+procedure StratoTokenizeInit(const Code: UTF8String; LineIndex: cardinal;
+  var FirstToken: TStratoSourcetoken);
+procedure StratoTokenizeNext(const Code: UTF8String; LineIndex: cardinal;
+  const CurrentToken: TStratoSourceToken; var NextToken: TStratoSourceToken);
 
 function ParseInteger(const lit: UTF8String): Int64;
 
 implementation
 
-procedure StratoTokenizeInit(const Code: UTF8string; LineIndex:cardinal; var FirstToken:TStratoSourcetoken);
+procedure StratoTokenizeInit(const Code: UTF8String; LineIndex:cardinal;
+  var FirstToken:TStratoSourcetoken);
 var
   t:TStratoSourceToken;
 begin
@@ -109,8 +110,8 @@ begin
   StratoTokenizeNext(Code,LineIndex,t,FirstToken);
 end;
 
-procedure StratoTokenizeNext(const Code: UTF8string; LineIndex: cardinal;
-  const CurrentToken:TStratoSourceToken; var NextToken:TStratoSourceToken);
+procedure StratoTokenizeNext(const Code: UTF8String; LineIndex: cardinal;
+  const CurrentToken: TStratoSourceToken; var NextToken: TStratoSourceToken);
 var
   CodeIndex,CodeLength:cardinal;
   ln,ls:cardinal;
@@ -504,7 +505,7 @@ begin
         Result:=(Result*10)+(byte(lit[i]) and $F);
         inc(i);
        end;
-	  //TODO: scientific, floating point 
+	    //TODO: scientific, floating point
      end;
   end;
   if neg then Result:=-Result;

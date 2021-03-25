@@ -12,21 +12,22 @@ uses
   stratoTools in 'stratoTools.pas',
   stratoSource in 'stratoSource.pas',
   stratoPred in 'stratoPred.pas',
-  stratoLit in 'stratoLit.pas',
   stratoParse in 'stratoParse.pas',
-  stratoFn in 'stratoFn.pas',
-  stratoLogic in 'stratoLogic.pas',
   stratoDebug in 'stratoDebug.pas',
+  stratoFn in 'stratoFn.pas',
+  stratoLit in 'stratoLit.pas',
+  stratoLogic in 'stratoLogic.pas',
+  stratoParseBase in 'stratoParseBase.pas',
+  stratoParseDecl in 'stratoParseDecl.pas',
+  stratoParseLogic in 'stratoParseLogic.pas',
   stratoExec in 'stratoExec.pas',
-  stratoDebugView in 'stratoDebugView.pas' {frmDebugView},
-  stratoGenPas in 'stratoGenPas.pas',
-  stratoGenTools in 'stratoGenTools.pas';
+  stratoDebugView in 'stratoDebugView.pas' {frmDebugView};
 
 var
   s:TStratoSource;
   p:TStratoParser;
   m:TStratoMachine;
-  g:TStratoGenPascal;
+  //g:TStratoGenPascal;
   i,j,k,l,ec:integer;
   x:string;
 
@@ -107,40 +108,40 @@ begin
           j:=2;
           while j<=k do
            begin
-            case x[j] of
-              'T':
-               begin
-                DoRunTime:=false;
-                DoRun:=false;
-               end;
-              'C':DoRun:=false;
-              'P':
-               begin
-                DoRun:=false;
-                DoPascal:=xNext;
-               end;
-              'D':DoDebug:=true;
-              'U':DoDump:=xNext;
-              'H':DoDumpHR:=xNext;
-              'F':DoDumpHRF:=true;
-              'R':DoDumpHRR:=false;
-              'I':
-               begin
-                LoadFromFile(xNext);//TODO: merge?
-                DoRunTime:=false;
-               end;
-              'E':DoInlineErrors:=true;
-              'X':
-               begin
-                if LastFN='' then
-                  Writeln('write a filename first, then -X');
-                DoDump:=LastFN+'u';
-                DoDumpHR:=LastFN+'v';
-                DoInlineErrors:=true;
-                DoDebug:=true;
-               end;
-              else
-                Writeln('unknown switch "'+x[j]+'"');
+          case x[j] of
+            'T':
+             begin
+              DoRunTime:=false;
+              DoRun:=false;
+             end;
+            'C':DoRun:=false;
+            'P':
+             begin
+              DoRun:=false;
+              DoPascal:=xNext;
+             end;
+            'D':DoDebug:=true;
+            'U':DoDump:=xNext;
+            'H':DoDumpHR:=xNext;
+            'F':DoDumpHRF:=true;
+            'R':DoDumpHRR:=false;
+            'I':
+             begin
+              LoadFromFile(xNext);//TODO: merge?
+              DoRunTime:=false;
+             end;
+            'E':DoInlineErrors:=true;
+            'X':
+             begin
+              if LastFN='' then
+                Writeln('write a filename first, then -X');
+              DoDump:=LastFN+'u';
+              DoDumpHR:=LastFN+'v';
+              DoInlineErrors:=true;
+              DoDebug:=true;
+             end;
+            else
+              Writeln('unknown switch "'+x[j]+'"');
             end;
             inc(j);
            end;
@@ -157,21 +158,27 @@ try
             s:=TStratoSource.Create;
             try
               s.LoadFromFile(LastFN);
-              p:=TStratoParser.Create(s,DoInlineErrors);
+              p:=TStratoParser.Create(TStratoSphere.Create,s,DoInlineErrors);
               try
 
 try
                 p.Parse;//calls DeclareIntrinsicTypes
+                AddSphere(p.Sphere);
 except
   on e:Exception do
    begin
-    if DoInlineErrors then s.Error('### ['+E.ClassName+']: '+E.Message);
+    if DoInlineErrors then
+     begin
+      s.Error('### ['+E.ClassName+']: '+E.Message);
+      AddSphere(p.Sphere);
+     end;
     //raise;
     Writeln(ErrOutput,'"'+LastFN+'"'+E.ClassName+': '+E.Message);
     ExitCode:=1;
     inc(ec);
    end;
 end;
+
               finally
                 p.Free;
               end;
@@ -192,15 +199,20 @@ if ec=0 then begin
             LastFN:=x;//used by -X above
             if not s.IsNext([st_EOF]) then
              begin
-              p:=TStratoParser.Create(s,DoInlineErrors);
+              p:=TStratoParser.Create(TStratoSphere.Create,s,DoInlineErrors);
               try
 
 try
                 p.Parse;
+                AddSphere(p.Sphere);
 except
   on e:Exception do
    begin
-    if DoInlineErrors then s.Error('### ['+E.ClassName+']: '+E.Message);
+    if DoInlineErrors then
+     begin
+      s.Error('### ['+E.ClassName+']: '+E.Message);
+      AddSphere(p.Sphere);
+     end;
     //raise;
     Writeln(ErrOutput,'"'+LastFN+'"'+E.ClassName+': '+E.Message);
     ExitCode:=1;
@@ -233,7 +245,10 @@ end;
       //dump
       if DoDump<>'' then SaveToFile(DoDump);
       if DoDumpHR<>'' then
-        StratoDumpSphereData(DoDumpHR,DoDumpHRF,DoDumpHRR);
+       begin
+        IncludeDictionaryNodes:=DoDumpHRF;
+        StratoDumpSphereData(DoDumpHR,DoDumpHRR);
+       end;
 
       if ec=0 then
        begin
@@ -249,6 +264,7 @@ end;
           end;
          end;
 
+{
         //generate Pascal source
         if DoPascal<>'' then
          begin
@@ -259,6 +275,7 @@ end;
             g.Free;
           end;
          end;
+}
 
        end
       else

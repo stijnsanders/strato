@@ -48,7 +48,7 @@ type
     procedure Panel1Resize(Sender: TObject);
   private
     FDoNext,y1,y2:integer;
-    FBreakAt:array of rItem;
+    FBreakAt:array of xNode;
     FSrc:cardinal;
     FSrcPath:string;
     FSrcData:TStringList;
@@ -59,17 +59,16 @@ type
     procedure DoShow; override;
   public
     function WaitNext:boolean;
-    function CheckBreakPoint(p:rItem):boolean;
-    procedure ShowSource(p:rItem;Line,Col:cardinal);
+    function CheckBreakPoint(p:xNode):boolean;
+    procedure ShowSource(p:xNode;Line,Col:cardinal);
     procedure Done;
   end;
 
 function PtrToStr(p:pointer):string;
-function ItemToStrX(p:xValue):string;
 
 implementation
 
-uses Clipbrd, stratoTools;
+uses Clipbrd, stratoTools, stratoDebug;
 
 {$R *.dfm}
 
@@ -78,23 +77,13 @@ begin
   Result:=Format('$%.8x',[cardinal(p)]);
 end;
 
-function ItemToStrX(p:xValue):string;
-begin
-  if p<200 then
-    Result:=IntToStr(p)
-  else
-  if p>=BlocksCount * StratoSphereBlockBase then
-    Result:=Format('$%.8x',[p])
-  else
-    Result:=ItemToStr(xxr(p));
-end;
-
 { TfrmDebugView }
 
 procedure TfrmDebugView.FormClose(Sender: TObject;
   var Action: TCloseAction);
 begin
   Action:=caMinimize;
+  //FDoNext:=?
 end;
 
 function TfrmDebugView.WaitNext:boolean;
@@ -110,6 +99,10 @@ begin
       FTrailSuspended:=false;
       lvTrail.Items.EndUpdate;
      end;
+    //force update
+    lvStack.Invalidate;
+    lvMem.Invalidate;
+    //wait for user input
     while FDoNext=0 do Application.HandleMessage;
     Result:=FDoNext<>1;
    end;
@@ -164,11 +157,11 @@ begin
       else
        begin
         k2:=k1;
-        k1:=0;//ip div StratoSphereBlockBase;
+        k1:=0;//TODO: from ip.sphere?
        end;
       if j=MaxBreakPoints then
         raise Exception.Create('Maximum breakpoints exceeded');
-      FBreakAt[j]:=xxr(k1*StratoSphereBlockBase+k2);
+      FBreakAt[j].ss(Spheres[SpheresCount-1],k1,k2);
       inc(j);
       while (i<=l) and not(AnsiChar(s[i]) in ['0'..'9']) do inc(i);
      end;
@@ -185,7 +178,7 @@ begin
    end;
 end;
 
-function TfrmDebugView.CheckBreakPoint(p: rItem): boolean;
+function TfrmDebugView.CheckBreakPoint(p:xNode):boolean;
 var
   i,l:integer;
 begin
@@ -195,7 +188,7 @@ begin
   else
    begin
     i:=0;
-    while (i<l) and (FBreakAt[i].x<>p.x) do inc(i);
+    while (i<l) and not(FBreakAt[i].IsSame(p)) do inc(i);
     Result:=i<>l;
    end;
 end;
@@ -209,12 +202,15 @@ begin
   FTrailSuspended:=false;
 end;
 
-procedure TfrmDebugView.ShowSource(p:rItem;Line,Col:cardinal);
+procedure TfrmDebugView.ShowSource(p:xNode;Line,Col:cardinal);
 var
-  Src,i,j,k:cardinal;
+  i,j,k:cardinal;
   ss:string;
+  p1,p2:xNode;
+  v:PxKeyValue;
 begin
   try
+    if not StratoGetSourceFile(p,Line,Col,p1,p2) then Line:=0;
     if Line=0 then
      begin
       lblFileName.Caption:=Format('[?] %d:%d',[Line,Col]);
@@ -222,17 +218,19 @@ begin
      end
     else
      begin
-      Src:=rSrc(p);
-      if (Src<>FSrc) then
+      i:=SphereIndex(p.sphere);
+      if FSrc<>i then
        begin
         FSrc:=cardinal(-1);//in case of error
         //TODO: resolve relative path
         //TODO: cache several?
-        FSrcPath:=ResolveKnownPath(UTF8ToString(
-          BinaryData(xxr(SourceFiles[Src].FileName))));
+
+        v:=p.sphere.v(0,iSphere_FileName);
+        if v=nil then FSrcPath:='' else
+          FSrcPath:=ResolveKnownPath(UTF8ToString(p.sphere.BinaryData(v.v)));
         //TODO: check signature/timestamp
         FSrcData.LoadFromFile(FSrcPath);
-        FSrc:=Src;
+        FSrc:=i;
        end;
       lblFileName.Caption:=Format('%s %d:%d',[FSrcPath,Line,Col]);
       while txtSourceView.Lines.Count<5 do txtSourceView.Lines.Add('//');

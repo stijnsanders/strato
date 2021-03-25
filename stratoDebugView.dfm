@@ -25,10 +25,6 @@ object frmDebugView: TfrmDebugView
     object txContext: TTabSheet
       BorderWidth = 4
       Caption = 'Context'
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 0
-      ExplicitHeight = 0
       DesignSize = (
         608
         491)
@@ -85,16 +81,16 @@ object frmDebugView: TfrmDebugView
           Columns = <
             item
               Caption = '@'
-              Width = 90
+              Width = 100
             end
             item
               Caption = 'x'
-              Width = 90
+              Width = 100
             end
             item
               Alignment = taRightJustify
               Caption = 'v'
-              Width = 90
+              Width = 100
             end
             item
               Caption = 'What'
@@ -116,12 +112,17 @@ object frmDebugView: TfrmDebugView
           Columns = <
             item
               Caption = '#'
-              Width = 90
+              Width = 100
+            end
+            item
+              Alignment = taRightJustify
+              Caption = 'v'
+              Width = 100
             end
             item
               Alignment = taRightJustify
               Caption = 'ip'
-              Width = 90
+              Width = 100
             end
             item
               Caption = 'What'
@@ -218,10 +219,6 @@ object frmDebugView: TfrmDebugView
       BorderWidth = 4
       Caption = 'Trace'
       ImageIndex = 2
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 0
-      ExplicitHeight = 0
       object lvStackTrace: TListView
         Left = 0
         Top = 0
@@ -286,10 +283,6 @@ object frmDebugView: TfrmDebugView
       BorderWidth = 4
       Caption = 'Trail'
       ImageIndex = 1
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 0
-      ExplicitHeight = 0
       object lvTrail: TListView
         Left = 0
         Top = 0

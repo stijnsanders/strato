@@ -2,72 +2,33 @@ unit stratoLogic;
 
 interface
 
-{$D-}
-{$L-}
+{xx$D-}
+{xx$L-}
 
 uses stratoDecl, stratoSphere;
 
-procedure RunError(p: rItem; const Msg: string);
-
-function ByteSize(p: rItem): cardinal;
-function SameType(p1, p2: rItem): boolean;
-function IsAddressable(p: rItem): boolean;
+function ByteSize(p:xNode):cardinal;
+function SameNode(p1,p2:xNode):boolean;
+function SameType(p1,p2:xNode):boolean;
+function IsAddressable(p:xNode):boolean;
 
 implementation
 
 uses SysUtils;
 
-procedure RunError(p: rItem; const Msg: string);
-var
-  s:PxSourceFile;
-  i:cardinal;
-  SrcPos:xSrcPos;
+function ByteSize(p:xNode):cardinal;
 begin
-  //s:=SourceFile(p)
-  i:=p.x div StratoSphereBlockBase;
-  if i<SourceFilesCount then s:=SourceFile(i) else s:=nil;
-  if (s<>nil) or (s.FileName=0) then
-    Writeln(ErrOutput,Msg)
-  else
-   begin
-    SrcPos:=p.v(vSrcPos);
-    i:=s.SrcPosLineIndex;
-    if i=0 then i:=1;
-    Writeln(ErrOutput,Format('%s(%d:%d): %s',
-      [BinaryData(xxr(s.FileName))
-      ,SrcPos div i
-      ,SrcPos mod i
-      ,Msg
-      ]));
-   end;
-  ExitCode:=1;
-end;
-
-function ByteSize(p: rItem): cardinal;
-  {$IFDEF DEBUG}
-var
-  src:pointer;
-  {$ENDIF}
-begin
-  {$IFDEF DEBUG}
-  asm
-    mov eax,[ebp+4]
-    mov src,eax
-  end;
-  //dec(src,5);?
-  {$ENDIF}
-  if p.x=0 then
+  if p.IsNone then
     raise Exception.Create('request for byte size of nothing')//Result:=0
-    {$IFDEF DEBUG}at src{$ENDIF}
   else
    begin
-    case p.NodeType of
+    case p.Key of
       nVar,nVarByRef,nVarReadOnly,nThis:
         p:=p.r(iType);
     end;
-    while p.NodeType=nTypeAlias do
+    while p.Key=nTypeAlias do
       p:=p.r(iTarget);
-    case p.NodeType of
+    case p.Key of
       nEnum,nSignature,nPointer,nClass,nInterface,nClassRef:
         Result:=SystemWordSize;
       nType,nRecord,nArray:
@@ -75,25 +36,32 @@ begin
       else
         raise Exception.CreateFmt(
           'request for byte size of unsupported item %s:%s',
-          [ItemToStr(p),NodeTypeToStr(p.NodeType)])
-          {$IFDEF DEBUG}at src{$ENDIF};
+          [p.AsString,KeyToStr(p.Key)]);
       //else raise?Sphere.Error?
     end;
    end;
 end;
 
-function SameType(p1, p2: rItem): boolean;
+function SameNode(p1,p2:xNode):boolean;
+begin
+  Result:=(p1.sphere=p2.sphere) and (p1.index=p2.index);
+  //TODO: nImport?
+end;
+
+function SameType(p1,p2:xNode):boolean;
 var
   ptr1,ptr2:integer;
-  tt:xTypeNr;
-  r1,r2:rItem;
+  k:xKey;
+  q1,q2,r1,r2:xNode;
   b:boolean;
 begin
+  //TODO: resolve here?
+
   //pointer count 1
   ptr1:=0;
   b:=true;
   while b do
-    case p1.NodeType of
+    case p1.Key of
       nTypeAlias:
         p1:=p1.r(iTarget);
       nPointer:
@@ -108,7 +76,7 @@ begin
   ptr2:=0;
   b:=true;
   while b do
-    case p2.NodeType of
+    case p2.Key of
       nTypeAlias:
         p2:=p2.r(iTarget);
       nPointer:
@@ -120,30 +88,30 @@ begin
         b:=false;
     end;
   //equal already?
-  if (p1.x=0) or (p2.x=0) then
-    //Result:=(p1.x=0) and (p2.x=0) and (ptr1=ptr2)
+  if p1.IsNone or p2.IsNone then
+    //Result:=p1.IsNone and p2.IsNone and (ptr1=ptr2)
     Result:=false//error?!
   else
-  if p1.x=p2.x then
+  if SameNode(p1,p2) then
     Result:=ptr1=ptr2
   else
    begin
-    tt:=p1.NodeType;
-    if tt=p2.NodeType then
-      case tt of
+    k:=p1.Key;
+    if k=p2.Key then
+      case k of
         nClass:
          begin
-          while (p1.x<>0) and (p1.x<>p2.x) do
+          while not(p1.IsNone) and not(SameNode(p1,p2)) do
             p1:=p1.r(iInheritsFrom);
-          Result:=(p1.x=p2.x) and (ptr1=ptr2);
+          Result:=SameNode(p1,p2) and (ptr1=ptr2);
          end;
         nClassRef:
          begin
           p1:=p1.r(iTarget);
           p2:=p2.r(iTarget);
-          while (p1.x<>0) and (p1.x<>p2.x) do
+          while not(p1.IsNone) and not(SameNode(p1,p2)) do
             p1:=p1.r(iInheritsFrom);
-          Result:=(p1.x=p2.x) and (ptr1=ptr2);
+          Result:=SameNode(p1,p2) and (ptr1=ptr2);
          end;
         nSignature:
          begin
@@ -152,15 +120,12 @@ begin
             SameType(p1.r(iReturnType),p2.r(iReturnType)) and
             SameType(p1.r(iSubject),   p2.r(iSubject)) then
            begin
-            ListFirst(p1,lArguments,p1,r1);
-            ListFirst(p2,lArguments,p2,r2);
-            while (p1.x<>0) and (p2.x<>0) and
-              SameType(p1.r(iType),p2.r(iType)) do
-             begin
-              ListNext(p1,r1);
-              ListNext(p2,r2);
-             end;
-            Result:=(p1.x=0) and (p2.x=0);
+            r1.Start(p1,lArguments);
+            r2.Start(p2,lArguments);
+            Result:=true;
+            while Result and r1.Next(q1) and r2.Next(q2) do
+              Result:=SameType(q1,q2);
+            Result:=Result and r1.Done and r2.Done;
            end
           else
             Result:=false;
@@ -169,9 +134,9 @@ begin
         else Result:=false;
       end
     else
-    if (tt=nType)
-      and (p1.x=IntrinsicTypes[itType])
-      and (p2.NodeType=nClassRef)
+    if (k=nType)
+      and SameNode(p1,IntrinsicTypes[itType])
+      and (p2.Key=nClassRef)
       then
       Result:=true
     else
@@ -179,22 +144,22 @@ begin
    end;
 end;
 
-function IsAddressable(p: rItem): boolean;
+function IsAddressable(p:xNode):boolean;
 begin
   Result:=false;//default
-  while p.x<>0 do
-    case p.NodeType of
+  while not p.IsNone do
+    case p.Key of
       nVar,nVarByRef,nThis://nVarReadOnly?
        begin
         Result:=true;//TODO: always? (not read-only?)
-        p.x:=0;//end loop
+        p.none;//end loop
        end;
       nArrayIndex:
         p:=p.r(iSubject);
       nField:
         p:=p.r(iTarget);
       else
-        p.x:=0;//end loop
+        p.none;//end loop
     end;
 end;
 

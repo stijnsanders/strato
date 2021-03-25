@@ -6,7 +6,8 @@ uses
   stratoDecl in 'stratoDecl.pas',
   stratoSphere in 'stratoSphere.pas',
   stratoDebug in 'stratoDebug.pas',
-  stratoTools in 'stratoTools.pas';
+  stratoTools in 'stratoTools.pas',
+  stratoTokenizer in 'stratoTokenizer.pas';
 
 {$R *.res}
 

@@ -6,158 +6,141 @@ interface
 {$L-}
 
 const
-  StratoSphereFileVersion=$00000300;//0.3.0
+  StratoSphereFileVersion=$000400;//0.4.0
 
 type
   xValue=type cardinal;
-  xItem=type xValue;
+  xRef=type xValue;
   xName=type xValue;
   xSrcPos=type xValue;
-  PxValue=^xValue;
 
-//  xTypeNr=(
-  xTypeNr=type xValue;
-const
-  //node identification codes (see also NodeTypeToStr)
-                                //SNNN: size; number
-    n_BinaryData                = 1000; //use vSizeDiv4 when iterating
-    n_NameData                  = 4000;
+  xKey=( //=type xValue?
 
-    nNameSpace                  = 5000;
-    nType                       = 6000;
-    nLiteral                    = 3001;
-    nConstant                   = 6002; //constant: iValue -> nLiteral;nConstant
-    nRecord                     = 6003;
-    nArray                      = 7004;
-    nEnum                       = 5005; //enumeration: lItems -> nConstant
-    nSignature                  = 7006;
-    nSigArg                     = 6007;
-    nSigArgByRef                = 5008;
-    nMember                     = 4009;
-    nOverload                   = 6010;
-    nPointer                    = 6011;
-    nTypeAlias                  = 5012;
+    xUnassigned                     = 0,
 
-    nGlobal                     = 4013;
+    xBinaryData                     = 1000, //i: running length (in bytes)
+                                            //data is stored in subsequent records
 
-    nClass                      = 7020;
-    nClassRef                   = 5021; //class reference: iTarget -> nClass
-    nCtors                      = 3022; //constructors: lItems -> nCtor
-    nCtor                       = 6023;
-    nDtor                       = 4024;
-    nPropGet                    = 6025;
-    nPropSet                    = 6026;
-    //TODO: nPropPtr?
-    nInterface                  = 6027;
+    xListEntry                      = 2000,
 
-    nCodeBlock                  = 7028;
-    nVar                        = 7029;
-    nVarByRef                   = 6030;
-    nVarReadOnly                = 7031;
-    nThis                       = 4032;
+    xDictionary_Entry               = 2001, //i:fraction v:down
+    xDictionary_Tail                = 2002, //i:index v:parent
 
-    nSCall                      = 5033;//system call: iTarget -> nLiteral
-    nFCall                      = 5034;//function call: iTarget -> nOverload
-    nVCall                      = 6035;//virtual/dynamic call
-    nICall                      = 6036;//inherited call
-    nCallArg                    = 5037;//call argument
+    n_Max1                          = 95,
+    n_Max                           = 100,
 
-    nCast                       = 5040;
-    nAddressOf                  = 5041;
-    nDereference                = 5042;
-    nArrayIndex                 = 6043;
-    nField                      = 5044;//field 'subject.target'
+    nSphere                         = 99,
+    iSphere_FileName                = 300,
+    vSphere_FileSize                = 301,
+    vSphere_FileHash                = 302, //reserved
+    vSphere_SrcPosLineIndex         = 303,
+    lSphere_Errors                  = 304, //when inlining errors only
+    //lSphere_Imports                 = 305,
+    //lSphere_NameSpaces              = 306,
+    iSphere_Local                   = 307,
+    lSphere_Globals                 = 308,
+    lSphere_Dictionary              = 309,
+    iSphere_InitializationBlock     = 310,
+    iSphere_FinalizationBlock       = 311,
 
-    nAssign                     = 6045;
-    nUnaryOp                    = 6046;
-    nBinaryOp                   = 7047;
-    nSelection                  = 7048;
-    nIteration                  = 6049;
-    nIterPostEval               = 6050;
-    nRange                      = 7051;
-    nRangeIndex                 = 5052;
+{
+    nImport                         = 98,
+    vImport_SphereIndex             = 330,
+    vImport_SphereRef               = 331,
+}
 
-    nTry                        = 3055;
-    nThrow                      = 4056;//raise/throw/except: iSubject -> nVCall on nCtor of exception object
-    nDefer                      = 4057;
-    nCatch                      = 6058;//catch: all OR lTypes -> nClass OR iTarget -> nVarReadOnly with iType nClass
+    nNameSpace                      = 1,
+    nType                           = 2,
+    nLiteral                        = 3,
+    nConstant                       = 4,
+    nArray                          = 5,
+    nEnum                           = 6,
+    nRecord                         = 7,
+    nPointer                        = 8,
+    nTypeAlias                      = 9,
+    nSignature                      = 10,
+    nSigArg                         = 11,
+    nSigArgByRef                    = 12,
 
-    //see xTypeDef below
-    n_TypeNr_Base               = 1000;//used with div to get size from value
-    n_TypeNr_Low                = 3000;//used for xTypeDefX below
-    n_TypeNr_High               = 7060;//used for xTypeDefX below
+    nOverload                       = 15,
 
-  //field identification codes (see also NodeFieldToStr)
-  //  (see xTypeDef below)
-  
-    iName            = 100;
-    iParent          = 101;
-    iNext            = 102;
-    iType            = 103;
-    iSubject         = 104;
-    iTarget          = 105;
-    iSignature       = 106;
-    iValue           = 107;
-    iReturnType      = 108;
-    iInheritsFrom    = 109;
+    nClass                          = 20,
+    nClassRef                       = 21,
+    nCtor                           = 22, //constructor
+    nDtor                           = 23, //destructor
+    nPropGet                        = 24, //property getter
+    nPropSet                        = 25, //property setter
+    nInterface                      = 26,
 
-    iBody            = 120;
-    iLeft            = 121;
-    iRight           = 122;
-    iFirstArgVar     = 123;
-    iPredicate       = 124;
-    iDoTrue          = 125;
-    iDoFalse         = 126;
+    nCodeBlock                      = 30,
+    lCodeBlock_Statements           = 200,
+    lCodeBlock_Locals               = 201,
+    vCodeBlock_LocalsSize           = 202,
 
-    lItems           = 200;
-    lArguments       = 201;
-    lCatchTypes      = 202;
-    lLocals          = 203;
+    nVar                            = 31,
+    nVarByRef                       = 32,
+    nVarReadOnly                    = 33,
+    nThis                           = 34,
 
-    vTypeNr          = 000;
-    vSrcPos          = 001;
-    vByteSize        = 002;
-    vLength          = 002;//only used with n_NameData
-    vLocalsSize      = 002;//only used with nCodeBlock
-    vOffset          = 003;
-    vOperator        = 004;
-    vKey             = 005;
+    nSCall                          = 35, //system call: iTarget -> nLiteral
+    nFCall                          = 36, //function call: iTarget -> nOverload
+    nVCall                          = 37, //virtual/dynamic call
+    nICall                          = 38, //inherited call
+    nCallArg                        = 39, //call argument
 
-    f_FieldsMax      = 209;
+    nCast                           = 40,
+    nAddressOf                      = 41,
+    nDereference                    = 42,
+    nArrayIndex                     = 43,
+    nField                          = 44, //field 'subject.target'
 
-    //keep these in equal sequence to xSourceFile fields below
-    //use with "xxr(SrcIndex * StratoSphereBlockBase)"
-    iSourceFile_FileName            = 300;
-    vSourceFile_FileSize            = 301;
-    vSourceFile_FileHash            = 302;
-    vSourceFile_SrcPosLineIndex     = 303;
-    vSourceFile_BlockIndex          = 304;
-    lSourceFile_NameSpaces          = 305;
-    iSourceFile_Local               = 306;
-    lSourceFile_Globals             = 307;
-    lSourceFile_Dictionary          = 308;
-    iSourceFile__Reserved1          = 309;
-    iSourceFile_InitializationBlock = 310;
-    iSourceFile_FinalizationBlock   = 311;
-    //= 312;
-    //= 313;
+    nAssign                         = 45,
+    nUnaryOp                        = 46,
+    nBinaryOp                       = 47,
+    nSelection                      = 50,
+    nIteration                      = 51,
+    nIterPostEval                   = 52,
+    nRange                          = 53,
+    nRangeIndex                     = 54,
 
-type
-  xSourceFile=record
-    FileName:xItem;//n_BinaryData
-    FileSize:cardinal;
-    FileHash:cardinal; //TODO: file hash, timestamp
-    SrcPosLineIndex:cardinal;
-    BlockIndex:xItem;
-    NameSpaces:xItem;
-    Local:xItem;
-    Globals:xItem;
-    Dictionary:xItem;
-    _Reserved1:xItem;
-    InitializationBlock:xItem;
-    FinalizationBlock:xItem;
-  end;
-  PxSourceFile=^xSourceFile;
+    nTry                            = 55,
+    nThrow                          = 56, //raise/throw/except: iSubject -> nVCall on nCtor of exception object
+    nDefer                          = 57,
+    nCatch                          = 58,  //catch: all
+    lCatch_Types                    = 209, //  OR lTypes -> nClass
+                                           //  OR iTarget -> nVarReadOnly with iType nClass
+
+    xStageList                      = 97, //used by stratoFn.pas
+
+    //generic field keys
+    iParent                         = 101,
+    vSrcPos                         = 102, // source line * sphere's vSphere_SrcPosLineIndex value + source position
+    dName                           = 103,
+    iType                           = 104,
+    vByteSize                       = 105,
+    lChildren                       = 106,
+    vOffset                         = 107,
+    vOperator                       = 108,
+
+    iSubject                        = 109,
+    iTarget                         = 110,
+    iSignature                      = 111,
+    iValue                          = 112,
+    iReturnType                     = 113,
+    iInheritsFrom                   = 114,
+
+    iBody                           = 120,
+    iLeft                           = 121,
+    iRight                          = 122,
+    iPredicate                      = 123,
+    iDoTrue                         = 124,
+    iDoFalse                        = 125,
+
+    iArgVar                         = 126,
+    lArguments                      = 127,
+
+    x_Invalid                       = 9999
+  );
 
   TStratoIntrinsicType=(
     itVoid,
@@ -170,135 +153,24 @@ type
   );
 
 const
-  xTypeDefLen=278;
-  xTypeDef:array[0..xTypeDefLen] of xTypeNr=(
-
-    //
-    //  ATTENTION
-    //  when changing these, also update stratoDebug's StratoDumpThing !!!
-    //
-
-    //n_BinaryData,            vSizeDiv4,{pData*,}
-    n_NameData,                iParent,iNext,vKey,lItems,
-
-    nNameSpace,nEnum,          iParent,iNext,vSrcPos,iName,lItems,
-    nType,nRecord,             iParent,iNext,vSrcPos,iName,lItems,vByteSize, //TODO: iPointerTo?
-    nArray,                    iParent,iNext,vSrcPos,iName,lItems,iType,vByteSize,
-      //TODO: total/elem size (vByteSize= size element * count, for now)
-      //TODO: multi-demensional
-    nLiteral,                  vSrcPos,iType,iValue,
-    nConstant,                 iParent,iNext,vSrcPos,iName,iType,iValue,
-    nSignature,                iParent,iNext,vSrcPos,iName,iSubject,lArguments,iReturnType,
-    nSigArg,                   iParent,iNext,vSrcPos,iName,iType,iValue,
-    nSigArgByRef,              iParent,iNext,vSrcPos,iName,iType,
-    nMember,                   iParent,iNext,iName,lItems,
-    nOverload,                 iParent,iNext,vSrcPos,iSignature,iFirstArgVar,iBody,
-    nPointer,                  iParent,iNext,vSrcPos,iName,lItems,iTarget,
-    nTypeAlias,                iParent,iNext,vSrcPos,iName,iTarget,
-
-    nGlobal,                   iParent,iNext,vSrcPos,iTarget,
-
-    nClass,                    iParent,iNext,vSrcPos,iName,lItems,vByteSize,iInheritsFrom,
-    nClassRef,                 iParent,iNext,vSrcPos,iName,iTarget,
-    nCtors,                    iParent,iNext,lItems,
-    nCtor,nPropGet,nPropSet,   iParent,iNext,vSrcPos,iSignature,iFirstArgVar,iBody,
-    nDtor,                     iParent,iNext,vSrcPos,iBody,
-    nInterface,                iParent,iNext,vSrcPos,iName,lItems,iInheritsFrom,
-
-    nCodeBlock,                iParent,iNext,vSrcPos,lLocals,vLocalsSize,lItems,iReturnType,
-    nVar,nVarReadOnly,         iParent,iNext,vSrcPos,iName,vOffset,iType,iValue,
-    nVarByRef,                 iParent,iNext,vSrcPos,iName,vOffset,iType,
-    nThis,                     iParent,iNext,vOffset,iType,
-
-    nSCall,nFCall,             iParent,iNext,vSrcPos,lArguments,iTarget,
-    nVCall,nICall,             iParent,iNext,vSrcPos,lArguments,iTarget,iSubject,
-    nCallArg,                  iParent,iNext,vSrcPos,iValue,iType,
-
-    nCast,                     iParent,iNext,vSrcPos,iSubject,iType,
-    nAddressOf,nDereference,   iParent,iNext,vSrcPos,iSubject,iReturnType,
-    nArrayIndex,               iParent,iNext,vSrcPos,iSubject,lArguments,iType,
-    nField,                    iParent,iNext,vSrcPos,iSubject,iTarget,
-
-    nAssign,                   iParent,iNext,vSrcPos,vOperator,iTarget,iValue,
-    nUnaryOp,                  iParent,iNext,vSrcPos,vOperator,iRight,iReturnType,
-    nBinaryOp,                 iParent,iNext,vSrcPos,vOperator,iLeft,iRight,iReturnType,
-    nSelection,                iParent,iNext,vSrcPos,iPredicate,iDoTrue,iDoFalse,iReturnType,
-    nIteration,nIterPostEval,  iParent,iNext,vSrcPos,iPredicate,iBody,iReturnType,
-    nRange,                    iParent,iNext,vSrcPos,iName,iLeft,iRight,iReturnType,
-    nRangeIndex,               iParent,iNext,vSrcPos,iLeft,iRight,
-
-    nTry,                      iParent,iNext,vSrcPos,
-    nThrow,                    iParent,iNext,vSrcPos,iSubject,
-    nDefer,                    iParent,iNext,vSrcPos,lItems,
-    nCatch,                    iParent,iNext,vSrcPos,lCatchTypes,iTarget,iBody,
-
-    n_TypeNr_Low);
-
-var
-  xTypeDefX:array[n_TypeNr_Low..n_TypeNr_High] of cardinal;
-
-const
   StratoSphereFileMarker=$00727453;//'Str'#0 see pHeader below
 
 type
   TStratoStoreHeader=record
     FileMarker:cardinal;
     FileVersion:cardinal;
-    SourceFilesCount:cardinal;
-    BlocksCount:cardinal;
+    SpheresCount:cardinal;
+    Reserved_1:cardinal;
+  end;
+
+  TStratoSphereHeader=record
+    Items:cardinal;
+    Reserved_1:cardinal;
+    Reserved_2:cardinal;
+    Reserved_3:cardinal;
   end;
 
 implementation
 
-uses SysUtils;
-
-{$IFDEF DEBUG}
-procedure StratoCheckTypeNrs;
-var
-  i,j,k:cardinal;
-begin
-  i:=0;
-  while i<xTypeDefLen do
-   begin
-    j:=i+1;
-    while (j<xTypeDefLen) and (xTypeDef[j]>f_FieldsMax) do inc(j);
-    k:=j+1;
-    while (k<xTypeDefLen) and (xTypeDef[k]<f_FieldsMax) do inc(k);
-    while (i<>j) do
-     begin
-      if (xTypeDef[i] div n_TypeNr_Base)<>(k-j) then
-        raise Exception.CreateFmt('Type Length mismatch %d:%d',
-          [xTypeDef[i],k-j]);
-      inc(i);
-     end;
-    i:=k;
-   end;
-end;
-{$ENDIF}
-
-procedure StratoBuildTypeDefX;
-var
-  i,j:cardinal;
-begin
-  {$IFDEF DEBUG}
-  StratoCheckTypeNrs;
-  {$ENDIF}
-  i:=0;
-  while i<xTypeDefLen do
-   begin
-    j:=i+1;
-    while (j<xTypeDefLen) and (xTypeDef[j]>f_FieldsMax) do inc(j);
-    while (i<>j) do
-     begin
-      xTypeDefX[xTypeDef[i]]:=j;
-      inc(i);
-     end;
-    while (j<xTypeDefLen) and (xTypeDef[j]<f_FieldsMax) do inc(j);
-    i:=j;
-   end;
-end;
-
-initialization
-  StratoBuildTypeDefX;
 end.
 

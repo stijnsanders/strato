@@ -2,23 +2,21 @@ unit stratoDebug;
 
 interface
 
-{$D-}
-{$L-}
+{xx$D-}
+{xx$L-}
 
 uses stratoTokenizer, stratoSphere, stratoDecl;
 
-function StratoDumpThing(p:rItem):string;
-function StratoGetSourceFile(p:rItem;
-  var srcLine,srcColumn:cardinal;var p1,p2:rItem):boolean;
-procedure StratoDumpSphereData(const fn:string;
-  IncludeDictionaryNodes,ReverseFilesOrder:boolean);
+function StratoDumpThing(p:xNode):UTF8String;
+function StratoGetSourceFile(p:xNode;
+  var srcLine,srcColumn:cardinal;var p1,p2:xNode):boolean;
+procedure StratoDumpSphereData(const fn:string;ReverseFilesOrder:boolean);
 
-implementation
-
-uses SysUtils, Classes;
+var
+  IncludeDictionaryNodes:boolean;
 
 const
-  TokenName:array[TStratoToken] of string=(
+  TokenName:array[TStratoToken] of UTF8String=(
     'id','string','numeric','',
     ';',',','.',':','=','@','^','?','&','$','#','~',
     '(',')','{','}','[',']',
@@ -29,38 +27,9 @@ const
     '<<<','>>>','@?','?=',
     '','EOF','');
 
-function DebugInfo(p:rItem):string;
-var
-  i,j,k,l:cardinal;
-  t:xTypeNr;
-begin
-  i:=p.x div StratoSphereBlockBase;
-  j:=p.x mod StratoSphereBlockBase;
-  t:=Blocks[i][j];
-  Result:=NodeTypeToStr(t);
-  if t=n_BinaryData then
-    Result:=Format('%s: #%d',[Result,Blocks[i][j+1]])
-  else
-  if t<n_TypeNr_Low then
-    Result:=Format('%s: ???',[Result])
-  else
-   begin
-    l:=(t div n_TypeNr_Base);
-    k:=xTypeDefX[t];
-    inc(j);
-    while l<>0 do
-     begin
-      if xTypeDef[k]<iName then
-        Result:=Result+', '+IntToHex(Blocks[i][j],3)
-      else
-        Result:=Result+', '+ItemToStr(xxr(Blocks[i][j]));
-      inc(j);
-      inc(k);
-      dec(l);
-     end;
-   end;
-  Result[8]:=':';//was ','
-end;
+implementation
+
+uses SysUtils, Classes, stratoTools;
 
 function DictKeyToStr(ii:integer):string;
 var
@@ -79,307 +48,414 @@ begin
   Result:=Result+'"';
 end;
 
-function StratoDumpThing(p:rItem):string;
+function StratoDumpThing(p:xNode):UTF8String;
 var
-  d:string;
-  a,b,i,l:integer;
-  sx:PxSourceFile;
+  q,v:PxKeyValue;
+  r:xRef;
+  i,l:cardinal;
+const
+  hex:array[0..15] of UTF8Char='0123456789ABCDEF';
 
-  function ii:xValue;
+  function rr(pp:PxKeyValue):UTF8String;
   begin
-    Result:=Blocks[a][b+(byte(d[i]) and $F)+1];
+    if pp.i=0 then Result:=IntToStr8(pp.v) else
+      Result:='$'+IntToStr8(pp.i)+'#'+IntToStr8(pp.v);
   end;
 
 begin
-  a:=p.x div StratoSphereBlockBase;
-  b:=p.x mod StratoSphereBlockBase;
-  if b=0 then
-   begin
-    sx:=SourceFile(a);
-    Result:='src '
-      +' fn='+ItemToStr(xxr(sx.FileName))
-      +' fs='+IntToStr(sx.FileSize)
-      +' ns->'+ItemToStr(xxr(sx.NameSpaces))
-      +' l='+ItemToStr(xxr(sx.Local))
-      +' ini='+ItemToStr(xxr(sx.InitializationBlock))
-      +' fin='+ItemToStr(xxr(sx.FinalizationBlock))
-      +' g->'+ItemToStr(xxr(sx.Globals))
-      +' d->'+ItemToStr(xxr(sx.Dictionary))
-   end
+  if p.sphere=nil then
+    Result:='?nullref'
   else
    begin
-    d:='';//default
-    Result:='';//default
-    case p.NodeType of
+    if p.index>=p.sphere.kCount then
+      Result:='###Item index out of range '+UTF8String(p.AsString)+
+        ' ('+IntToStr8(p.sphere.kCount)+')'
+    else
+     begin
+      q:=p.sphere[p.index];
+      case q.k of
 
-      n_BinaryData   :
+      xUnassigned:
+        Result:='?unassigned';//assert i=0
+
+      xBinaryData:
        begin
-        Result:=Format('#%d "%s"',[Blocks[a][b+1],BinaryData(p)]);
+        Result:='('+IntToStr8(q.i)+')"'+p.sphere[p.index].BinaryData+'"';
+        q:=nil;//skip fields
        end;
 
-      n_NameData     :d:='-    X2  ->$3';
-      nNameSpace     :d:='ns   ??  ->$4';
-      nType          :d:='type ??  #5 ->$4';
-      nRecord        :d:='rec  ??  #5 ->$4';
-      nEnum          :d:='enum ??  ->$4';
-      nArray         :d:='arr  ??  #6 t=$5 ->$4';
-
-      nLiteral       :d:='lit  v=$2 t=$1';
-      nConstant      :d:='cons ??  v=$5 t=$4';
-
-      nSignature     :d:='sig  ??  $4.($5):$6';
-      nSigArg        :d:='arg  ??  t=$4 v=$5';
-      nSigArgByRef   :d:='^arg ??  t=$4';
-      nMember        :d:='mem  !2  ->$3';
-      nOverload      :d:='fn   ?0  $3($4){$5}';
-      nPointer       :d:='ptr  [$5] ->$4';
-      nTypeAlias     :d:='=typ ??  t=$4';
-
-      nGlobal        :d:='glob ?3 [$3]';
-
-      nClass         :d:='cls  ??  #5 <-$6 ->$4';
-      nClassRef      :d:='cref ??  t=$4';
-      nCtors         :d:='ctor ->$2';
-      nCtor          :d:='ctor $3($4){$5}';
-      nPropGet       :d:='pget ?0  $3[$4]{$5}';
-      nPropSet       :d:='pset ?0  $3[$4]{$5}';
-
-      nDtor          :d:='dtor -(){$3}';
-      nInterface     :d:='intf ??  <-$5 ->$4';
-
-      nCodeBlock     :
-        if p.r(iReturnType).x=0 then
-                      d:='{}   #4 var->$3 cmd->$5'
-        else          d:='{}:  #4 var->$3 cmd->$5 t=$6';
-      nVar           :d:='var  ??  @4 t=$5 v=$6';
-      nVarByRef      :d:='var^ ??  @4 t=$5';
-      nVarReadOnly   :d:='var# ??  @4 t=$5 v=$6';
-      nThis          :d:='this @2 t=$3';
-
-      nSCall         :d:='sc() $4($3)';
-      nFCall         :d:='fc() $4($3)';
-      nVCall         :d:='vc() $5.$4($3)';
-      nICall         :d:='ic() $5.$4($3)';
-      nCallArg       :d:='arg  v=$3 t=$4';
-
-      nCast          :d:='cast $3 into $4';
-      //nAddressOf     :d:='addr $3 t=$4';
-      //nDereference   :d:='dref $3 t=$4';
-      nArrayIndex    :d:='x[]  $3[$4] t=$5';
-      nField         :d:='x.y  $3.$4';
-
-      nAssign        :d:=':=   $4 *3 $5';
-      nUnaryOp       :d:='_x   *3 $4  t=$5';
-      nBinaryOp      :d:='x_y  $4 *3 $5  t=$6';
-      nSelection     :
-        if p.r(iReturnType).x=0 then
-                      d:='if   ($3){$4}{$5}'
-        else          d:='if:  ($3){$4}{$5} t=$6';
-      nIteration     :d:='for  ($3) {$4} t=$5';
-      nIterPostEval  :d:='loop {$4} ($3) t=$5';
-      nRange         :d:='rng  ??  $4 .. $5 t=$6';
-      nRangeIndex    :d:='r<-i $3 <- $4';
-
-      nTry           :d:=':::  ';
-      nThrow         :d:='!!!  $3';
-      nDefer         :d:='>>>  ->$3';
-
-      nCatch         :d:='???  (->$3,$4){$5}';
-
-      else
-        if p.x<>0 then Result:=Format('?    x%s',[DebugInfo(p)]);
-    end;
-    l:=Length(d);
-    if l<>0 then
-     begin
-      Result:=Copy(d,1,5);
-      i:=6;
-      while i<=l do
+      xListEntry:
        begin
-        inc(i);
-        case d[i-1] of
-          '?':
-            if d[i]='?' then
-              Result:=Result+UTF8ToString(FQN(p))
+        if IncludeDictionaryNodes then Result:='list ->'+rr(q);
+        q:=nil;//skip fields
+       end;
+
+      xDictionary_Entry:
+       begin
+        Result:='';
+        i:=q.i;
+        l:=4;
+        while (l<>0) and (i<>0) do
+         begin
+          case i and $FF of
+            $00:;//end loop?
+            $20..$7E:
+              Result:=UTF8String(AnsiChar(i and $FF))+Result;
             else
-              Result:=Result+UTF8ToString(FQN(xxr(ii)));
-          '$':Result:=Result+ItemToStr(xxr(ii));
-          '#':Result:=Format('%s#%d',[Result,ii]);
-          '@':Result:=Format('%s@%d',[Result,ii]);
-          '*':Result:=Result+TokenName[TStratoToken(ii)];
-          'X':Result:=Result+DictKeyToStr(ii);
-          '!':Result:=Result+UTF8ToString(GetName(ii));
-          //'\':Result:=Result+d[i];
+              Result:=SphereIndexPrefix+UTF8String(hex[(i shr 4) and $F]+hex[i and $F])+SphereIndexSuffix+Result;
+          end;
+          i:=i shr 8;
+          dec(l);
+         end;
+        Result:='dict "'+Result
+          +'" ->'+IntToStr8(q.v)
+          //+' next='+IntToStr8(q.n)
+          //+' ^'+IntToStr8()
+          ;
+        q:=nil;//skip fields
+       end;
+      xDictionary_Tail:
+       begin
+        Result:='dict ^'+IntToStr8(q.v);
+        q:=nil;//skip fields
+       end;
+      xStageList:
+        Result:='?stage';
+
+      nSphere:
+        //'$' done by StratoDumpSphereData
+        Result:=' #'+IntToStr8(p.sphere.kCount);
+
+      nNameSpace:    Result:='ns '+p.sphere.FQN(p.index);
+
+      nType:         Result:='type '+p.sphere.FQN(p.index);
+      nLiteral:      Result:='literal';
+      nConstant:     Result:='const '+p.sphere.FQN(p.index);
+      nArray:        Result:='array '+p.sphere.FQN(p.index);
+      nEnum:         Result:='enum '+p.sphere.FQN(p.index);
+      nRecord:       Result:='record '+p.sphere.FQN(p.index);
+      nPointer:      Result:='pointer '+p.sphere.FQN(p.index);
+      nTypeAlias:    Result:='alias '+p.sphere.FQN(p.index);
+      nSignature:    Result:='sig';// '+p.sphere.FQN(p.index);
+      nSigArg:       Result:='arg '+p.sphere.GetName(p.sphere.n(p.index));
+      nSigArgByRef:  Result:='^arg '+p.sphere.GetName(p.sphere.n(p.index));
+      nClass:        Result:='class '+p.sphere.FQN(p.index);
+      nClassRef:     Result:='^class '+p.sphere.FQN(p.index);
+      nCtor:         Result:='ctor';//$3($4){$5}
+      nDtor:         Result:='dtor';//-(){$}
+      nPropGet:      Result:='pget';//?0  $3[$4]{$5}
+      nPropSet:      Result:='pset';//?0  $3[$4]{$5}
+      nInterface:    Result:='interface';
+      nOverload:     Result:='ovl';
+      //nOverload      :d:='fn   ?0  $3($4){$5}';
+
+
+      nCodeBlock:    Result:='{}';
+      nVar:          Result:='var '+p.sphere.FQN(p.index);
+      nVarByRef:     Result:='^var '+p.sphere.FQN(p.index);
+      nVarReadOnly:  Result:='var# '+p.sphere.FQN(p.index);
+      nThis:         Result:='this';
+
+      nSCall:        Result:='sc()';
+      nFCall:        Result:='fc()';
+      nVCall:        Result:='vc()';
+      nICall:        Result:='ic()';
+      nCallArg:      Result:='arg';
+
+      nCast:         Result:='cast';
+      //nAddressOf:    Result:='addr';
+      //nDereference:  Result:='dref';
+      nArrayIndex:   Result:='x[]';
+      nField:        Result:='x.y';
+
+      nAssign:       Result:=':=';
+      nUnaryOp:      Result:='_x';
+      nBinaryOp:     Result:='x_y';
+      nSelection:    Result:='if';
+      nIteration:    Result:='for';
+      nIterPostEval: Result:='loop';
+      nRange:        Result:='range';
+      nRangeIndex:   Result:='r<-i';
+
+      nTry:          Result:='try';
+      nThrow:        Result:='throw';
+      nDefer:        Result:='defer';
+
+      nCatch:        Result:='???';
+
+      //add new above here
+      else
+       begin
+        Result:='?'+IntToStr8(cardinal(q.k));
+        if q.k>n_Max then q:=nil;
+       end;
+      end;
+      while (q<>nil) and (q.n<>0) do
+       begin
+        r:=q.n;
+        q:=p.sphere[r];
+        case q.k of
+
+        xUnassigned,xStageList:q:=nil;//end loop?
+
+        iParent:
+          Result:=Result+' ^'+IntToStr8(q.v);
+        vSrcPos:
+         begin
+          v:=p.sphere.v(0,vSphere_SrcPosLineIndex);
+          if v=nil then
+            l:=1
           else
            begin
-            dec(i);
-            Result:=Result+d[i];
+            l:=v.v;
+            if l=0 then l:=1;
            end;
+          Result:=Result+' ['+IntToStr8(integer(q.v div l))+':'+IntToStr8(integer(q.v mod l))+']';
+         end;
+        dName:
+          if IncludeDictionaryNodes then
+            Result:=Result+' n='+IntToStr8(q.v);
+          //else Result:=Result+' n="'+s.GetName(q.v)+'"';?
+        iType:
+          Result:=Result+' t='+rr(q);
+        iValue:
+          Result:=Result+' v='+rr(q);
+        vByteSize:
+          Result:=Result+' #'+IntToStr8(q.v);
+        lChildren:
+          Result:=Result+' ->'+IntToStr8(r);
+        vOffset:
+          Result:=Result+' @'+IntToStr8(integer(q.v));
+        vOperator:
+          Result:=Result+' _="'+TokenName[TStratoToken(q.v)]+'"';
+
+        iSubject:
+          Result:=Result+' subject='+rr(q);
+        iTarget:
+          Result:=Result+' target='+rr(q);
+        iSignature:
+          Result:=Result+' sig='+rr(q);
+        iReturnType:
+          Result:=Result+' r='+rr(q);
+        iInheritsFrom:
+          Result:=Result+' i='+rr(q);
+
+        iBody:
+          Result:=Result+' {}='+rr(q);
+        iLeft:
+          Result:=Result+' left='+rr(q);
+        iRight:
+          Result:=Result+' right='+rr(q);
+        iPredicate:
+          Result:=Result+' predicate='+rr(q);
+        iDoTrue:
+          Result:=Result+' true='+rr(q);
+        iDoFalse:
+          Result:=Result+' false='+rr(q);
+
+        iArgVar:
+          Result:=Result+' i='+rr(q);
+        lArguments:
+          Result:=Result+' args->'+IntToStr8(r);
+
+        lCodeBlock_Locals:
+          Result:=Result+' l->'+IntToStr8(r);
+        lCodeBlock_Statements:
+          Result:=Result+' {x}->'+IntToStr8(r);
+        vCodeBlock_LocalsSize:
+          Result:=Result+' {#'+IntToStr8(q.v)+'}';
+
+        iSphere_FileName:
+          Result:=Result+' fn='+IntToStr8(q.v);
+        vSphere_FileSize:
+          Result:=Result+' ('+IntToStr8((q.v+1023)div 1024)+' KiB)';
+        vSphere_FileHash:;
+        vSphere_SrcPosLineIndex:;
+        lSphere_Errors:
+          Result:=Result+' errors->'+IntToStr8(r);
+//        lSphere_Imports:
+//          Result:=Result+' import->'+IntToStr8(r);
+//        lSphere_NameSpaces:
+//          Result:=Result+' ns->'+IntToStr8(r);
+        iSphere_Local:
+          Result:=Result+' local='+IntToStr8(q.v);
+        lSphere_Globals:
+          Result:=Result+' global->'+IntToStr8(r);
+        lSphere_Dictionary:
+          if IncludeDictionaryNodes then
+            Result:=Result+' dict->'+IntToStr8(r);
+        iSphere_InitializationBlock:
+          Result:=Result+' init='+IntToStr8(q.v);
+        iSphere_FinalizationBlock:
+          Result:=Result+' fini='+IntToStr8(q.v);
+
+        //TODO: more!
+
+        //add new above here
+        else
+          Result:=Result+' ?'+IntToStr8(cardinal(q.k))+'=$'+IntToStr8(q.i)+'#'+IntToStr8(q.v);
         end;
-        inc(i);
        end;
      end;
    end;
 end;
 
-function StratoGetSourceFile(p:rItem;
-  var srcLine,srcColumn:cardinal;var p1,p2:rItem):boolean;
+function StratoGetSourceFile(p:xNode;
+  var srcLine,srcColumn:cardinal;var p1,p2:xNode):boolean;
 var
-  i,j,k,l:cardinal;
-  t:xTypeNr;
+  l:cardinal;
+  v:PxKeyValue;
 begin
   Result:=false;//default
-  i:=p.x div StratoSphereBlockBase;
-  j:=p.x mod StratoSphereBlockBase;
-  l:=0;
-  if i<BlocksCount then l:=SourceFiles[Blocks[i][0]].SrcPosLineIndex;
-  if l=0 then l:=1;
-  t:=p.NodeType;
-  if (t>=n_TypeNr_Low) and (t<=n_TypeNr_High) then
+  if (p.sphere<>nil) and (p.Key<>xDictionary_Entry) and (p.Key<>xBinaryData) then
    begin
-    k:=xTypeDefX[t];
-    if xTypeDef[k  ]=iParent then p1.x:=Blocks[i][j+1] else p1.x:=0;
-    if xTypeDef[k+1]=iNext   then p2.x:=Blocks[i][j+2] else p2.x:=0;
-    if xTypeDef[k+2]=vSrcPos then
-     begin
-      i:=Blocks[i][j+3];
-      srcLine  :=i div l;
-      srcColumn:=i mod l;
-      Result:=true;
-     end
+    v:=p.sphere.v(0,vSphere_SrcPosLineIndex);
+    if v=nil then
+      l:=1
     else
-      if xTypeDef[k]=vSrcPos then //nLiteral only?
-       begin
-        i:=Blocks[i][j+1];
-        srcLine  :=i div l;
-        srcColumn:=i mod l;
-        Result:=true;
-       end;
+     begin
+      l:=v.v;
+      if l=0 then l:=1;
+     end;
+    v:=p.sphere.v(p.index,vSrcPos);
+    if v<>nil then
+     begin
+      Result:=true;
+      srcLine  :=v.v div l;
+      srcColumn:=v.v mod l;
+     end;
+    //TODO: while not() then :=(iParent)
    end;
 end;
 
-procedure StratoDumpSphereData(const fn:string;
-  IncludeDictionaryNodes,ReverseFilesOrder:boolean);
+procedure StratoDumpSphereData(const fn:string;ReverseFilesOrder:boolean);
 var
   f:TFileStream;
-  p,p1,p2:rItem;
-  i,j,k,l,py,px:cardinal;
-  t:xTypeNr;
-  x:string;
-  xx:AnsiString;
-{
-  procedure xa(zz:cardinal;z:xItem);
-  const
-    hex:array[0..15] of char='0123456789ABCDEF';
-  var
-    zi:cardinal;
+  s:TStratoSphere;
+  i,sx:cardinal;
+  p,q:xNode;
+  procedure fw(const xx:UTF8String);
   begin
-    zi:=zz+8;
-    while (zi<>zz) do
-     begin
-      dec(zi);
-      x[zi]:=hex[z and $F];
-      z:=z shr 4;
-     end;
+    //if xx<>''?
+    f.Write(xx[1],Length(xx));
   end;
-}
-  procedure xn(zz,z:cardinal);
+  procedure fl(Key:xKey);
+  var
+    xx:UTF8String;
+    l:xNode;
+    b:boolean;
+    r:PxKeyValue;
   begin
-    if z<>0 then
+    l.Start(p,Key);
+    if not l.Done then
      begin
-      if (z div StratoSphereBlockBase)<>k then x[zz-6]:='^';
-      z:=z mod StratoSphereBlockBase;
-      while (z<>0) and (zz<>0) do
+      xx:=IntToStr8(l.index)+': list';
+      b:=false;
+      while l.Next(q) do
        begin
-        x[zz]:=char($30+z mod 10);
-        z:=z div 10;
-        dec(zz);
+        r:=s[l.index];
+        if r.i=0 then
+          xx:=xx+' '+IntToStr8(r.v)
+        else
+          xx:=xx+' $'+IntToStr8(r.i)+'#'+IntToStr8(r.v);
+        b:=true;
+        if Length(xx)>=72 then
+         begin
+          xx:=xx+#13#10;
+          f.Write(xx[1],Length(xx));
+          b:=false;
+          xx:='   ';
+         end;
+       end;
+      if b then
+       begin
+        xx:=xx+#13#10;
+        f.Write(xx[1],Length(xx));
        end;
      end;
   end;
-  procedure xm(zz,z:cardinal);
-  begin
-    while (z<>0) and (zz<>0) do
-     begin
-      x[zz]:=char($30+z mod 10);
-      z:=z div 10;
-      dec(zz);
-     end;
-  end;
+const
+  UTF8ByteOrderMark:array[0..2] of byte=($EF,$BB,$BF);
 begin
   f:=TFileStream.Create(fn,fmCreate);
   try
-    xx:=
-      //'Strato v=?version?
-      'index   parent  next    line :col what info'#13#10;
-    f.Write(xx[1],Length(xx));
-
-    for i:=0 to SourceFilesCount-1 do
-     begin
-      if ReverseFilesOrder then j:=SourceFilesCount-1-i else j:=i;
-      //write file info here?
-      for k:=0 to BlocksCount-1 do
-        if Blocks[k][0]=j then
+    f.Write(UTF8ByteOrderMark[0],3);
+    //TODO: strato version?
+    if SpheresCount<>0 then
+      for i:=0 to SpheresCount-1 do
+       begin
+        if ReverseFilesOrder then sx:=SpheresCount-1-i else sx:=i;
+        s:=Spheres[sx];
+        p.s(s,0);
+        while p.index<s.kCount do
          begin
-          p.x:=k * StratoSphereBlockBase;
-
-          xx:=AnsiString(Format('[%d]%s'#13#10,[k,
-            Copy(StratoDumpThing(p),6,99)]));
-          f.Write(xx[1],Length(xx));
-
-          inc(p.x,2);
-          while (p.x mod StratoSphereBlockBase)<Blocks[k][1] do
+          if p.index=0 then //assert s.k[0].k=nSphere
            begin
-            t:=p.NodeType;
-            if IncludeDictionaryNodes or (t<>n_NameData) then
+            fw('$'+IntToStr8(sx+1)+StratoDumpThing(p)+#13#10);
+            fl(lSphere_Errors);
+            //fl(lSphere_Imports);
+            fl(lChildren);//fl(lSphere_NameSpaces);
+            fl(lSphere_Globals);
+            //p.index:=16?
+           end
+          else
+            case s[p.index].k of
+            xUnassigned,xStageList:;
+            xDictionary_Entry,xDictionary_Tail,xListEntry:
+              if IncludeDictionaryNodes then
+                fw(IntToStr8(p.index)+': '+StratoDumpThing(p)+#13#10);
+            xBinaryData:
              begin
-              if t=n_BinaryData then
-                x:=Format('%8s%s',['',StratoDumpThing(p)])
-              else
-               begin
-                x:=Format('%34s',['']);
-                try
-                  if not(StratoGetSourceFile(p,py,px,p1,p2)) then
-                   begin
-                    xn(15,p1.x);
-                    xn(23,p2.x);
-                   end
-                  else
-                   begin
-                    xn(15,p1.x);
-                    xn(23,p2.x);
-                    if py<>0 then
-                     begin
-                      xm(29,py);
-                      x[30]:=':';
-                      xm(33,px);
-                     end;
-                   end;
-                  x:=x+StratoDumpThing(p);
-                except
-                  on e:Exception do
-                    x:=x+' ! '+e.Message;
-                end;
-               end;
-              xn(7,p.x);
-              xx:=AnsiString(x+#13#10);
-              f.Write(xx[1],Length(xx));
+              fw(IntToStr8(p.index)+': '+StratoDumpThing(p)+#13#10);
+              inc(p.index,(s[p.index].i+SizeOf(xKeyValue)-1) div SizeOf(xKeyValue));
              end;
-
-            //next
-            l:=(t div n_TypeNr_Base)+1;
-            if t=n_BinaryData then
-              inc(l,(Blocks[k][(p.x mod StratoSphereBlockBase)+1]+
-                SizeOf(xValue)-1) div SizeOf(xValue));
-            inc(p.x,l);
-           end;
+            else
+             begin
+              fw(IntToStr8(p.index)+': '+StratoDumpThing(p)+#13#10);
+              case s[p.index].k of
+                nNameSpace..nInterface:
+                 begin
+                  fl(lArguments);
+                  fl(lChildren);
+                 end;
+                nCodeBlock:
+                 begin
+                  fl(lChildren);//?
+                  fl(lArguments);
+                  fl(lCodeBlock_Locals);
+                  fl(lCodeBlock_Statements);
+                 end;
+                nSCall,nFCall,nVCall,nICall:
+                  fl(lArguments);
+              end;
+             end;
+            end;
+          inc(p.index);
+          while (p.index<s.kCount) and
+            not((s.k[p.index].k<n_Max) or (s.k[p.index].k>=xBinaryData)) do
+            inc(p.index);
          end;
-     end;
+
+        fw(#13#10);
+
+        {
+        p.index:=0;
+        while p.index<s.kCount do
+         begin
+          fw(Format('%.8d %.8d %.8d %s'#13#10,[cardinal(p.index)
+            ,cardinal(s[p.index].k),cardinal(s[p.index].v)
+            ,KeyToStr(s[p.index].k)
+            ]));
+          inc(p.index);
+         end;
+        }
+
+       end;
   finally
     f.Free;
   end;
 end;
 
 initialization
-  //xDisplay:=StratoDumpThing;
+  IncludeDictionaryNodes:=false;//default
 end.

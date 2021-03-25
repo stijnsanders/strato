@@ -2,13 +2,14 @@ unit stratoTools;
 
 interface
 
+{$D-}
+{$L-}
+
 uses stratoDecl, stratoSphere;
 
 function IntToStr8(x:int64):UTF8String;
 
 procedure AddKnownPath(const Key,Path:string);
-
-function AddSourceFile(var Data:PxSourceFile):cardinal;
 
 procedure ReadSettings(const IniPath: string);
 procedure LoadFromFile(const FilePath:string);
@@ -18,8 +19,16 @@ function StripKnownPath(const FilePath: string): string;
 function ResolveKnownPath(const FilePath: string): string;
 function FindKnownFile(var FilePath: string): boolean;
 
-function AddNode(src:cardinal;NodeType:xTypeNr;Extra:cardinal):xItem;
-function AddBinaryData(src:cardinal;const x:UTF8String):xItem;
+const
+  IntrinsicTypeName:array[TStratoIntrinsicType] of string=(
+    'Void',//itVoid
+    'Type',//itType
+    'Pointer',//itPointer
+    'Boolean',//itBoolean
+    'Number',//itNumber
+    'Object',//itObject
+    'String' //itString
+  );
 
 implementation
 
@@ -61,9 +70,6 @@ begin
      end;
    end;
 end;
-
-const
-  SourceFilesGrowStep=32;
 
 procedure AddKnownPath(const Key,Path:string);
 var
@@ -144,19 +150,6 @@ begin
     Result:=false;
 end;
 
-function AddSourceFile(var Data:PxSourceFile):cardinal;
-begin
-  if SourceFilesCount=SourceFilesSize then
-   begin
-    inc(SourceFilesSize,SourceFilesGrowStep);
-    SetLength(SourceFiles,SourceFilesSize);
-   end;
-  Result:=SourceFilesCount;
-  Data:=@SourceFiles[SourceFilesCount];
-  Data.BlockIndex:=cardinal(-1);//default
-  inc(SourceFilesCount);
-end;
-
 procedure ReadSettings(const IniPath: string);
 var
   sl:TStringList;
@@ -193,18 +186,6 @@ begin
   end;
 end;
 
-function BlockAlloc:pointer;
-begin
-  Result:=VirtualAlloc(nil,SizeOf(TStratoSphereBlock),
-    MEM_RESERVE or MEM_COMMIT,PAGE_READWRITE);//MEM_LARGE_PAGES?
-  if Result=nil then RaiseLastOSError;
-end;
-
-procedure BlockFree(x:pointer);
-begin
-  if not VirtualFree(x,0,MEM_RELEASE) then RaiseLastOSError;
-end;
-
 const
   xItemSize=SizeOf(xValue);//assert 4?
 
@@ -223,39 +204,21 @@ begin
     if h.FileVersion<>StratoSphereFileVersion then
       raise Exception.Create('File is of an unsupported version');
 
-    SourceFilesCount:=h.SourceFilesCount;
-    if SourceFilesSize<SourceFilesCount then
+    SpheresCount:=h.SpheresCount;
+    if SpheresSize<SpheresCount then
      begin
-      SourceFilesSize:=SourceFilesCount+SourceFilesGrowStep-1;
-      dec(SourceFilesSize,SourceFilesSize mod SourceFilesGrowStep);
-      SetLength(SourceFiles,SourceFilesSize);
+      SpheresSize:=SpheresCount+SpheresGrowStep-1;
+      dec(SpheresSize,SpheresSize mod SpheresGrowStep);
+      SetLength(Spheres,SpheresSize);
      end;
 
-    l:=SizeOf(xSourceFile);
-    if SourceFilesCount<>0 then
-    for i:=0 to SourceFilesCount-1 do
-      if cardinal(f.Read(SourceFiles[i],l))<>l then RaiseLastOSError;
-
-    BlocksCount:=h.BlocksCount;
-    if BlocksSize<BlocksCount then
-     begin
-      BlocksSize:=BlocksCount+BlocksGrowStep-1;
-      dec(BlocksSize,BlocksSize mod BlocksGrowStep);
-      SetLength(Blocks,BlocksSize);
-     end;
-
-    if BlocksCount<>0 then
-    for i:=0 to BlocksCount-1 do
-     begin
-      //TODO:
-      if Blocks[i]=nil then Blocks[i]:=BlockAlloc;
-      l:=2*xItemSize;
-      if cardinal(f.Read(Blocks[i][0],l))<>l then RaiseLastOSError;
-      //assert Blocks[i][0]<SourceFilesCount
-      l:=(Blocks[i][1]-2)*xItemSize;
-      if l<>0 then
-        if cardinal(f.Read(Blocks[i][2],l))<>l then RaiseLastOSError;
-     end;
+    if SpheresCount<>0 then
+      for i:=0 to SpheresCount-1 do
+       begin
+        if Spheres[i]=nil then
+          Spheres[i]:=TStratoSphere.Create;
+        Spheres[i].LoadFromStream(f);
+       end;
 
     //assert f.EOF
 
@@ -274,80 +237,17 @@ begin
   try
     h.FileMarker:=StratoSphereFileMarker;
     h.FileVersion:=StratoSphereFileVersion;
-    h.SourceFilesCount:=SourceFilesCount;
-    h.BlocksCount:=BlocksCount;
+    h.SpheresCount:=SpheresCount;
+    h.Reserved_1:=0;
     l:=SizeOf(TStratoStoreHeader);
     if cardinal(f.Write(h,l))<>l then RaiseLastOSError;
 
-    l:=SizeOf(xSourceFile);
-    if SourceFilesCount<>0 then
-    for i:=0 to SourceFilesCount-1 do
-      if cardinal(f.Write(SourceFiles[i],l))<>l then RaiseLastOSError;
-
-    if BlocksCount<>0 then
-    for i:=0 to BlocksCount-1 do
-     begin
-      l:=Blocks[i][1]*SizeOf(xValue);
-      if cardinal(f.Write(Blocks[i][0],l))<>l then RaiseLastOSError;
-     end;
-
+    if SpheresCount<>0 then
+      for i:=0 to SpheresCount-1 do
+        Spheres[i].SaveToStream(f);
   finally
     f.Free;
   end;
-end;
-
-function AddNode(src:cardinal;NodeType:xTypeNr;Extra:cardinal):xItem;
-var
-  cc,i,j:cardinal;
-begin
-  if src<SourceFilesCount then
-   begin
-    cc:=(NodeType div n_TypeNr_Base)+1+((Extra+xItemSize-1) div xItemSize);
-    if cc>=StratoSphereBlockBase then
-      raise Exception.CreateFmt('AddNode %s: size exceeds block size %d',
-        [NodeTypeToStr(NodeType),cc]);
-    //TODO: check if caller linked to sourcefile
-    //if SourceFiles[src].BlockIndex=cardinal(-1) then?
-    i:=SourceFiles[src].BlockIndex;
-    if (i<BlocksCount) and (Blocks[i][0]<>src) then
-      i:=BlocksCount;//raise?
-    if (i<BlocksCount) and (Blocks[i][1]+cc>=StratoSphereBlockBase) then
-      i:=BlocksCount;//force new
-    if i>=BlocksCount then
-     begin
-      //new block
-      if BlocksCount=BlocksSize then
-       begin
-        inc(BlocksSize,BlocksGrowStep);
-        SetLength(Blocks,BlocksSize);
-       end;
-      i:=BlocksCount;
-      inc(BlocksCount);
-      Blocks[i]:=BlockAlloc;
-      Blocks[i][0]:=src;
-      Blocks[i][1]:=2;
-      SourceFiles[src].BlockIndex:=i;
-     end;
-    j:=Blocks[i][1];
-    inc(Blocks[i][1],cc);
-    Result:=(i * StratoSphereBlockBase)+j;
-    Blocks[i][j]:=NodeType;
-   end
-  else
-    raise ERangeError.CreateFmt('SourceFile index out of range: %d;%d',
-      [src,SourceFilesCount]);
-end;
-
-function AddBinaryData(src:cardinal;const x:UTF8String):xItem;
-var
-  i,j,l:cardinal;
-begin
-  l:=Length(x);
-  Result:=AddNode(src,n_BinaryData,l);
-  i:=Result div StratoSphereBlockBase;
-  j:=Result mod StratoSphereBlockBase;
-  Blocks[i][j+1]:=l;
-  Move(x[1],Blocks[i][j+2],l);
 end;
 
 end.

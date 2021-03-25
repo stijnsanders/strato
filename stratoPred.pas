@@ -4,53 +4,79 @@ interface
 
 type
   TSyntaxClass=(
-    //scHeader, //see ParseHeader
     scDeclarative,
+    scDeclarative_ArgList,
     scDeclarative_Record,
     scImperative,
     sc_Unknown
   );
 
   TPrecedence=(
-      p___,
+    p___,
 
-      p_Delarative,
+{//TODO: redo ParseDeclaration/ParseLiteral with these
 
-    pDeclaration,
+    p_Declarative,
 
-      p_Imperative,
-    pCodeBlock,
+      pDeclaration,
+      pDeclareType,
+      pDeclareDefinition,
+      pDeclareArgList,
+        pArgument,pArgByRef,
+      pDeclareRecord,
+        pField,pOffset,
+      pDeclareCodeBlock,
 
-      p_Statement,
-    pThrow,pDefer,pCatch,
-    pBrackets,
-    pParentheses,
+      pDeclareDestructor, //stTilde,stOpMin
+      pDeclareInterface, //stQuestionMark
 
-    pUnTypedVar,
-    pAssign,
+      pDeclareCast,
+      pDeclareLogicalOr,
+      pDeclareLogicalXor,
+      pDeclareLogicalAnd,
+      pDeclareBitwiseOr,
+      pDeclareBitwiseXor,
+      pDeclareBitwiseAnd,
+      pDeclareEqual,
+      pDeclareComparative,
+      pDeclareShift,
+      pDeclareAddSub,
+      pDeclareMulDiv,
+}
 
-    pIterationX,pIterationY,pIterationZ,
-    pIfThen,pIfElse,
+    p_Imperative,
+      pCodeBlock,
 
-      p_Juxta,
+    p_Statement,
+      pThrow,pDefer,pCatch,
+      pBrackets,
+      pParentheses,
 
-    pRange,
-    pCast,
-    pLogicalOr,
-    pLogicalXor,
-    pLogicalAnd,
-    pBitwiseOr,
-    pBitwiseXor,
-    pBitwiseAnd,
-    pEqual,
-    pComparative,
-    pShift,
-    pAddSub,
-    pMulDiv,
+      pUntypedVar,
+      pAssign,
 
-      p_POpen,
+      pIterationX,pIterationY,pIterationZ,
+      pIfThen,pIfElse,
 
-    pUnary,pTypeOf,pSizeOf,pAddressOf
+    p_Juxta,
+
+      pRange,
+      pCast,
+      pLogicalOr,
+      pLogicalXor,
+      pLogicalAnd,
+      pBitwiseOr,
+      pBitwiseXor,
+      pBitwiseAnd,
+      pEqual,
+      pComparative,
+      pShift,
+      pAddSub,
+      pMulDiv,
+
+    p_POpen,
+
+      pUnary,pTypeOf,pSizeOf,pAddressOf
   );
 
 implementation

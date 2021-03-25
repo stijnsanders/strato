@@ -2,23 +2,111 @@ unit stratoSphere;
 
 interface
 
-{$D-}
-{$L-}
+{xx$D-}
+{xx$L-}
 
-uses stratoDecl, SysUtils;
+uses stratoDecl, Classes, SysUtils;
 
 const
-  {$IFDEF DEBUG}
-  StratoSphereBlockBase = 1000000;
-  {$ELSE}
-  StratoSphereBlockBase = $100000;
-  {$ENDIF}
-
-  BlocksGrowStep=32;
+  StratoSphereBlockSize = $10000;
 
 type
-  TStratoSphereBlock=array[0..StratoSphereBlockBase-1] of xValue;
+  TStratoSphere=class;//forward
+
+  xKeyValue=record
+    k:xKey;   //key
+    n:xRef;   //next
+    i:xValue; //sphere index (0 for local sphere)
+    v:xValue; //value
+    procedure s(kx:xKey;ix,vx:xValue); inline;
+    function BinaryData:UTF8String;
+  end;
+  PxKeyValue=^xKeyValue;
+
+  xNode=record
+    sphere:TStratoSphere;
+    index:xRef;
+    {$IFDEF X64}
+    _padding:cardinal; //TODO: xValue=int64?
+    {$ENDIF}
+
+    function Key:xKey; inline;
+    function AsString:string;
+    function IsNone:boolean; inline;
+    function IsSame(Node:xNode):boolean; inline;
+
+    function i(Key:xKey):xValue; //index
+    function v(Key:xKey):xValue; //value
+    function q(Key:xKey;var Value:xValue):boolean;//query
+    function r(Key:xKey):xNode; //reference
+    function rl(Key:xKey):xNode; //local
+
+    procedure s(ASphere:TStratoSphere;AIndex:xRef); inline;
+    procedure ss(ASphere:TStratoSphere;ASphereIndex:xValue;AIndex:xRef); inline;
+    procedure none; inline;
+
+    function Lookup(const Name:UTF8String):xNode;
+
+    procedure Start(Subject:xNode;List:xKey);
+    function Next(var Item:xNode):boolean;
+    function Done:boolean;
+  end;
+
+  TStratoSphereBlock=array[0..StratoSphereBlockSize-1] of xKeyValue;
   PStratoSphereBlock=^TStratoSphereBlock;
+
+  TStratoSphere=class(TObject)
+  private
+    NextIndex:cardinal;
+
+    BlocksCount,BlocksSize:cardinal;
+    Blocks:array of PStratoSphereBlock;
+
+    //DependsCount,DependsSize:cardinal;
+    //Depends:array of cardinal;
+
+    function GetIndex(Index:xRef):PxKeyValue; inline;
+
+    function AddRaw(Length:cardinal;var NewItem:xRef):PxKeyValue; inline;
+    function SetKey(Item:xRef;Key:xKey):PxKeyValue;
+
+  public
+    constructor Create;
+    destructor Destroy; override;
+
+    procedure LoadFromStream(f:TStream);
+    procedure SaveToStream(f:TStream);
+    property kCount:cardinal read NextIndex;
+
+    property k[Index:xRef]:PxKeyValue read GetIndex; default;
+    function v(Index:xRef;Key:xKey):PxKeyValue;
+    function r(Index:xRef;Key:xKey):xNode;
+    function n(Index:xRef):xName; inline;
+    function a(Index:xRef;Key:xKey;Value:cardinal):cardinal;
+
+    function Add(Key:xKey;ReserveKeys:cardinal):xRef;
+    procedure SetVal(Item:xRef;Key:xKey;Index,Value:xValue);
+    procedure SetRef(Item:xRef;Key:xKey;Node:xNode);
+    function AddName(const x:UTF8String):xName;
+    function AddBinaryData(const x:UTF8String):xRef;
+
+    function GetName(DictionaryEntry:xRef):UTF8String;
+    function IsName(Node:xNode;Name:xName):boolean;
+    function FQN(Item:xRef):UTF8String;
+    function BinaryData(p:xRef):UTF8String;
+
+    function Lookup(Parent:xRef;Name:xName;List:xKey):xNode;
+
+    function Prepend(Parent:xRef;List:xKey;Item:xRef):xRef;
+    function Append(Parent:xRef;List:xKey;Item:xRef):xRef;
+
+    //function ByteSize(p:xRef):cardinal;
+  end;
+
+function kv(Key:xKey;Index,Value:xValue):xKeyValue; inline;
+//function kn(Key:xKey;Node:xNode):xKeyValue; inline;
+
+function none:xNode; inline;
 
 var
   KnownPaths:array of record
@@ -26,669 +114,1027 @@ var
   end;
   KnownPathsCount,KnownPathsSize:cardinal;
 
-  SourceFiles:array of xSourceFile;
-  SourceFilesCount,SourceFilesSize:cardinal;
+  Spheres:array of TStratoSphere;
+  SpheresCount,SpheresSize:cardinal;
 
-  Blocks:array of PStratoSphereBlock;
-  BlocksCount,BlocksSize:cardinal;
-
-  SystemWordSize:cardinal;
-  IntrinsicTypes:array[TStratoIntrinsicType] of xItem;
-
-function SourceFile(x:cardinal):PxSourceFile;
-
-type
-  rItem=record
-    x:xItem;
-    function r(Field:xTypeNr):rItem; //reference
-    function v(Field:xTypeNr):xValue; //value
-    procedure s(Field:xTypeNr;Item:rItem); overload; //set
-    procedure s(Field:xTypeNr;Value:xValue); overload; //set
-    function a(Field:xTypeNr;Value:cardinal):cardinal; //add
-    function NodeType:xTypeNr;
-
-    //cdadadadr?
-    function rr(Field1,Field2:xTypeNr):rItem;
-    function rrr(Field1,Field2,Field3:xTypeNr):rItem;
-    function rrrr(Field1,Field2,Field3,Field4:xTypeNr):rItem;
-  end;
-
-  EStratoFieldIndexNotFound=class(Exception);
+  SystemWordSize:cardinal;//TODO: sphere property?
+  IntrinsicTypes:array[TStratoIntrinsicType] of xNode;
 
 const
-  xx0:rItem=(x:0);
+  SpheresGrowStep=32;
+  DependsGrowStep=32;
+  BlocksGrowStep=32;
 
-function xxr(x:xItem):rItem;
-function rSrc(p:rItem):cardinal;
-function ItemToStr(p:rItem):string;
-function BinaryData(p:rItem):UTF8String;
+  InvalidIndex=cardinal(-1);//$FFFFFFFF;
 
-function Lookup(Parent:rItem;Name:xName):rItem;
-function GetName(p:xName):UTF8String;
-function FQN(p:rItem):UTF8String;
+function KeyToStr(Key:xKey):string;
 
-procedure ListFirst(ListOwner:rItem;ListField:xTypeNr;
-  var ListItem,ListDelim:rItem);
-procedure ListNext(var ListItem:rItem;ListDelim:rItem);
-procedure ListNone(var ListItem,ListDelim:rItem);
+function IsIntrinsicNumeric(i:xNode):boolean;
 
-function NodeTypeToStr(f:xTypeNr):string;
-function NodeFieldToStr(f:xTypeNr):string;
+procedure AddSphere(Sphere:TStratoSphere);
+function SphereIndex(Sphere:TStratoSphere):cardinal;
 
-function IsIntrinsicNumeric(i:rItem):boolean;
+//tried consts, didn't work, so inline functions:
+function SphereIndexPrefix:UTF8String;
+function SphereIndexSuffix:UTF8String;
 
 implementation
 
-uses Classes;
+uses Windows, stratoTools;
 
-function SourceFile(x:cardinal):PxSourceFile;
+procedure BlockFree(x:pointer);
 begin
-  if x<SourceFilesCount then
-    Result:=@SourceFiles[x]
-  else
-    raise ERangeError.CreateFmt('SourceFile index out of range: %d,%d',
-      [x,SourceFilesCount]);
+  if not VirtualFree(x,0,MEM_RELEASE) then RaiseLastOSError;
 end;
 
-function xxr(x:xItem):rItem; inline;
+function KeyToStr(Key:xKey):string;
 begin
-  Result.x:=x;
+  case Key of
+  nNameSpace   :Result:='NameSpace';
+  nType        :Result:='Type';
+  nLiteral     :Result:='Literal';
+  nConstant    :Result:='Constant';
+  nArray       :Result:='Array';
+  nEnum        :Result:='Enum';
+  nRecord      :Result:='Record';
+  nPointer     :Result:='Pointer';
+  nTypeAlias   :Result:='TypeAlias';
+  nSignature   :Result:='Signature';
+  nSigArg      :Result:='SigArg';
+  nSigArgByRef :Result:='SigArgByRef';
+  nClass       :Result:='Class';
+  nClassRef    :Result:='ClassRef';
+  nCtor        :Result:='Constructor';
+  nDtor        :Result:='Destructor';
+  nPropGet     :Result:='PropertyGet';
+  nPropSet     :Result:='PropertySet';
+  nInterface   :Result:='Interface';
+
+  //nImport      :Result:='Import';
+  nSphere      :Result:='Sphere';
+  //TODO
+  else Result:=Format('?%d',[cardinal(Key)]);
+  end;
 end;
 
-function rSrc(p:rItem):cardinal;
-var
-  i:cardinal;
+function IsIntrinsicNumeric(i:xNode):boolean; inline;
 begin
-  i:=p.x div StratoSphereBlockBase;
-  if i<BlocksCount then
-    Result:=Blocks[i][0]
-  else
-    raise ERangeError.CreateFmt('Block index out of range: %d,%d',
-      [i,BlocksCount]);
+  //assert IntrinsicTypes[itNumber]<>0
+  //assert IntrinsicTypes[itString]<>0
+  //assert IntrinsicTypes[].source=0 of those inbetween
+  Result:=(SpheresCount<>0) and (i.sphere=Spheres[0]) and
+    (i.index>=IntrinsicTypes[itNumber].index) and (i.index<IntrinsicTypes[itString].index);
 end;
 
-const
-  ItemToStrMask='%d#%d';
-
-function ItemToStr(p:rItem):string;
+procedure AddSphere(Sphere:TStratoSphere);
 begin
-  Result:=Format(ItemToStrMask,
-    [p.x div StratoSphereBlockBase
-    ,p.x mod StratoSphereBlockBase
-    ]);
-end;
-
-function BinaryData(p:rItem):UTF8String;
-var
-  i,j,l:cardinal;
-begin
-  if p.x=0 then
-    Result:=''
-  else
+  if SpheresCount=SpheresSize then
    begin
-    i:=p.x div StratoSphereBlockBase;
-    j:=p.x mod StratoSphereBlockBase;
-    if not((i<BlocksCount) and (Blocks[i][j]=n_BinaryData)) then
-      raise Exception.Create('BinaryData: node is not binary data '+
-        ItemToStr(p));
-    l:=Blocks[i][j+1];
-    SetLength(Result,l);
-    Move(Blocks[i][j+2],Result[1],l);
+    inc(SpheresSize,SpheresGrowStep);
+    SetLength(Spheres,SpheresSize);
    end;
+  Spheres[SpheresCount]:=Sphere;
+  inc(SpheresCount);
+
+  //TODO: mark Sphere read-only
 end;
 
-function Lookup(Parent:rItem;Name:xName):rItem;
-var
-  i,j,l,v:cardinal;
-  x:UTF8String;
-  p,p0,q:rItem;
-  qf:xTypeNr;
+function SphereIndex(Sphere:TStratoSphere):cardinal;
 begin
-  i:=rSrc(Parent);
-  if i<>rSrc(xxr(Name)) then
-   begin
-    q.x:=i * StratoSphereBlockBase;
-    qf:=lSourceFile_Dictionary;
-    x:=GetName(Name);
-    i:=0;
-    l:=Length(x);
-    while i<l do
-     begin
-      //4 bytes
-      v:=0;
-      for j:=0 to 3 do
-        if i=l then
-          v:=v shl 8
-        else
-         begin
-          inc(i);
-          v:=(v shl 8) or byte(x[i]);
-         end;
-      //lookup
-      ListFirst(q,qf,p,p0);
-      while (p.x<>0) and (p.v(vKey)<v) do
-        ListNext(p,p0);
-      if (p.x=0) or (p.v(vKey)>v) then
-       begin
-        q.x:=0;
-        i:=l;//not found
-       end
-      else
-       begin
-        q:=p;
-        qf:=lItems;
-       end;
-     end;
-    Name:=q.x;
-   end;
-  if Name=0 then
-     Result.x:=0//?
-  else
-   begin
-    //ListFirst(Parent,?,p,p0);
-    case Parent.NodeType of
-      0:
-        if Parent.x=0 then //Globals?
-          p0.x:=SourceFile(Parent.x div StratoSphereBlockBase).NameSpaces
-        else
-          p0.x:=0;
-      nNameSpace,
-      nRecord,nEnum,nClass,nInterface:
-        p0:=Parent.r(lItems);
-      nCodeBlock:
-        p0:=Parent.r(lLocals);
-      else
-        p0.x:=0;
-    end;
-    p:=p0.r(iNext);
-    while (p.x<>0) and (p.v(iName)<>Name) do
-      ListNext(p,p0);
-    Result:=p;
-   end;
+  Result:=0;
+  while (Result<SpheresCount) and (Spheres[Result]<>Sphere) do inc(Result);
+  if Result=SpheresCount then
+    raise Exception.Create('Sphere not fully parsed yet.');
+  inc(Result);
 end;
 
-function GetName(p:xName):UTF8String;
-var
-  v,i,j,l:cardinal;
-  q:rItem;
+function SphereIndexPrefix:UTF8String; inline;
 begin
-  //TODO: build then reverse?
-  Result:='';
+  SetLength(Result,2);
+  Result[1]:=#$C2;
+  Result[2]:=#$AB;//&laquo;
+end;
+
+function SphereIndexSuffix:UTF8String; inline;
+begin
+  SetLength(Result,2);
+  Result[1]:=#$C2;
+  Result[2]:=#$BB;//&raquo;
+end;
+
+{ ... }
+
+function kv(Key:xKey;Index,Value:xValue):xKeyValue;
+begin
+  Result.k:=Key;
+  Result.n:=xRef(0);//handled by sphere
+  Result.i:=Index;
+  Result.v:=Value;
+end;
+
+{
+function kn(Key:xKey;Node:xNode):xKeyValue;
+begin
+  Result.k:=Key;
+  Result.n:=xRef(0);//handled by sphere
+  Result.i:=SphereIndex(Node.sphere);
+  Result.v:=Node.index;
+end;
+}
+
+function none:xNode;
+begin
+  Result.none;
+end;
+
+{ xKeyValue }
+
+procedure xKeyValue.s(kx:xKey;ix,vx:xValue);
+begin
+  //assert owner sourcefile not marked complete
+  k:=kx;
+  i:=ix;
+  v:=vx;
+end;
+
+function xKeyValue.BinaryData:UTF8String;
+type
+  x2Value=record a,b:xValue end;
+  Px2Value=^x2Value;
+begin
+  {$IFDEF DEBUG}
+  if k<>xBinaryData then
+    raise Exception.Create('Key is not xBinaryData ('+IntToStr(cardinal(k))+')');
+  {$ENDIF}
+  SetLength(Result,i);
+  Move(Px2Value(@v)^.b,Result[1],i);
+end;
+
+{ TStratoSphere }
+
+constructor TStratoSphere.Create;
+begin
+  inherited Create;
+  //DependsCount:=0;
+  //DependsSize:=0;
+  BlocksCount:=0;
+  BlocksSize:=0;
+  NextIndex:=0;
+  Add(nSphere,8);
+end;
+
+destructor TStratoSphere.Destroy;
+begin
+  //?
+  inherited Destroy;
+end;
+
+procedure TStratoSphere.LoadFromStream(f: TStream);
+var
+  s:TStratoSphereHeader;
+  i,l:integer;
+begin
+  l:=SizeOf(TStratoSphereHeader);
+  if f.Read(s,l)<>l then RaiseLastOSError;
+  NextIndex:=0;
+  Add(xUnassigned,s.Items);//allocate memory
   i:=0;
-  l:=0;
-  q.x:=p;
-  while (q.x mod StratoSphereBlockBase)<>0 do
+  while s.Items<>0 do
    begin
-    v:=q.v(vKey);
+    if s.Items>StratoSphereBlockSize then
+      l:=StratoSphereBlockSize
+    else
+      l:=s.Items;
+    dec(s.Items,l);
+    l:=l*SizeOf(xKeyValue);
+    if f.Read(Blocks[i][0],l)<>l then
+      RaiseLastOSError;
+    inc(i);
+   end;
+end;
+
+procedure TStratoSphere.SaveToStream(f: TStream);
+var
+  s:TStratoSphereHeader;
+  i,l:cardinal;
+begin
+  s.Items:=NextIndex;
+  s.Reserved_1:=0;
+  s.Reserved_2:=0;
+  s.Reserved_3:=0;
+  l:=SizeOf(TStratoSphereHeader);
+  if cardinal(f.Write(s,l))<>l then RaiseLastOSError;
+  i:=0;
+  while s.Items<>0 do
+   begin
+    if s.Items>StratoSphereBlockSize then
+      l:=StratoSphereBlockSize
+    else
+      l:=s.Items;
+    dec(s.Items,l);
+    l:=l*SizeOf(xKeyValue);
+    if cardinal(f.Write(Blocks[i][0],l))<>l then
+      RaiseLastOSError;
+    inc(i);
+   end;
+end;
+
+function TStratoSphere.GetIndex(Index:xRef):PxKeyValue;
+begin
+  {$IFDEF DEBUG}
+  if Index>=NextIndex then
+    raise Exception.CreateFmt('Item index out of range %d (%d)',[index,NextIndex]);
+  {$ENDIF}
+  Result:=@Blocks
+    [Index div StratoSphereBlockSize]
+    [Index mod StratoSphereBlockSize];
+end;
+
+function TStratoSphere.v(Index:xRef;Key:xKey):PxKeyValue;
+var
+  i:xRef;
+begin
+  if k[Index].k<n_Max then
+   begin
+    //TODO: check Field valid member for k[i].k
+    i:=k[Index].n;
+    while (i<>0) and (k[i].k<>Key) do i:=k[i].n;
+    if i=0 then Result:=nil else Result:=k[i];
+   end
+  else
+    Result:=nil;
+end;
+
+function TStratoSphere.r(Index:xRef;Key:xKey):xNode;
+var
+  p:PxKeyValue;
+begin
+  p:=v(Index,Key);
+  if p=nil then
+    Result.none
+  else
+    Result.ss(Self,p.i,p.v);
+end;
+
+function TStratoSphere.n(Index:xRef):xName;
+var
+  p:PxKeyValue;
+begin
+  p:=v(Index,dName);
+  if p=nil then
+    Result:=0
+  else
+    Result:=p.v;
+end;
+
+function TStratoSphere.a(Index:xRef;Key:xKey;Value:cardinal):cardinal;
+var
+  p:PxKeyValue;
+begin
+  p:=v(Index,Key);
+  if p=nil then
+   begin
+    Result:=0;
+    SetVal(Index,Key,0,Value);
+   end
+  else
+   begin
+    Result:=p.v;
+    p.v:=p.v+Value;
+   end;
+end;
+
+function TStratoSphere.AddRaw(Length:cardinal;var NewItem:xRef):PxKeyValue;
+var
+  p:pointer;
+begin
+  //TODO: deny when switched to read-only/complete
+
+  //assert Length>0
+  NewItem:=NextIndex;
+
+  while NextIndex+Length>=BlocksCount*StratoSphereBlockSize do
+   begin
+    if BlocksCount=BlocksSize then
+     begin
+      inc(BlocksSize,BlocksGrowStep);
+      SetLength(Blocks,BlocksSize);
+     end;
+
+    //allocate new block
+    p:=VirtualAlloc(nil,SizeOf(TStratoSphereBlock),
+      MEM_RESERVE or MEM_COMMIT,PAGE_READWRITE);//MEM_LARGE_PAGES?
+    if p=nil then RaiseLastOSError;
+
+    Blocks[BlocksCount]:=p;
+    inc(BlocksCount);
+   end;
+
+  inc(NextIndex,Length);
+  Result:=k[NewItem];
+end;
+
+function TStratoSphere.Add(Key:xKey;ReserveKeys:cardinal):xRef;
+var
+  p:xRef;
+  q:PxKeyValue;
+begin
+  //assert ReserveKeys>0
+  q:=AddRaw(ReserveKeys,Result);
+  q.k:=Key;
+  q.n:=0;
+  q.i:=0;
+  q.v:=0;
+  p:=Result;
+  dec(ReserveKeys);
+  while ReserveKeys<>0 do
+   begin
+    inc(p);
+    q.n:=p;
+    q:=k[p];
+    q.k:=xUnassigned;
+    q.n:=0;
+    q.i:=0;
+    q.v:=0;
+    dec(ReserveKeys);
+   end;
+end;
+
+function TStratoSphere.SetKey(Item:xRef;Key:xKey):PxKeyValue;
+var
+  i,p:xRef;
+begin
+  Result:=nil;//default
+  if Item>=NextIndex then
+    raise Exception.Create('Item index out of range '+IntToStr(Item)+
+      ' ('+IntToStr(NextIndex)+')');
+  //assert k[Item].k<n_Max
+  //TODO: check Field valid member for k[Item].k
+  p:=Item;
+  i:=k[p].n;
+  while i<>0 do
+   begin
+    if i>NextIndex then
+      raise Exception.Create('Broken chain detected '+IntToStr(i));
+    Result:=k[i];
+    if Result.k=xUnassigned then
+     begin
+      i:=0;
+      Result.k:=Key;
+     end
+    else
+      if Result.k=Key then
+        i:=0
+      else
+       begin
+        p:=i;
+        i:=k[p].n;
+        Result:=nil;
+       end;
+   end;
+  if Result=nil then
+   begin
+    Result:=AddRaw(1,k[p].n);
+    Result.k:=Key;
+   end;
+end;
+
+procedure TStratoSphere.SetVal(Item:xRef;Key:xKey;Index,Value:xValue);
+var
+  p:PxKeyValue;
+begin
+  p:=SetKey(Item,Key);
+  p.i:=Index;
+  p.v:=Value;
+end;
+
+procedure TStratoSphere.SetRef(Item:xRef;Key:xKey;Node:xNode);
+var
+  p:PxKeyValue;
+begin
+  if not(Node.IsNone) then
+   begin
+    p:=SetKey(Item,Key);
+    if Node.sphere=Self then
+      p.i:=0
+    else
+      p.i:=SphereIndex(Node.sphere);
+    p.v:=Node.index;
+   end;
+end;
+
+function TStratoSphere.AddName(const x:UTF8String):xName;
+var
+  i,i0,j,l,nf:cardinal;
+  p0,p1,p2,p3:xRef;
+  q0,q1,q2,q3:PxKeyValue;
+begin
+  //TODO: disallow when marked read-only!
+  i:=0;
+  l:=Length(x);
+  p0:=0;
+  q0:=SetKey(0,lSphere_Dictionary);
+  while i<l do
+   begin
+    //4 bytes name fragment
+    nf:=0;
+    i0:=i;
     for j:=0 to 3 do
      begin
-      if (v and $FF)<>0 then //if v<>0 then?
+      nf:=nf shl 8;
+      if i<l then
        begin
-        if i=l then
-         begin
-          inc(l,$100);//grow
-          SetLength(Result,l);
-         end;
         inc(i);
-        byte(Result[i]):=byte(v and $FF);
+        nf:=nf or byte(x[i]);
        end;
-      v:=v shr 8;
      end;
-    q:=q.r(iParent);
+    //lookup
+    p1:=q0.v;
+    if p1=0 then
+     begin
+      //start this level
+      q2:=AddRaw(2,p2);
+      q2.k:=xDictionary_Entry;
+      q2.n:=p2+1;
+      q2.i:=nf;
+      q2.v:=0;
+      q3:=k[p2+1];
+      q3.k:=xDictionary_Tail;
+      q3.i:=i0;
+      q3.v:=p0;
+      //
+      q0.v:=p2;
+      p0:=p2;
+      q0:=q2;
+     end
+    else
+     begin
+      q1:=k[p1];
+      p2:=0;
+      q2:=nil;
+      while p1<>0 do
+        case q1.k of
+        xDictionary_Entry:
+          if q1.i<nf then
+           begin
+            //keep looking
+            p2:=p1;
+            q2:=q1;
+            p1:=q1.n;
+            q1:=k[p1];
+           end
+          else
+          if q1.i=nf then
+           begin
+            //found
+            p0:=p1;
+            q0:=q1;
+            p1:=0;//end loop
+           end
+          else
+          //if q1.i>nf then
+           begin
+            //insert here
+            q3:=AddRaw(1,p3);
+            q3.k:=xDictionary_Entry;
+            q3.n:=p1;
+            q3.i:=nf;
+            q3.v:=0;
+            //
+            if p2=0 then q0.v:=p3 else q2.n:=p3;
+            p0:=p3;
+            q0:=q3;
+            p1:=0;//end loop
+           end;
+        xDictionary_Tail:
+         begin
+          //insert here
+          q3:=AddRaw(1,p3);
+          q3.k:=xDictionary_Entry;
+          q3.n:=p1;
+          q3.i:=nf;
+          q3.v:=0;
+          //
+          if p2=0 then q0.v:=p3 else q2.n:=p3;
+          p0:=p3;
+          q0:=q3;
+          p1:=0;//end loop
+         end;
+        else
+          raise Exception.CreateFmt('Dictionary entry expected %d:%d',[p1,cardinal(q1.k)]);
+        end;
+     end;
    end;
-  SetLength(Result,i);
-  j:=1;
-  while (j<i) do
-   begin
-    v:=byte(Result[i]);
-    Result[i]:=Result[j];
-    byte(Result[j]):=byte(v);
-    dec(i);
-    inc(j);
-   end;
+  Result:=p0;
 end;
 
-function FQN(p:rItem):UTF8String;
+function TStratoSphere.GetName(DictionaryEntry:xRef):UTF8String;
 var
-  nx:xName;
+  nf,j,l,ll:cardinal;
+  p:xRef;
+begin
+  p:=DictionaryEntry;
+  if p=0 then Result:='';
+  l:=0;
+  ll:=0;
+  while p<>0 do
+   begin
+    //get fragment
+    if (p=0) or (k[p].k<>xDictionary_Entry) then
+      raise Exception.CreateFmt('Dictionary entry expected %d:%d',[p,cardinal(k[p].k)]);
+    nf:=k[p].i;
+    //proceed to trailing parent reference
+    while (p<>0) and (k[p].k<>xDictionary_Tail) do p:=k[p].n;
+    if (p=0) or (k[p].k<>xDictionary_Tail) then
+      raise Exception.CreateFmt('Dictionary entry expected %d:%d',[p,cardinal(k[p].k)]);
+    //determine total length
+    if l=0 then
+     begin
+      ll:=k[p].i+4;
+      l:=ll;
+      SetLength(Result,l);
+     end;
+    //unpack fragment
+    for j:=0 to 3 do
+     begin
+      Result[l]:=AnsiChar(byte(nf and $FF));
+      dec(l);
+      nf:=nf shr 8;
+     end;
+    //repeat with parent
+    p:=k[p].v;
+   end;
+  while (ll<>0) and (Result[ll]=#0) do dec(ll);
+  SetLength(Result,ll);
+end;
+
+function TStratoSphere.IsName(Node:xNode;Name:xName):boolean;
+begin
+  if Node.sphere=nil then
+    Result:=false
+  else
+  if Node.sphere=Self then
+    Result:=n(Node.index)=Name
+  else
+    Result:=Node.sphere.GetName(Node.sphere.n(Node.index))=GetName(Name);//case sensitive?
+end;
+
+function TStratoSphere.FQN(Item:xRef):UTF8String;
+var
+  p:PxKeyValue;
 begin
   Result:='';
-  while (p.x mod StratoSphereBlockBase)<>0 do
+  while Item<>0 do
    begin
-    case p.NodeType of
-      nCodeBlock,nOverload:;//don't include in name path
-      else
-       begin
-        nx:=p.v(iName);
-        if nx=0 then
-          Result:=UTF8String(#$AB+ItemToStr(p)+#$BB'.')+Result
-        else
-          Result:=GetName(nx)+'.'+Result;
-       end;
-    end;
-    p:=p.r(iParent);
+    p:=v(Item,dName);
+    if p=nil then
+      Result:=SphereIndexPrefix+IntToStr8(Item)+SphereIndexSuffix+'.'+Result
+    else
+      try
+        Result:=GetName(p.v)+'.'+Result;
+      except
+        Result:='?'+SphereIndexPrefix+IntToStr8(Item)+SphereIndexSuffix+'.'+Result;
+      end;
+    p:=v(Item,iParent);
+    if p=nil then
+      Item:=0
+    else
+      Item:=p.v;
    end;
   if Result<>'' then SetLength(Result,Length(Result)-1);//trailing "."
 end;
 
-
-procedure ListFirst(ListOwner:rItem;ListField:xTypeNr;
-  var ListItem,ListDelim:rItem);
-begin
-  ListDelim:=ListOwner.r(ListField);
-  ListItem:=ListDelim.r(iNext);
-end;
-
-procedure ListNext(var ListItem:rItem;ListDelim:rItem);
-begin
-  if ListItem.x=ListDelim.x then //did last element?
-    ListItem.x:=0 //then we're done
-  else
-    ListItem:=ListItem.r(iNext); //else advance on the list
-end;
-
-procedure ListNone(var ListItem,ListDelim:rItem);
-begin
-  ListItem.x:=0;
-  ListDelim.x:=0;
-end;
-
-{ rItem }
-
-function rItem.r(Field: xTypeNr): rItem;
+function TStratoSphere.AddBinaryData(const x:UTF8String):xRef;
 var
-  i,j,k,l:cardinal;
-  t:xTypeNr;
-  {$IFDEF DEBUG}
-  src:pointer;
-  {$ENDIF}
+  l,n:cardinal;
+  p:xRef;
+  q:PxKeyValue;
 begin
-  {$IFDEF DEBUG}
-  asm
-    mov eax,[ebp+4]
-    mov src,eax
-  end;
-  //dec(src,5);?
-  {$ENDIF}
-  i:=x div StratoSphereBlockBase;
-  j:=x mod StratoSphereBlockBase;
-  if i<BlocksCount then
-    if j=0 then //get info from SourceFile?
-      if (Field div 100)=3 then
-        Result.x:=PStratoSphereBlock(
-          @SourceFiles[Blocks[i][0]])[Field mod 100]
-      else
-        Result.x:=0//raise??? 'null reference'?
-    else
-      if Field=vTypeNr then
-        Result.x:=Blocks[i][j]
-      else
+  l:=Length(x);
+  n:=(l+SizeOf(xKeyValue)-1) div SizeOf(xKeyValue);
+  q:=AddRaw(n+1,p);
+  q.k:=xBinaryData;
+  q.n:=0;
+  q.i:=l;//?
+  q.v:=0;//?
+  //clear trialer
+  q:=k[p+n];
+  q.k:=xKey(0);
+  q.n:=0;
+  q.i:=0;
+  q.v:=0;
+  //copy data
+  Move(x[1],k[p+1]^,l);
+  Result:=p;
+end;
+
+function TStratoSphere.BinaryData(p:xRef):UTF8String;
+var
+  l:cardinal;
+begin
+  if (Self=nil) or (k[p].k<>xBinaryData) then
+    raise Exception.Create('Key is not xBinaryData ('+IntToStr(p)+')');
+  l:=k[p].i;
+  SetLength(Result,l);
+  Move(k[p+1].k,Result[1],l);
+end;
+
+function TStratoSphere.Lookup(Parent:xRef;Name:xName;List:xKey{=lChildren}):xNode;
+var
+  p:xRef;
+  q:PxKeyValue;
+  n:xNode;
+begin
+  Result.none;//default
+  if Name<>0 then
+   begin
+    q:=v(Parent,List);
+    if q<>nil then
+     begin
+      p:=q.v;
+      while p<>0 do
        begin
-        t:=xTypeNr(Blocks[i][j]);
-        {$IFDEF DEBUG}
-        if t<n_TypeNr_Low then k:=0 else k:=xTypeDefX[t];
-        if k=0 then
-          raise EStratoFieldIndexNotFound.CreateFmt(
-            ItemToStrMask+'(%s): fields not defined',[i,j,NodeTypeToStr(t)]) at src;
-        {$ELSE}
-        k:=xTypeDefX[t];
-        {$ENDIF}
-        l:=k;
-        while (xTypeDef[l]<>Field) and (xTypeDef[l]<f_FieldsMax) do inc(l);
-        if xTypeDef[l]<f_FieldsMax then
-          Result.x:=Blocks[i][j+l-k+1]
+        q:=k[p];
+        if q.k<>xListEntry then
+          raise Exception.CreateFmt('List entry expected %d:%d',[p,cardinal(q.k)]);
+        n.ss(Self,q.i,q.v);
+        if IsName(n,Name) then
+         begin
+          Result:=n;
+          p:=0;//end loop
+         end
         else
-          raise EStratoFieldIndexNotFound.CreateFmt(
-            ItemToStrMask+'(%s): field index not found: %s',
-            [i,j,NodeTypeToStr(t),NodeFieldToStr(Field)])
-            {$IFDEF DEBUG}at src{$ENDIF};
-       end
-  else
-    raise ERangeError.CreateFmt('Block index out of range: %d,%d',
-      [i,BlocksCount]);
+          p:=q.n;//next
+       end;
+     end;
+   end;
 end;
 
-function rItem.v(Field: xTypeNr): xValue;
+function TStratoSphere.Prepend(Parent:xRef;List:xKey;Item:xRef):xRef;
 var
-  i,j,k,l:cardinal;
-  t:xTypeNr;
-  {$IFDEF DEBUG}
-  src:pointer;
-  {$ENDIF}
+  p,q:PxKeyValue;
 begin
-  {$IFDEF DEBUG}
-  asm
-    mov eax,[ebp+4]
-    mov src,eax
-  end;
-  //dec(src,5);?
-  {$ENDIF}
-  i:=x div StratoSphereBlockBase;
-  j:=x mod StratoSphereBlockBase;
-  if i<BlocksCount then
-    if j=0 then //get info from SourceFile?
-      raise EStratoFieldIndexNotFound.CreateFmt(
-        'Value %s requested from 0',[NodeFieldToStr(Field)])
-    else
-      if Field=vTypeNr then //see also function NodeType
-        Result:=Blocks[i][j]
-      else
+  p:=AddRaw(1,Result);
+  p.k:=xListEntry;
+  //p.n:=//see below
+  p.i:=0;//local sphere
+  p.v:=Item;
+  q:=SetKey(Parent,List);
+  if q.v=0 then
+   begin
+    p.n:=0;
+    q.i:=Item;//end of list
+    q.v:=Item;//one entry
+   end
+  else
+   begin
+    if q.k<>xListEntry then
+      raise Exception.CreateFmt('List entry expected %d:%d',[Parent,cardinal(q.k)]);
+    p.n:=q.v;
+    q.v:=Result;
+   end;
+end;
+
+function TStratoSphere.Append(Parent:xRef;List:xKey;Item:xRef):xRef;
+var
+  p,q,r:PxKeyValue;
+begin
+  p:=AddRaw(1,Result);
+  p.k:=xListEntry;
+  p.n:=0;
+  p.i:=0;//local sphere
+  p.v:=Item;
+  if List=xStageList then
+   begin
+    q:=k[Parent];
+    if (q=nil) or (q.k<>xStageList) then
+      raise Exception.CreateFmt('Stage list expected %d:%d',[Parent,cardinal(q.k)]);
+   end
+  else
+    q:=SetKey(Parent,List);
+  if q.v=0 then
+   begin
+    q.i:=Result;//end of list
+    q.v:=Result;//one entry
+   end
+  else
+   begin
+    r:=k[q.i];
+    if r.k<>xListEntry then
+      raise Exception.CreateFmt('List entry expected %d:%d',[q.i,cardinal(r.k)]);
+    r.n:=Result;//assert was 0
+    q.i:=Result;//end of list
+   end;
+end;
+
+{
+function TStratoSphere.ByteSize(p:xRef):cardinal;
+var
+  q:PxValue;
+begin
+  //TODO: move to stratoLogic.pas
+  if p=0 then
+    raise Exception.Create('request for byte size of nothing')//Result:=0
+  else
+   begin
+    case k[p].k of
+      nVar,nVarByRef,nVarReadOnly,nThis,nLiteral:
+        p:=r(p,iType);
+    end;
+    while k[p].k=nTypeAlias do
+      p:=r(p,iTarget);
+    case k[p].k of
+      nEnum,nSignature,nPointer,nClass,nInterface,nClassRef:
+        Result:=SystemWordSize;
+      nType,nRecord,nArray:
        begin
-        t:=xTypeNr(Blocks[i][j]);
-        {$IFDEF DEBUG}
-        if t<n_TypeNr_Low then k:=0 else k:=xTypeDefX[t];
-        if k=0 then
-          raise EStratoFieldIndexNotFound.CreateFmt(
-            ItemToStrMask+'(%s): fields not defined',[i,j,NodeTypeToStr(t)]) at src;
-        {$ELSE}
-        k:=xTypeDefX[t];
-        {$ENDIF}
-        l:=k;
-        while (xTypeDef[l]<>Field) and (xTypeDef[l]<f_FieldsMax) do inc(l);
-        if xTypeDef[l]<f_FieldsMax then
-          Result:=Blocks[i][j+l-k+1]
-        else
-          if Field=iName then //see Lookup(
-            Result:=0
-          else
-            raise EStratoFieldIndexNotFound.CreateFmt(
-              ItemToStrMask+'(%s): field index not found: %s',
-              [i,j,NodeTypeToStr(t),NodeFieldToStr(Field)])
-              {$IFDEF DEBUG}at src{$ENDIF};
-       end
-  else
-    raise ERangeError.CreateFmt('Block index out of range: %d,%d',
-      [i,BlocksCount]);
-end;
-
-procedure rItem.s(Field: xTypeNr; Item: rItem);
-begin
-  s(Field,Item.x);
-end;
-
-procedure rItem.s(Field: xTypeNr; Value: xValue);
-var
-  i,j,k,l:cardinal;
-  t:xTypeNr;
-  {$IFDEF DEBUG}
-  src:pointer;
-  {$ENDIF}
-begin
-  {$IFDEF DEBUG}
-  asm
-    mov eax,[ebp+4]
-    mov src,eax
-  end;
-  //dec(src,5);?
-  {$ENDIF}
-  i:=x div StratoSphereBlockBase;
-  j:=x mod StratoSphereBlockBase;
-  if i<BlocksCount then
-    if j=0 then //get info from SourceFile?
-      if (Field div 100)=3 then
-        PStratoSphereBlock(
-          @SourceFiles[Blocks[i][0]])[Field mod 100]:=Value
-      else
-        raise EStratoFieldIndexNotFound.CreateFmt(
-          'Value %s update on 0',[NodeFieldToStr(Field)])
-    else
-      if Field=vTypeNr then
-        if (Blocks[i][j] div n_TypeNr_Base)<>(Value div n_TypeNr_Base) then
+        q:=v(p,vByteSize);
+        if q=nil then
           raise Exception.CreateFmt(
-            'Size mismatch on note type update %s:%s',
-            [NodeTypeToStr(Blocks[i][j]),NodeTypeToStr(Value)])
+            'byte size not declared for item %d:%s',
+            [p,KeyToStr(k[p].k)])
         else
-          Blocks[i][j]:=Value
+          Result:=q^;
+       end;
       else
-       begin
-        t:=xTypeNr(Blocks[i][j]);
-        {$IFDEF DEBUG}
-        if t<n_TypeNr_Low then k:=0 else k:=xTypeDefX[t];
-        if k=0 then
-          raise EStratoFieldIndexNotFound.CreateFmt(
-            ItemToStrMask+'(%s): fields not defined',[i,j,NodeTypeToStr(t)]) at src;
-        {$ELSE}
-        k:=xTypeDefX[t];
-        {$ENDIF}
-        l:=k;
-        while (xTypeDef[l]<>Field) and (xTypeDef[l]<f_FieldsMax) do inc(l);
-        if xTypeDef[l]<f_FieldsMax then
-          Blocks[i][j+l-k+1]:=Value
-        else
-          raise EStratoFieldIndexNotFound.CreateFmt(
-            ItemToStrMask+'(%s): field index not found: %s',
-            [i,j,NodeTypeToStr(t),NodeFieldToStr(Field)])
-            {$IFDEF DEBUG}at src{$ENDIF};
-       end
+        raise Exception.CreateFmt(
+          'request for byte size of unsupported item %d:%s',
+          [p,KeyToStr(k[p].k)]);
+      //else raise?Sphere.Error?
+    end;
+   end;
+end;
+}
+
+{ xNode }
+
+function xNode.Key:xKey;
+begin
+  if sphere=nil then
+    Result:=xUnassigned //assert index=0
   else
-    raise ERangeError.CreateFmt('Block index out of range: %d,%d',
-      [i,BlocksCount]);
+    Result:=sphere[index].k;
+  //assert Result<n_Max;
 end;
 
-function rItem.a(Field: xTypeNr; Value: cardinal): cardinal;
+function xNode.AsString:string;
 var
-  i,j,k,l:cardinal;
-  t:xTypeNr;
-  p:PxValue;
-  {$IFDEF DEBUG}
-  src:pointer;
-  {$ENDIF}
+  i:cardinal;
 begin
-  {$IFDEF DEBUG}
-  asm
-    mov eax,[ebp+4]
-    mov src,eax
-  end;
-  //dec(src,5);?
-  {$ENDIF}
-  i:=x div StratoSphereBlockBase;
-  j:=x mod StratoSphereBlockBase;
-  if i<BlocksCount then
-    if j=0 then //get info from SourceFile?
-      raise EStratoFieldIndexNotFound.CreateFmt(
-        'Value %s increment on 0',[NodeFieldToStr(Field)])
+  if sphere=nil then
+    Result:='0#0'
+  else
+   begin
+    i:=0;
+    while (i<SpheresCount) and (Spheres[i]<>sphere) do inc(i);
+    if i=SpheresCount then
+      Result:=Format('?#%d',[index])
+    else
+      Result:=Format('%d#%d',[i+1,index]);
+   end;
+end;
+
+function xNode.IsNone:boolean;
+begin
+  Result:=sphere=nil;//and/or index=0?
+end;
+
+function xNode.IsSame(Node:xNode):boolean;
+begin
+  Result:=(Node.sphere=sphere) and (Node.index=index);
+end;
+
+function xNode.i(Key:xKey):xValue;
+var
+  p:PxKeyValue;
+begin
+  if sphere=nil then
+    Result:=0 //assert index=0 //TODO: null-ref exception?
+  else
+   begin
+    p:=sphere.v(index,Key);
+    if p=nil then
+      Result:=0//TODO: null-ref exception?
+    else
+      Result:=p.i;
+   end;
+end;
+
+function xNode.v(Key:xKey):xValue;
+var
+  p:PxKeyValue;
+begin
+  if sphere=nil then
+    Result:=0 //assert index=0 //TODO: null-ref exception?
+  else
+   begin
+    p:=sphere.v(index,Key);
+    if p=nil then
+      Result:=0//TODO: null-ref exception?
+    else
+      Result:=p.v;
+   end;
+end;
+
+function xNode.q(Key:xKey;var Value:xValue):boolean;
+var
+  p:PxKeyValue;
+begin
+  if sphere=nil then
+    Result:=false //assert index=0
+  else
+   begin
+    p:=sphere.v(index,Key);
+    if p=nil then
+      Result:=false
     else
      begin
-      t:=xTypeNr(Blocks[i][j]);
-      {$IFDEF DEBUG}
-      if t<n_TypeNr_Low then k:=0 else k:=xTypeDefX[t];
-      if k=0 then
-        raise EStratoFieldIndexNotFound.CreateFmt(
-          ItemToStrMask+'(%s): fields not defined',[i,j,NodeTypeToStr(t)]) at src;
-      {$ELSE}
-      k:=xTypeDefX[t];
-      {$ENDIF}
-      l:=k;
-      while (xTypeDef[l]<>Field) and (xTypeDef[l]<f_FieldsMax) do inc(l);
-      if xTypeDef[l]<f_FieldsMax then
+      Value:=p.v;
+      Result:=true;
+     end;
+   end;
+end;
+
+function xNode.r(Key:xKey):xNode;
+var
+  p:PxKeyValue;
+begin
+  if sphere=nil then p:=nil else p:=sphere.v(index,Key);
+  if (p=nil) or (p.v=0) then Result.none else Result.ss(Sphere,p.i,p.v);
+end;
+
+function xNode.rl(Key:xKey):xNode;
+var
+  i:xRef;
+begin
+  //assert Key in [l*]
+  i:=index;
+  while (i<>0) and (sphere.k[i].k<>Key) do i:=sphere.k[i].n;
+  if i=0 then Result.none else
+   begin
+    Result.sphere:=sphere;
+    Result.index:=i;
+   end;
+end;
+
+procedure xNode.s(ASphere:TStratoSphere;AIndex:xRef);
+begin
+  //assert sphere<>nil
+  sphere:=ASphere;
+  index:=AIndex;
+end;
+
+procedure xNode.ss(ASphere:TStratoSphere;ASphereIndex:xValue;AIndex:xRef);
+var
+  i:cardinal;
+begin
+  if ASphereIndex=0 then
+   begin
+    //assert sphere<>nil
+    sphere:=ASphere;
+   end
+  else
+   begin
+    //TODO: check/register dependency
+    i:=ASphereIndex-1;
+    if i>=SpheresCount then
+      raise Exception.Create('Invalid sphere index detected ('+
+        IntToStr(ASphereIndex)+')');
+    sphere:=Spheres[i];
+   end;
+  index:=AIndex;
+end;
+
+procedure xNode.none;
+begin
+  sphere:=nil;
+  index:=0;
+end;
+
+function xNode.Lookup(const Name:UTF8String):xNode;
+var
+  i,j,l,nf:cardinal;
+  p,p1:xRef;
+  q:PxKeyValue;
+begin
+  i:=0;
+  l:=Length(Name);
+  p1:=0;
+  if sphere=nil then q:=nil else q:=sphere.v(0,lSphere_Dictionary);
+  while (q<>nil) and (i<l) do
+   begin
+    //4 bytes name fragment
+    nf:=0;
+    for j:=0 to 3 do
+     begin
+      nf:=nf shl 8;
+      if i<l then
        begin
-        p:=@Blocks[i][j+l-k+1];
-        Result:=p^;
-        p^:=p^+Value;
+        inc(i);
+        nf:=nf or byte(Name[i]);
+       end;
+     end;
+    //lookup
+    p:=q.v;
+    while p<>0 do
+     begin
+      q:=sphere.k[p];
+      case q.k of
+      xDictionary_Entry:
+        if q.i<nf then
+         begin
+          //not yet, keep looking
+          p:=q.n;
+         end
+        else
+        if q.i=nf then
+         begin
+          //found!
+          p1:=p;
+          p:=0;
+         end
+        else
+         begin
+          q:=nil;//past already
+          p:=0;//end loop
+         end;
+      xDictionary_Tail:
+       begin
+        q:=nil;//at end nothing found
+        p:=0;//end loop
        end
       else
-        raise EStratoFieldIndexNotFound.CreateFmt(
-          ItemToStrMask+'(%s): field index not found: %s',
-          [i,j,NodeTypeToStr(t),NodeFieldToStr(Field)])
-          {$IFDEF DEBUG}at src{$ENDIF};
-     end
+        raise Exception.CreateFmt('Dictionary entry expected %d:%d',[p,cardinal(q.k)]);
+      end;
+     end;
+   end;
+  if (q=nil) or (p1=0) then
+    Result.none
   else
-    raise ERangeError.CreateFmt('Block index out of range: %d,%d',
-      [i,BlocksCount]);
+    Result:=sphere.Lookup(Index,p1,lChildren);
 end;
 
-function rItem.NodeType: xTypeNr;
-//Result:=Self.v(vTypeNr);
+procedure xNode.Start(Subject:xNode;List:xKey);
 var
-  i,j:cardinal;
-  {$IFDEF DEBUG}
-  src:pointer;
-  {$ENDIF}
+  i:xRef;
 begin
-  {$IFDEF DEBUG}
-  asm
-    mov eax,[ebp+4]
-    mov src,eax
-  end;
-  //dec(src,5);?
-  {$ENDIF}
-  i:=x div StratoSphereBlockBase;
-  j:=x mod StratoSphereBlockBase;
-  if i<BlocksCount then
-    if j=0 then
-      Result:=xTypeNr(0)//raise??? 'null reference'?
+  sphere:=Subject.sphere;
+  index:=0;//default
+  if sphere<>nil then
+   begin
+    i:=Subject.index;
+    if sphere.k[i].k<n_Max then
+     begin
+      //TODO: check Field valid member for k[i].k
+      i:=sphere.k[i].n;
+      while (i<>0) and (sphere.k[i].k<>List) do i:=sphere.k[i].n;
+      if i<>0 then index:=i;
+     end;
+   end;
+end;
+
+function xNode.Next(var Item:xNode):boolean;
+var
+  p:PxKeyValue;
+begin
+  if sphere=nil then
+   begin
+    Item.none;
+    Result:=false //raise? 'Call Start first'?
+   end
+  else
+   begin
+    p:=sphere[index];
+    if p.k<>xListEntry then //assert p.k in [l...]
+      index:=p.v //first call
     else
-      Result:=xTypeNr(Blocks[i][j])
-  else
-    raise ERangeError.CreateFmt('Block index out of range: %d,%d',
-      [i,BlocksCount]);
+      index:=p.n;
+    if index=0 then p:=nil else p:=sphere[index];
+    if p=nil then
+     begin
+      Item.none;
+      Result:=false;
+     end
+    else
+     begin
+      if p.k<>xListEntry then
+        raise Exception.CreateFmt('List entry expected %d:%d',[index,cardinal(p.k)]);
+      Item.ss(sphere,p.i,p.v);
+      Result:=true;
+     end;
+   end;
 end;
 
-function rItem.rr(Field1, Field2: xTypeNr): rItem;
-var
-  p:rItem;
+function xNode.Done:boolean;
 begin
-  p:=r(Field1);
-  Result:=p.r(Field2);
-end;
-
-function rItem.rrr(Field1, Field2, Field3: xTypeNr): rItem;
-var
-  p:rItem;
-begin
-  p:=r(Field1);
-  p:=p.r(Field2);
-  Result:=p.r(Field3);
-end;
-
-function rItem.rrrr(Field1, Field2, Field3, Field4: xTypeNr): rItem;
-var
-  p:rItem;
-begin
-  p:=r(Field1);
-  p:=p.r(Field2);
-  p:=p.r(Field3);
-  Result:=p.r(Field4);
-end;
-
-function NodeTypeToStr(f:xTypeNr):string;
-begin
-    case f of
-    nNameSpace   :Result:='NameSpace';
-    nType        :Result:='Type';
-    nLiteral     :Result:='Literal';
-    nConstant    :Result:='Constant';
-    nRecord      :Result:='Record';
-    nArray       :Result:='Array';
-    nEnum        :Result:='Enum';
-    nSignature   :Result:='Signature';
-    nSigArg      :Result:='SigArg';
-    nSigArgByRef :Result:='SigArgByRef';
-    nMember      :Result:='Member';
-    nOverload    :Result:='Overload';
-    nPointer     :Result:='Pointer';
-    nTypeAlias   :Result:='TypeAlias';
-
-    nGlobal      :Result:='Global';
-
-    nClass       :Result:='Class';
-    nClassRef    :Result:='ClassRef';
-    nCtors       :Result:='Ctors';
-    nCtor        :Result:='Ctor';
-    nDtor        :Result:='Dtor';
-    nPropGet     :Result:='PropGet';
-    nPropSet     :Result:='PropSet';
-    nInterface   :Result:='Interface';
-
-    nCodeBlock   :Result:='CodeBlock';
-    nVar         :Result:='Var';
-    nVarByRef    :Result:='VarByRef';
-    nVarReadOnly :Result:='VarReadOnly';
-    nThis        :Result:='This';
-
-    nSCall       :Result:='SCall';
-    nFCall       :Result:='FCall';
-    nVCall       :Result:='VCall';
-    nICall       :Result:='ICall';
-    nCallArg     :Result:='CallArg';
-
-    nCast        :Result:='Cast';
-    nAddressOf   :Result:='AddressOf';
-    nDereference :Result:='Dereference';
-    nArrayIndex  :Result:='ArrayIndex';
-    nField       :Result:='Field';
-
-    nAssign      :Result:='Assign';
-    nUnaryOp     :Result:='UnaryOp';
-    nBinaryOp    :Result:='BinaryOp';
-    nSelection   :Result:='Selection';
-    nIteration   :Result:='Iteration';
-    nIterPostEval:Result:='IterPostEval';
-    nRange       :Result:='Range';
-    nRangeIndex  :Result:='RangeIndex';
-
-    nTry         :Result:='Try';
-    nThrow       :Result:='Throw';
-    nDefer       :Result:='Defer';
-    nCatch       :Result:='Catch';
-
-    else Result:=Format('%d',[f]);
-  end;
-end;
-
-function NodeFieldToStr(f:xTypeNr):string;
-begin
-  case f of
-    iName            :Result:='iName';
-    iParent          :Result:='iParent';
-    iNext            :Result:='iNext';
-    iType            :Result:='iType';
-    iSubject         :Result:='iSubject';
-    iTarget          :Result:='iTarget';
-    iSignature       :Result:='iSignature';
-    iValue           :Result:='iValue';
-    iReturnType      :Result:='iReturnType';
-    iInheritsFrom    :Result:='iInheritsFrom';
-
-    iBody            :Result:='iBody';
-    iLeft            :Result:='iLeft';
-    iRight           :Result:='iRight';
-    iFirstArgVar     :Result:='iFirstArgVar';
-    iPredicate       :Result:='iPredicate';
-    iDoTrue          :Result:='iDoTrue';
-    iDoFalse         :Result:='iDoFalse';
-
-    lItems           :Result:='lItems';
-    lArguments       :Result:='lArguments';
-    lCatchTypes      :Result:='lCatchTypes';
-    lLocals          :Result:='lLocals';
-
-    vTypeNr          :Result:='vTypeNr';
-    vSrcPos          :Result:='vSrcPos';
-    vByteSize        :Result:='vByteSize';
-    vOffset          :Result:='vOffset';
-    vOperator        :Result:='vOperator';
-    vKey             :Result:='vKey';
-
-    else Result:=Format('%.3x',[f]);
-  end;
-end;
-
-function IsIntrinsicNumeric(i:rItem):boolean; inline;
-begin
-  //assert IntrinsicTypes[itNumber]<>0
-  //assert IntrinsicTypes[itString]<>0
-  //assert intrinsic numeric types inbetween
-  Result:=(i.x>=IntrinsicTypes[itNumber]) and (i.x<IntrinsicTypes[itString]);
+  Result:=index=0;
 end;
 
 initialization
   KnownPathsCount:=0;
   KnownPathsSize:=0;
-  SourceFilesCount:=0;
-  SourceFilesSize:=0;
-  BlocksCount:=0;
-  BlocksSize:=0;
+  SpheresCount:=0;
+  SpheresSize:=0;
   SystemWordSize:=4;//default
   //ZeroMemory(IntrinsicTypes,?);
 finalization

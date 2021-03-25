@@ -50,7 +50,6 @@ __strtofile(fn,data:string){$$202;}
 
 //previously "oo.xs"
 
-
 object:={
 	_basetype:?object@-@?0;//class
 	_refcount:number@-@?0*2;

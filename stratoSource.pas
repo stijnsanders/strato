@@ -5,7 +5,8 @@ interface
 {$D-}
 {$L-}
 
-uses SysUtils, Classes, stratoTokenizer;
+uses SysUtils, Classes, stratoTokenizer, stratoDecl;
+//stratoDecl is *only* used for xSrcPos here!
 
 const
   StratoTokenMaxLookForward=12;//more? config?
@@ -20,7 +21,7 @@ type
     FTA,FTB,FLineIndex:cardinal;
     FTokens:array[0..StratoTokenMaxLookForward-1] of TStratoSourceToken;
     FFilePath:string;
-    FFileSize,FErrors:cardinal;
+    FFileSize,FErrors,FMaxErrors:cardinal;
     FOnError:TStratoSourceErrorHandler;
     procedure PeekToken(var i:cardinal);
   public
@@ -31,12 +32,13 @@ type
     function IsNextID(const st:array of TStratoToken):boolean; //(doesn't advance index)
     function IsNextBetween(st1,st2:TStratoToken):boolean;//(doesn't advance index)
     procedure Skip(st:TStratoToken);
-    function GetID(var SrcPos: cardinal): UTF8String;
+    function GetID(var SrcPos: xSrcPos): UTF8String;
     function GetStr: UTF8String;
     function GetStrs: UTF8String;
     procedure Error(const msg: string);
     procedure ErrorN(const msg: string;const nn: UTF8String);
-    function SrcPos: cardinal;
+    function SrcPos: xSrcPos;
+
     property FilePath:string read FFilePath;
     property FileSize:cardinal read FFileSize;
     property LineIndex:cardinal read FLineIndex;
@@ -95,6 +97,7 @@ begin
   //TODO: EOL's here and determine best SrcPosLineIndex?
   FLineIndex:=DefaultLineIndex;
   FErrors:=0;
+  FMaxErrors:=5;//TODO: from config
   //initialize tokenizer
   StratoTokenizeInit(FSource,FLineIndex,FTokens[0]);
   FTA:=0;
@@ -223,13 +226,14 @@ begin
   if st=FTokens[FTA].Token then PeekToken(FTA);
 end;
 
-function TStratoSource.GetID(var SrcPos: cardinal): UTF8String;
+function TStratoSource.GetID(var SrcPos: xSrcPos): UTF8String;
 var
   i:cardinal;
 begin
   i:=FTA;
   if i=0 then i:=StratoTokenMaxLookForward;
   dec(i);
+  //assert FTokens[i].Token=stIdentifier
   Result:=Copy(FSource,FTokens[i].Index,FTokens[i].Length);
   SrcPos:=FTokens[i].SrcPos;
 end;
@@ -254,160 +258,160 @@ begin
   r:=0;
   SetLength(Result,FTokens[f].Length);
   case FSource[FTokens[f].Index] of
-    ''''://Pascal-style
+  ''''://Pascal-style
+   begin
+    i:=FTokens[f].Index+1;
+    j:=i+FTokens[f].Length-2;
+    while i<>j do
      begin
-      i:=FTokens[f].Index+1;
-      j:=i+FTokens[f].Length-2;
-      while i<>j do
-       begin
-        inc(r);
-        Result[r]:=FSource[i];
-        if FSource[i]='''' then inc(i);//TODO: if not in multi-byte UTF8!
-        inc(i);
-        //TODO: clip leading whitespace on EOLs?
-       end;
+      inc(r);
+      Result[r]:=FSource[i];
+      if FSource[i]='''' then inc(i);//TODO: if not in multi-byte UTF8!
+      inc(i);
+      //TODO: clip leading whitespace on EOLs?
      end;
-    '"'://C-style (or Python-style triple double quotes)
+   end;
+  '"'://C-style (or Python-style triple double quotes)
+   begin
+    i:=FTokens[f].Index;
+    j:=i+FTokens[f].Length-1;
+    if (FTokens[f].Length>=6) and (FSource[i]='"')
+      and (FSource[i+1]='"') and (FSource[i+2]='"')
+      //and (FSource[j-1]='"') and (FSource[j-2]='"') and (FSource[j-3]='"')
+      then
      begin
-      i:=FTokens[f].Index;
-      j:=i+FTokens[f].Length-1;
-      if (FTokens[f].Length>=6) and (FSource[i]='"')
-        and (FSource[i+1]='"') and (FSource[i+2]='"')
-        //and (FSource[j-1]='"') and (FSource[j-2]='"') and (FSource[j-3]='"')
-        then
+      //Python-style: triple double quotes
+      inc(i,3);
+      dec(j,2);
+      //find common indentation
+      //TODO: just first line for now, check all lines?
+      l:=i;
+      while (l<>j) and (FSource[l]<>#13) and (FSource[l]<>#10) do inc(l);
+      k:=0;
+      while (l<>j) and (FSource[l]<=' ') do
        begin
-        //Python-style: triple double quotes
-        inc(i,3);
-        dec(j,2);
-        //find common indentation
-        //TODO: just first line for now, check all lines?
-        l:=i;
-        while (l<>j) and (FSource[l]<>#13) and (FSource[l]<>#10) do inc(l);
-        k:=0;
-        while (l<>j) and (FSource[l]<=' ') do
-         begin
-          inc(l);
-          inc(k);
-         end;
-        b:=false;
-       end
-      else
-       begin
-        //C-style
-        inc(i);
-        b:=true;
-        k:=0;//counter warning
+        inc(l);
+        inc(k);
        end;
-      while i<>j do
+      b:=false;
+     end
+    else
+     begin
+      //C-style
+      inc(i);
+      b:=true;
+      k:=0;//counter warning
+     end;
+    while i<>j do
+     begin
+      case FSource[i] of
+      '\'://backslash: escape
        begin
-         case FSource[i] of
-           '\'://backslash: escape
+        inc(i);
+        if (FSource[i]=#13) or (FSource[i]=#10) then
+         begin
+          //skip
+          if (FSource[i]=#13) and (i+1<>j) and (FSource[i+1]=#10) then inc(i);
+          if not b then
+           begin
+            l:=k;
+            while (l<>0) and (i<j-1) and (FSource[i+1]<=' ') do
+             begin
+              inc(i);
+              dec(l);
+             end;
+           end;
+         end
+        else
+         begin
+          case FSource[i] of
+            'a':a:=7;
+            'b':a:=8;
+            'f':a:=12;
+            'n':a:=10;
+            'r':a:=13;
+            't':a:=9;
+            'v':a:=11;
+            '0'..'9':
+             begin
+              //TODO: check three digits!
+              if i+2<j then a:=
+                ((byte(FSource[i  ]) and $7) shl 6) or
+                ((byte(FSource[i+1]) and $7) shl 3) or
+                ( byte(FSource[i+2]) and $7       )
+              else
+                a:=byte(FSource[i]);//?
+              inc(i,2);
+             end;
+            //'u'://TODO: unicode!
+            'x':
+             begin
+              {
+              //TODO: unicode!!!
+              if (i+3<j)
+                and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                then a:=
+                   (((byte(FSource[i  ]) and $1F)+9*((byte(FSource[i  ]) shr 6)and 1)) shl 12)
+                or (((byte(FSource[i+1]) and $1F)+9*((byte(FSource[i+1]) shr 6)and 1)) shl 8)
+                or (((byte(FSource[i+2]) and $1F)+9*((byte(FSource[i+2]) shr 6)and 1)) shl 4)
+                or  ((byte(FSource[i+3]) and $1F)+9*((byte(FSource[i+3]) shr 6)and 1))
+              else
+              }
+              if (i+1<j)
+                and(FSource[i  ] in ['0'..'9','A'..'F','a'..'f'])
+                and(FSource[i+1] in ['0'..'9','A'..'F','a'..'f'])
+                then a:=
+                   (((byte(FSource[i  ]) and $1F)+9*((byte(FSource[i  ]) shr 6)and 1)) shl 4)
+                or  ((byte(FSource[i+1]) and $1F)+9*((byte(FSource[i+1]) shr 6)and 1))
+              else
+                a:=byte('x');
+             end;
+            else a:=byte(FSource[i]);
+          end;
+          inc(r);
+          Result[r]:=AnsiChar(a);
+         end;
+       end;
+      #13,#10:
+       begin
+        if (FSource[i]=#13) and (i+1<>j) and (FSource[i+1]=#10) then
+         begin
+          inc(r);
+          Result[r]:=#13;
+          inc(i);
+         end;
+        if b then
+         begin
+          Error('unterminated string literal');
+          i:=j-1;
+         end
+        else
+         begin
+          inc(r);
+          Result[r]:=FSource[i];
+          l:=k;
+          while (l<>0) and (i<j-1) and (FSource[i+1]<=' ') do
            begin
             inc(i);
-            if (FSource[i]=#13) or (FSource[i]=#10) then
-             begin
-              //skip
-              if (FSource[i]=#13) and (i+1<>j) and (FSource[i+1]=#10) then inc(i);
-              if not b then
-               begin
-                l:=k;
-                while (l<>0) and (i<j-1) and (FSource[i+1]<=' ') do
-                 begin
-                  inc(i);
-                  dec(l);
-                 end;
-               end;
-             end
-            else
-             begin
-              case FSource[i] of
-                'a':a:=7;
-                'b':a:=8;
-                'f':a:=12;
-                'n':a:=10;
-                'r':a:=13;
-                't':a:=9;
-                'v':a:=11;
-                '0'..'9':
-                 begin
-                  //TODO: check three digits!
-                  if i+2<j then a:=
-                    ((byte(FSource[i  ]) and $7) shl 6) or
-                    ((byte(FSource[i+1]) and $7) shl 3) or
-                    ( byte(FSource[i+2]) and $7       )
-                  else
-                    a:=byte(FSource[i]);//?
-                  inc(i,2);
-                 end;
-                //'u'://TODO: unicode!
-                'x':
-                 begin
-                  {
-                  //TODO: unicode!!!
-                  if (i+3<j)
-                    and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                    and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                    and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                    and(s[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                    then a:=
-                       (((byte(FSource[i  ]) and $1F)+9*((byte(FSource[i  ]) shr 6)and 1)) shl 12)
-                    or (((byte(FSource[i+1]) and $1F)+9*((byte(FSource[i+1]) shr 6)and 1)) shl 8)
-                    or (((byte(FSource[i+2]) and $1F)+9*((byte(FSource[i+2]) shr 6)and 1)) shl 4)
-                    or  ((byte(FSource[i+3]) and $1F)+9*((byte(FSource[i+3]) shr 6)and 1))
-                  else
-                  }
-                  if (i+1<j)
-                    and(FSource[i  ] in ['0'..'9','A'..'F','a'..'f'])
-                    and(FSource[i+1] in ['0'..'9','A'..'F','a'..'f'])
-                    then a:=
-                       (((byte(FSource[i  ]) and $1F)+9*((byte(FSource[i  ]) shr 6)and 1)) shl 4)
-                    or  ((byte(FSource[i+1]) and $1F)+9*((byte(FSource[i+1]) shr 6)and 1))
-                  else
-                    a:=byte('x');
-                 end;
-                else a:=byte(FSource[i]);
-              end;
-              inc(r);
-              Result[r]:=AnsiChar(a);
-             end;
+            dec(l);
            end;
-          #13,#10:
-           begin
-            if (FSource[i]=#13) and (i+1<>j) and (FSource[i+1]=#10) then
-             begin
-              inc(r);
-              Result[r]:=#13;
-              inc(i);
-             end;
-            if b then
-             begin
-              Error('unterminated string literal');
-              i:=j-1;
-             end
-            else
-             begin
-              inc(r);
-              Result[r]:=FSource[i];
-              l:=k;
-              while (l<>0) and (i<j-1) and (FSource[i+1]<=' ') do
-               begin
-                inc(i);
-                dec(l);
-               end;
-             end;
-           end;
-          else
-           begin
-            inc(r);
-            Result[r]:=FSource[i];//TODO: what if multi-byte UTF8?
-           end;
-        end;
-        inc(i);
-        //TODO: clip leading whitespace on EOLs?
+         end;
        end;
+      else
+       begin
+        inc(r);
+        Result[r]:=FSource[i];//TODO: what if multi-byte UTF8?
+       end;
+      end;
+      inc(i);
+      //TODO: clip leading whitespace on EOLs?
      end;
-    else
-      Error('unsupported string literal type');
+   end;
+  else
+    Error('unsupported string literal type');
   end;
   SetLength(Result,r);
 end;
@@ -429,6 +433,8 @@ begin
   Writeln(ErrOutput,Format('%s(%d:%d): %s',[FFilePath,x,y,msg]));//Index?
   //raise?
   if @FOnError<>nil then FOnError(Self,x,y,msg);
+  if (FMaxErrors<>0) and (FErrors=FMaxErrors) then
+    raise Exception.Create('Source file max errors reached');
 end;
 
 procedure TStratoSource.ErrorN(const msg:string;const nn:UTF8String);
@@ -436,7 +442,7 @@ begin
   Error(msg+' "'+UTF8ToString(nn)+'"');
 end;
 
-function TStratoSource.SrcPos: cardinal;
+function TStratoSource.SrcPos: xSrcPos;
 var
   i:cardinal;
 begin

@@ -2,183 +2,167 @@ unit stratoFn;
 
 interface
 
-{$D-}
-{$L-}
+{xxx$D-}
+{xxx$L-}
 
-uses stratoDecl, stratoSphere, stratoParse;
+uses stratoDecl, stratoSphere, stratoParseDecl, stratoParseLogic;
 
-function StratoFnAdd(Parser:TStratoParser;MethodType:xTypeNr;
-  Member,Signature:rItem;SrcPos:xSrcPos):rItem;
-procedure StratoFnCallAddArgument(Parser:TStratoParser;
-  var ListTail:rItem;Value,ValueType:rItem;SrcPos:xSrcPos);
-procedure StratoFnCallBySignature(Parser:TStratoParser;
-  MethodType:xTypeNr;Subject,Arguments,Parent:rItem;SrcPos:xSrcPos;
-  var FnCall:rItem;var FnResType:rItem;ICall:boolean);
-function StratoFnCallFindVirtual(FnCall,SubjectType:rItem;
-  SubjectData:PxValue):rItem;
-function StratoFnCallDestructor(Parser:TStratoParser;CodeBlock:rItem):rItem;
-procedure StratoFnArgByValues(Parser:TStratoParser;FnCall,ValuesFrom:rItem);
+function StratoFnAdd(Parser:TStratoParserDecl;MethodType:xKey;
+  Member,Signature:xNode;SrcPos:xSrcPos):xNode;
+procedure StratoFnCallBySignature(Parser:TStratoParserLogic;
+  MethodType:xKey;Subject,Arguments:xNode;Parent:xRef;SrcPos:xSrcPos;
+  ICall:boolean;var FnCall,FnResType:xNode);
+function StratoFnCallFindVirtual(FnCall,SubjectType:xNode;
+  SubjectData:PxKeyValue):xNode;
+function StratoFnCallDestructor(Parser:TStratoParserLogic;CodeBlock:xRef):xNode;
+procedure StratoFnArgByValues(Parser:TStratoParserLogic;FnCall:xRef);
 //function StratoFindPropertySet(Sphere:TStratoSphere;
-//  AssignTo,PropCall:xItem;Op:cardinal;SrcPos:xSrcPos):boolean;
-procedure StratoCheckMemberNoArguments(Parser:TStratoParser;
-  var Target:rItem;var TargetType:rItem;Parent:rItem;SrcPos:xSrcPos);
+//  AssignTo,PropCall:xKey;Op:cardinal;SrcPos:xSrcPos):boolean;
+procedure StratoCheckMemberNoArguments(Parser:TStratoParserLogic;
+  var Target,TargetType:xNode;Parent:xRef;SrcPos:xSrcPos);
 
 implementation
 
-uses stratoTokenizer, stratoLogic;
+uses SysUtils, stratoTokenizer, stratoLogic;
 
-function StratoFnArgListsMatch(Signature:rItem;Arguments:rItem):boolean;
+function kl(Key:xKey;List:xNode):xKeyValue;
 var
-  p,p0,q,q0:rItem;
+  p:PxKeyValue;
 begin
-  ListFirst(Signature,lArguments,p,p0);
-  //ListFirst(!!!,lArguments,q,q0);
-  q0:=Arguments;//assert pointer to last in cyclic list
-  q:=q0.r(iNext);
+  p:=List.sphere.k[List.index];
+  //assert p.k=xStageList
+  Result.k:=Key;
+  Result.n:=0;//handled by Sphere.Add
+  Result.i:=p.i;
+  Result.v:=p.v;
+  //clear
+  //p.k:=xUnassigned;//?
+  p.i:=0;
+  p.v:=0;
+end;
+
+function StratoFnArgListsMatch(Signature,Arguments:xNode):boolean;
+var
+  p,q,p0,q0:xNode;
+begin
+  p.Start(Signature,lArguments);
+  p.Next(p0);
+
+  //if Arguments.Key in [lArguments,xStageList] then ?
+  q:=Arguments;//q.Start(Arguments,Arguments.Key);
+  q.Next(q0);
 
   Result:=true;//default
-  while Result and not((p.x=0) and (q.x=0)) do
-   begin
-    if SameType(p.r(iType),q.r(iType)) then
+  while Result and not(p.Done and q.Done) do
+    if SameType(p0.r(iType),q0.r(iType)) then
      begin
-      if p.NodeType=nSigArgByRef then
-        if not IsAddressable(q.r(iValue)) then
+      if p0.Key=nSigArgByRef then
+        if not IsAddressable(q0.r(iValue)) then
           Result:=false;
-
-      //next
-      ListNext(p,p0);
-      ListNext(q,q0);
+      p.Next(p0);
+      q.Next(q0);
      end
     else
       Result:=false;
-   end;
   //remaining signature arguments with default value?
   if Result then
-    if q.x=0 then
-      while Result and (p.x<>0) do
-        if (p.NodeType<>nSigArg) and (p.r(iValue).x<>0) then
+    if q.Done then
+      while Result and not(p.Done) do
+        if (p0.Key<>nSigArg) and not(p0.r(iValue).IsNone) then
           Result:=false
         else
-          ListNext(p,p0)
+          p.Next(p0)
     else
       Result:=false;
 end;
 
-function StratoFnAdd(Parser:TStratoParser;MethodType:xTypeNr;
-  Member,Signature:rItem;SrcPos:xSrcPos):rItem;
+function kn(Key:xKey;Parser:TStratoParserDecl;Node:xNode):xKeyValue;
+begin
+  Result.k:=Key;
+  Result.n:=xRef(0);//handled by sphere
+  if (Node.sphere=nil) or (Node.sphere=Parser.Sphere) then
+    Result.i:=0
+  else
+    Result.i:=SphereIndex(Node.sphere);
+  Result.v:=Node.index;
+end;
+
+function StratoFnAdd(Parser:TStratoParserDecl;MethodType:xKey;
+  Member,Signature:xNode;SrcPos:xSrcPos):xNode;
 var
-  p,q,q0,m:rItem;
+  p,q,q0,r:xNode;
 begin
   //assert Signature.nz
   //assert Fn.nz
-  case MethodType of
-    nOverload,nPropGet,nPropSet:
-      m:=Member;
-    nCtor:
-     begin
-      //assert Signature.Returns=nil
-      Signature.s(iReturnType,Member);//Member is nClass
-      ListFirst(Member,lItems,q,q0);
-      while (q.x<>0) and (q.NodeType<>nCtors) do
-        ListNext(q,q0);
-      if q.x=0 then
-       begin
-        //prepend
-        m:=Parser.Add(nCtors,[iParent,Member.x]);
-        Parser.Prepend(Member,lItems,m);
-       end
-      else
-        m:=q;
-     end;
-    //nDtor? doesn't do overloads, just add (unique)
+  if MethodType=nCtor then
+   begin
+    //assert Signature.Returns=nil
+    if Signature.sphere=Parser.Sphere then
+      Parser.Sphere.SetRef(Signature.index,iReturnType,Member)//Member is nClass
     else
-      m.x:=0;
-  end;
-  if m.x=0 then
-   begin
-    Parser.Source.Error('unexpected overload subject');
-    Result:=Parser.Add(MethodType,[]);//pro-forma
-   end
-  else
-   begin
-    p.x:=0;
-    ListFirst(Member,lItems,q,q0);
-    while q.x<>0 do
-      if (q.NodeType=MethodType) and SameType(q.r(iSignature),Signature) then
-       begin
-        if q.r(iBody).x=0 then //forward! fill in CB
-          p:=q //TODO: delete/avoid superfluous Signature?
-        else
-          Parser.Source.Error('duplicate overload');
-        q.x:=0;
-       end
+      Parser.Source.Error('can''t alter constructor signature in other sphere');
+   end;
+  p.none;
+  q.Start(Member,lChildren);
+  q.Next(q0);
+  while not(q.Done) do
+    if (q0.Key=MethodType) and SameType(q0.r(iSignature),Signature) then
+     begin
+      if (r.sphere=Parser.Sphere) and (Parser.Sphere.v(r.index,iBody)=nil) then //forward! fill in CB
+        p:=r //TODO: delete/avoid superfluous Signature?
       else
-      if (q.NodeType=MethodType) and
-        StratoFnArgListsMatch(Signature,q.r(iFirstArgVar)) then
-       begin
-        q.x:=0;
-        Parser.Source.Error('duplicate overload with equivalent arguments');
-       end
-      else
-        ListNext(q,q0);
-    if p.x=0 then
-      p:=Parser.Add(m,lItems,MethodType,
-        [iParent,m.x
-        ,vSrcPos,SrcPos
-        ,iSignature,Signature.x
+        Parser.Source.Error('duplicate overload');
+      q.none;//end loop
+     end
+    else
+    if (q0.Key=MethodType) and
+      StratoFnArgListsMatch(Signature,q0.rl(lArguments)) then
+     begin
+      Parser.Source.Error('duplicate overload with equivalent arguments');
+      q.none;//end loop
+     end
+    else
+      q.Next(q0);
+  if p.IsNone then
+    if Member.sphere=Parser.Sphere then
+      p:=Parser.Add(Member.index,lChildren,MethodType,8,
+        [kn(iParent,Parser,Member)
+        ,kv(vSrcPos,0,SrcPos)
+        ,kn(iSignature,Parser,Signature)
         ])
     else
-     begin
-      p.s(iParent,m);
-      p.s(vSrcPos,SrcPos);
-      p.s(iSignature,Signature);
-     end;
-    Result:=p;
-   end;
-end;
-
-procedure StratoFnCallAddArgument(Parser:TStratoParser;
-  var ListTail:rItem;Value,ValueType:rItem;SrcPos:xSrcPos);
-var
-  p,q:rItem;
-begin
-  if Value.x<>0 then
+      Parser.Source.Error('function member unexpectedly in other sphere')
+  else
    begin
-    p:=Parser.Add(nCallArg,
-      [vSrcPos,SrcPos
-      //,iParent: see StratoFnCallBySignature
-      ,iValue,Value.x
-      ,iType,ValueType.x
-      ]);
-    if ListTail.x=0 then //see also Sphere.Append
-      p.s(iNext,p)
-    else
+    if p.sphere=Parser.Sphere then
      begin
-      q:=ListTail.r(iNext);
-      ListTail.s(iNext,p);
-      p.s(iNext,q);
-     end;
-    ListTail:=p;
+      Parser.Sphere.SetRef(p.index,iParent,Member);
+      Parser.Sphere.SetVal(p.index,vSrcPos,0,SrcPos);
+      Parser.Sphere.SetRef(p.index,iSignature,Signature);
+     end
+    else
+      Parser.Source.Error('can''t add function to other sphere');
    end;
+  Result:=p;
 end;
 
-procedure StratoFnCallBySignature(Parser:TStratoParser;
-  MethodType:xTypeNr;Subject,Arguments,Parent:rItem;SrcPos:xSrcPos;
-  var FnCall:rItem;var FnResType:rItem;ICall:boolean);
+procedure StratoFnCallBySignature(Parser:TStratoParserLogic;
+  MethodType:xKey;Subject,Arguments:xNode;Parent:xRef;SrcPos:xSrcPos;
+  ICall:boolean;var FnCall,FnResType:xNode);
 var
-  p,p0,q,q0:rItem;
-  tt:xTypeNr;
+  p,p1,q,r,p0,q0:xNode;
+  k:xKey;
   nn:xName;
   v:boolean;
-  nvt:xTypeNr;
+  nvt:xKey;
 begin
-  //assert Arguments 0 or last in a cyclic list (ready for fArguments)
-  p.x:=0;
+  //assert Arguments IsNone or xListEntry (ready for lArguments)
+  p.none;
   q:=Subject;
   v:=false;//default
   if ICall then nvt:=nICall else nvt:=nVCall;
-  while (p.x=0) and (q.x<>0) do
-    case q.NodeType of
+  while p.IsNone and not(q.IsNone) do
+    case q.Key of
       nVar,nVarReadOnly,nVarByRef,nCast:
        begin
         q:=q.r(iType);
@@ -209,8 +193,8 @@ begin
        end;
       nThis://assert called by combine pArgList "@@@(...": find inherited
        begin
-        p:=q.rr(iParent,iParent);//see also below (for initial iInheritsFrom)
-        q.x:=0;
+        p:=q.r(iParent).r(iParent);//see also below (for initial iInheritsFrom)
+        q.none;
         v:=true;
        end;
       nClass:
@@ -221,49 +205,47 @@ begin
       else
         p:=q;
     end;
-  FnCall.x:=0;//default
-  FnResType.x:=0;
-  q.x:=0;
-  case p.NodeType of
-    nMember:
+  FnCall.none;//default
+  r.none;
+  q.none;
+  case p.Key of
+    nNameSpace://member
      begin
-      ListFirst(p,lItems,q,q0);
-      while (q.x<>0) and not((q.NodeType=MethodType) and
-        StratoFnArgListsMatch(q.r(iSignature),Arguments)) do
-        ListNext(q,q0);
-      if q.x<>0 then
+      q0.Start(p,lChildren);
+      while q0.Next(q) and not((q.Key=MethodType) and
+        StratoFnArgListsMatch(q.r(iSignature),Arguments)) do ;
+      if not q0.Done then
        begin
-        q0:=q.r(iParent);
-        case q0.NodeType of
+        case q.r(iParent).Key of
           nClass,nInterface,nRecord://TODO: more?
-            FnCall:=Parser.Add(nVCall,
-              [iParent,Parent.x
-              ,vSrcPos,SrcPos
-              ,iSubject,Subject.x
-              ,iTarget,q.x
-              ,lArguments,Arguments.x
+            FnCall:=Parser.Add(nVCall,8,
+              [kv(iParent,0,Parent)
+              ,kv(vSrcPos,0,SrcPos)
+              ,kn(iSubject,Parser,Subject)
+              ,kn(iTarget,Parser,q)
+              ,kl(lArguments,Arguments)
               ]);
           else
             if v then
-              FnCall:=Parser.Add(nvt,
-                [iParent,Parent.x
-                ,vSrcPos,SrcPos
-                ,iSubject,Subject.x
-                ,iTarget,q.x
-                ,lArguments,Arguments.x
+              FnCall:=Parser.Add(nvt,8,
+                [kv(iParent,0,Parent)
+                ,kv(vSrcPos,0,SrcPos)
+                ,kn(iSubject,Parser,Subject)
+                ,kn(iTarget,Parser,q)
+                ,kl(lArguments,Arguments)
                 ])
             else
-              FnCall:=Parser.Add(nFCall,
-                [iParent,Parent.x
-                ,vSrcPos,SrcPos
-                ,iTarget,q.x
-                ,lArguments,Arguments.x
+              FnCall:=Parser.Add(nFCall,8,
+                [kv(iParent,0,Parent)
+                ,kv(vSrcPos,0,SrcPos)
+                ,kn(iTarget,Parser,q)
+                ,kl(lArguments,Arguments)
                 ]);
         end;
         if MethodType=nDtor then
-          FnResType.x:=0
+          r.none
         else
-          FnResType:=q.rr(iSignature,iReturnType);
+          r:=q.r(iSignature).r(iReturnType);
        end;
      end;
 
@@ -272,124 +254,103 @@ begin
 
     nClass:
      begin
-      if MethodType=nCtor then MethodType:=nCtors;
+      p1:=Arguments;
       repeat
-        if q.x=0 then
+        if q.IsNone then
          begin
-          ListFirst(p,lItems,q,q0);
-          while (q.x<>0) and (q.NodeType<>MethodType) do
-            ListNext(q,q0);
-          if (MethodType=nCtors) and (q.x<>0) then
-            ListFirst(q,lItems,q,q0);//assert q is nCtor
-         end
-        else
-          if MethodType=nCtors then
-            ListNext(q,q0)
-          else
-            q.x:=0;
-        if q.x=0 then
-         begin
-          q:=p;
-          q:=q.r(iInheritsFrom);
-          p:=q;
-          q.x:=0;
+          q0.Start(p,lChildren);
+          while q0.Next(q) and (q.Key<>MethodType) do ;
+          p:=p.r(iInheritsFrom);
          end;
-      until (p.x=0) or ((q.x<>0)
-        and (((MethodType=nDtor) and (Arguments.x=0))
+      until (p.IsNone) or (not(q.IsNone)
+        and (((MethodType=nDtor) and (Arguments.IsNone))
         or StratoFnArgListsMatch(q.r(iSignature),Arguments)));
-      if q.x<>0 then
+      if not q.IsNone then
        begin
         if v then
-          FnCall:=Parser.Add(nvt,
-            [iParent,Parent.x
-            ,vSrcPos,SrcPos
-            ,iSubject,Subject.x
-            ,iTarget,q.x
-            ,lArguments,Arguments.x
+          FnCall:=Parser.Add(nvt,8,
+            [kv(iParent,0,Parent)
+            ,kv(vSrcPos,0,SrcPos)
+            ,kn(iSubject,Parser,Subject)
+            ,kn(iTarget,Parser,q)
+            ,kl(lArguments,Arguments)
             ])
         else
-          FnCall:=Parser.Add(nFCall,
-            [iParent,Parent.x
-            ,vSrcPos,SrcPos
-            ,iTarget,q.x
-            ,lArguments,Arguments.x
+          FnCall:=Parser.Add(nFCall,8,
+            [kv(iParent,0,Parent)
+            ,kv(vSrcPos,0,SrcPos)
+            ,kn(iTarget,Parser,q)
+            ,kl(lArguments,Arguments)
             ]);
         if MethodType=nDtor then
-          FnResType.x:=0
+          r.none
         else
-          FnResType:=q.rr(iSignature,iReturnType);
+          r:=q.r(iSignature).r(iReturnType);
        end;
      end;
 
     nOverload,nCtor,nDtor:
      begin
-      tt:=p.NodeType;
+      k:=p.Key;
       q:=p.r(iParent);
-      nn:=q.v(iName);
-      if tt<>nDtor then q:=q.r(iParent);
-      if q.NodeType<>nClass then q.x:=0;
+      nn:=q.v(dName);
+      if k in [nCtor,nPropGet,nPropSet] then q:=q.r(iParent);
+      //if q.Key<>nClass then q.none;
       if ICall then q:=q.r(iInheritsFrom);
-      p.x:=0;
-      while (p.x=0) and (q.x<>0) do
+      p.none;
+      while (p.IsNone) and not(q.IsNone) do
        begin
-        case tt of
+        case k of
           nOverload,nPropGet,nPropSet:
            begin
-            p:=Lookup(q,nn);
-            if p.NodeType=nMember then
-              ListFirst(p,lItems,p,p0)
+            p:=q.sphere.Lookup(q.index,nn,lChildren);
+            if p.Key=nNameSpace then
+              p0.Start(p,lChildren)
             else
-              ListNone(p,p0);//error?
+              p0.None;//error?
            end;
           nCtor:
-           begin
-            ListFirst(q,lItems,p,p0);
-            while (p.x<>0) and (p.NodeType<>nCtors) do
-              ListNext(p,p0);
-            if p.x<>0 then ListFirst(p,lItems,p,p0);
-           end;
+            p0.Start(q,lChildren);
           nDtor:
            begin
-            ListFirst(q,lItems,p,p0);
-            while (p.x<>0) and (p.NodeType<>nDtor) do
-              ListNext(p,p0);
+            p0.Start(q,lChildren);
+            while p0.Next(r) and (r.Key<>nDtor) do ;
            end;
           else
-            ListNone(p,p0);//error?
+            p0.None;//error?
         end;
-        if tt<>nDtor then
-          while (p.x<>0) and not((p.NodeType=tt) and
-            StratoFnArgListsMatch(p.r(iSignature),Arguments)) do
-            ListNext(p,p0);
-        if (p.x=0) and (q.x<>0) then
+        if k<>nDtor then
+          while p0.Next(r) and not((r.Key=k) and
+            StratoFnArgListsMatch(r.r(iSignature),Arguments)) do ;
+        if (p.IsNone) and not(q.IsNone) then //and (q.Key=nClass)?
           q:=q.r(iInheritsFrom);
        end;
-      if p.x=0 then
+      if p.IsNone then
        begin
-        FnCall.x:=0;
-        FnResType.x:=0;
+        FnCall.none;
+        r.none;
        end
       else
        begin
         if v then
-          FnCall:=Parser.Add(nvt,
-            [iParent,Parent.x
-            ,vSrcPos,SrcPos
-            ,iSubject,Subject.x
-            ,iTarget,p.x
-            ,lArguments,Arguments.x
+          FnCall:=Parser.Add(nvt,8,
+            [kv(iParent,0,Parent)
+            ,kv(vSrcPos,0,SrcPos)
+            ,kn(iSubject,Parser,Subject)
+            ,kn(iTarget,Parser,p)
+            ,kl(lArguments,Arguments)
             ])
         else
-          FnCall:=Parser.Add(nFCall,
-            [iParent,Parent.x
-            ,vSrcPos,SrcPos
-            ,iTarget,p.x
-            ,lArguments,Arguments.x
+          FnCall:=Parser.Add(nFCall,8,
+            [kv(iParent,0,Parent)
+            ,kv(vSrcPos,0,SrcPos)
+            ,kn(iTarget,Parser,p)
+            ,kl(lArguments,Arguments)
             ]);
-        if p.NodeType=nDtor then
-          FnResType.x:=0
+        if p.Key=nDtor then
+          r.none
         else
-          FnResType:=p.rr(iSignature,iReturnType);
+          r:=q.r(iSignature).r(iReturnType);
        end;
      end;
 
@@ -399,171 +360,166 @@ begin
         //TODO: multidimensional arrays, array of array
         //if Argument.iType<>IntrinsicTypes[itNumber] then
         //  Source.Error('argument index not a number');
-        FnResType:=p.r(iType);
-        FnCall:=Parser.Add(nArrayIndex,
-          [iParent,Parent.x
-          ,vSrcPos,SrcPos
-          ,iSubject,Subject.x
-          ,lArguments,Arguments.x
-          ,iType,FnResType.x
+        r:=p.r(iType);
+        FnCall:=Parser.Add(nArrayIndex,8,
+          [kv(iParent,0,Parent)
+          ,kv(vSrcPos,0,SrcPos)
+          ,kn(iSubject,Parser,Subject)
+          ,kl(lArguments,Arguments)
+          ,kn(iType,Parser,r)
           ]);
        end;
 
     //else error? (caller should check Result=0 !!!)
   end;
+
+  FnResType:=r;
+
   //set arguments parent
-  ListFirst(FnCall,lArguments,p,p0);
-  while p.x<>0 do
-    if p.NodeType=nCallArg then
+  p0.Start(FnCall,lArguments);
+  p0.Next(p);
+  while not p0.Done do
+    if p.Key=nCallArg then
      begin
-      p.s(iParent,FnCall);//assert was 0
-      ListNext(p,p0);
+      Parser.Sphere.SetRef(p.index,iParent,FnCall);//assert was not set
+      p0.Next(p);
      end
     else
-      p.x:=0;//Source.Error?
+      p0.none;//Source.Error?
 end;
 
-function StratoFnCallFindVirtual(FnCall,SubjectType:rItem;
-  SubjectData:PxValue):rItem;
+function StratoFnCallFindVirtual(FnCall,SubjectType:xNode;
+  SubjectData:PxKeyValue):xNode;
 var
-  p,p0,q,Arguments:rItem;
-  xp:PxValue;
-  tt:xTypeNr;
-  nx:xName;
+  p,p0,p1,q,Arguments:xNode;
+  pv:PxKeyValue;
+  k:xKey;
+  nn:UTF8String;
 begin
-  q.x:=0;
-  case SubjectType.NodeType of
+  q.none;
+  case SubjectType.Key of
     nClassRef,nInterface:
-      q.x:=PxValue(SubjectData)^;
+      q.ss(nil,SubjectData.i,SubjectData.v);
     nRecord:
       q:=SubjectType;
     nClass:
      begin
       //instance? get instance class
-      xp:=pointer(SubjectData^);
-      dec(xValue(xp),SystemWordSize);//assert object._baseclass offset -4
-      q.x:=PxValue(xp)^;
+      //pv:=pointer(SubjectData^);//!!!!
+      pv:=SubjectData;
+      dec(xValue(pv),SystemWordSize);//assert object._baseclass offset -4
+      q.ss(nil,pv.i,pv.v);
      end;
   end;
-  if q.x=0 then
-    Result.x:=0
+  if q.IsNone then
+    Result.none
   else
    begin
     //lookup
     p:=FnCall.r(iTarget);
-    Arguments:=FnCall.r(lArguments);
-    tt:=p.NodeType;
-    nx:=0;//default
-    case tt of
+    Arguments:=FnCall.rl(lArguments);
+    k:=p.Key;
+    nn:='';//default
+    case k of
       nOverload,nPropGet,nPropSet:
        begin
-        p0:=p.r(iParent);
-        nx:=p0.v(iName);
+        p1:=p.r(iParent);
+        nn:=p1.sphere.GetName(p1.v(dName));
        end;
     end;
-    p.x:=0;
-    while (p.x=0) and (q.x<>0) do
+    p.none;
+    while p.IsNone and not(q.IsNone) do
      begin
-      if tt=nCtor then
-       begin
-        ListFirst(q,lItems,p,p0);
-        while (p.x<>0) and (p.NodeType<>nCtors) do
-          ListNext(p,p0);
-        if p.x<>0 then ListFirst(p,lItems,p,p0);
-       end
+      if k=nCtor then
+        p0.Start(q,lChildren)
       else
        begin
-        p:=Lookup(q,nx);
-        if p.NodeType=nMember then
-          ListFirst(p,lItems,p,p0)
+        p:=q.Lookup(nn);
+        if p.Key=nNameSpace then
+          p0.Start(p,lChildren)
         else
-          ListNone(p,p0);
+          p0.None;
        end;
-      while (p.x<>0) and not((p.NodeType=tt) and
-        StratoFnArgListsMatch(p.r(iSignature),Arguments)) do
-        ListNext(p,p0);
-      if p.x=0 then q:=q.r(iInheritsFrom);
+      while p0.Next(p1) and not((p1.Key=k) and
+        StratoFnArgListsMatch(p1.r(iSignature),Arguments)) do ;
+      if p.IsNone then q:=q.r(iInheritsFrom);
      end;
     Result:=p;
    end;
 end;
 
-function StratoFnCallDestructor(Parser:TStratoParser;CodeBlock:rItem):rItem;
+function StratoFnCallDestructor(Parser:TStratoParserLogic;CodeBlock:xRef):xNode;
 var
-  p,pThis,q,q0:rItem;
+  p,pThis,q,q0:xNode;
 begin
-  q:=CodeBlock;
-  pThis.x:=0;
-  while q.x<>0 do
+  q.s(Parser.Sphere,CodeBlock);
+  pThis.none;
+  while not q.IsNone do
    begin
-    ListFirst(q,lLocals,p,q0);
-    if p.NodeType=nThis then
+    q0.Start(q,lCodeBlock_Locals);
+    q0.Next(p);
+    if p.Key=nThis then
      begin
       pThis:=p;
-      q.x:=0; //found, end loop
+      q.none; //found, end loop
      end
     else
      begin
       q:=q.r(iParent);
-      if q.NodeType<>nCodeBlock then q.x:=0;
+      if q.Key<>nCodeBlock then q.none;
      end;
    end;
-  if pThis.x=0 then
+  if pThis.IsNone then
    begin
     Parser.Source.Error('"@@" undefined');
-    Result.x:=0;//?Sphere.Add(nFnCall?
+    Result.none;//?Sphere.Add(nFnCall?
    end
   else
    begin
     //find destructor
     p:=pThis.r(iType);
-    q.x:=0;
-    while (p.x<>0) and (q.x=0) do
+    q.none;
+    while not(p.IsNone) and (q.IsNone) do
      begin
-      ListFirst(p,lItems,q,q0);
-      while (q.x<>0) and (q.NodeType<>nDtor) do ListNext(q,q0);
-      if q.x=0 then p:=p.r(iInheritsFrom);
+      q0.Start(p,lChildren);
+      while q0.Next(q) and (q.Key<>nDtor) do ;
+      if q.IsNone then p:=p.r(iInheritsFrom);
      end;
-    if q.x=0 then
+    if q.IsNone then
       Parser.Source.Error('unable to determine destructor');
     //then call it
-    Result:=Parser.Add(nVCall,
-      [iParent,CodeBlock.x
-      ,vSrcPos,Parser.Source.SrcPos
-      ,iSubject,pThis.x
-      ,iTarget,q.x
+    Result:=Parser.Add(nVCall,8,
+      [kv(iParent,0,CodeBlock)
+      ,kv(vSrcPos,0,Parser.Source.SrcPos)
+      ,kn(iSubject,Parser,pThis)
+      ,kn(iTarget,Parser,q)
       ]);
     Parser.Source.Skip(stPOpen);
     Parser.Source.Skip(stPClose);
    end;
 end;
 
-procedure StratoFnArgByValues(Parser:TStratoParser;FnCall,ValuesFrom:rItem);
+procedure StratoFnArgByValues(Parser:TStratoParserLogic;FnCall:xRef);
 var
-  p,p0,q:rItem;
+  p,q,p0,q0:xNode;
   SrcPos:xSrcPos;
 begin
-  SrcPos:=FnCall.v(vSrcPos);//?
-  //ArgsFrom
-  p:=FnCall.r(iTarget);
-  //assert FnCall.FirstArg=nil
-  p:=p.r(iSignature);
-  ListFirst(p,lArguments,p,p0);
-  q:=ValuesFrom.r(iFirstArgVar);
+  p.s(Parser.Sphere,FnCall);
+  SrcPos:=p.v(vSrcPos);//?
+  p0.Start(p.r(iSignature),lArguments);
+  q0.Start(p.r(iTarget),lArguments);
   //TODO: default argument values
-  while (p.x<>0) and (q.x<>0) do
+  while p0.Next(p) and q0.Next(q) do
    begin
-    Parser.Add(FnCall,nCallArg,lArguments,
-      [iParent,FnCall.x
-      ,vSrcPos,SrcPos
-      ,iValue,q.x
-      ,iType,p.r(iType).x
+    Parser.Add(FnCall,nCallArg,lArguments,8,
+      [kv(iParent,0,FnCall)
+      ,kv(vSrcPos,0,SrcPos)
+      ,kn(iValue,Parser,q)//?????
+      ,kn(iType,Parser,p.r(iType))//??!!!!
       ]);
     //assert SameType(p.r(iType),q.r(iType))
-    ListNext(p,p0);
-    ListNext(q,xx0);
    end;
-  //if (p.x<>0) and (q.x=0) then raise?error?
+  //if not(p0.Done and q0.Done) then rasise?error?
 end;
 
 {
@@ -679,29 +635,27 @@ begin
 end;
 }
 
-procedure StratoCheckMemberNoArguments(Parser:TStratoParser;
-  var Target:rItem;var TargetType:rItem;Parent:rItem;SrcPos:xSrcPos);
+procedure StratoCheckMemberNoArguments(Parser:TStratoParserLogic;
+  var Target,TargetType:xNode;Parent:xRef;SrcPos:xSrcPos);
 var
-  q,q0:rItem;
+  q0,q1:xNode;
 begin
-  case Target.NodeType of
-    nMember:
+  case Target.Key of
+    nNameSpace:
      begin
-      ListFirst(Target,lItems,q,q0);
-      while (q.x<>0) and not(
-        ((q.NodeType=nOverload)
-        or (q.NodeType=nPropGet))
-        and (q.rr(iSignature,lArguments).x=0)
-      ) do
-        ListNext(q,q0);
-      if q.x<>0 then
+      q0.Start(Target,lChildren);
+      while q0.Next(q1) and not(
+        ((q1.Key=nOverload) or (q1.Key=nPropGet))
+        and (q1.r(iSignature).v(lArguments)=0)
+      ) do ;
+      if not q1.IsNone then
        begin
-        Target:=Parser.Add(nFCall,
-          [iParent,Parent.x
-          ,vSrcPos,SrcPos
-          ,iTarget,q.x
+        Target:=Parser.Add(nFCall,8,
+          [kv(iParent,0,Parent)
+          ,kv(vSrcPos,0,SrcPos)
+          ,kn(iTarget,Parser,q1)
           ]);
-        TargetType:=q.rr(iSignature,iReturnType);
+        TargetType:=q1.r(iSignature).r(iReturnType);
        end;
 
       //else nPGetCall?
