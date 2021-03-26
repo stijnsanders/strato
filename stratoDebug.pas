@@ -2,8 +2,8 @@ unit stratoDebug;
 
 interface
 
-{xx$D-}
-{xx$L-}
+{$D-}
+{$L-}
 
 uses stratoTokenizer, stratoSphere, stratoDecl;
 

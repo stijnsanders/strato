@@ -2,8 +2,8 @@ unit stratoSphere;
 
 interface
 
-{xx$D-}
-{xx$L-}
+{$D-}
+{$L-}
 
 uses stratoDecl, Classes, SysUtils;
 

@@ -1,4 +1,4 @@
-euler.problem3
+euler.problem4
 
 /*
 https://projecteuler.net/problem=4
@@ -12,8 +12,8 @@ is_palindrome(x:number):bool{
 	:i:number;
 	i:=0;
 	## i<10 {
-		d[i]:=x%10;
-		x:=x/10;
+		d[i]:=y%10;
+		y:=y/10;
 		i++;
 	}
 	##{i--;} i<>0 && d[i]==0;

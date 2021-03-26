@@ -112,7 +112,7 @@ begin
    begin
     i:=0;
     j:=v-NtoV_Margin;
-    while (i<SpheresCount) and (j>Spheres[i].kCount) do
+    while (i<SpheresCount) and (j>=Spheres[i].kCount) do
      begin
       dec(j,Spheres[i].kCount);
       inc(i);
@@ -1100,12 +1100,13 @@ begin
             Next(1,ip.r(iLeft));
           1://evaluate right
            begin
-            //stored voliatile on stack? keep it there!
+            //stored volatile on stack? keep it there!
             xp:=stackTop;
             inc(xValue(xp),SystemWordSize*2);
-            if vp=xp then
+            if cardinal(vp)>=cardinal(xp) then
              begin
               x:=ByteSize(vt);
+              Move(vp^,stackTop^,x);
               inc(xValue(stackTop),x+SystemWordSize*2);
               Push(x);
               Push(0);
@@ -1126,7 +1127,7 @@ begin
               Pop(x);
               dec(xValue(stackTop),x+SystemWordSize*2);
               xp:=stackTop;
-              inc(xValue(xp),SystemWordSize*2);
+              //inc(xValue(xp),SystemWordSize*2);
              end;
             case TStratoToken(ip.v(vOperator)) of
               stOpEQ,stOpNEQ:

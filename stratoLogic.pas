@@ -2,8 +2,8 @@ unit stratoLogic;
 
 interface
 
-{xx$D-}
-{xx$L-}
+{$D-}
+{$L-}
 
 uses stratoDecl, stratoSphere;
 
