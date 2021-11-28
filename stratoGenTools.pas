@@ -4,18 +4,19 @@ interface
 
 uses stratoDecl, stratoSphere;
 
-function rs(p:rItem):AnsiString;
+function rs(p:xNode):AnsiString;
 
 implementation
 
 uses SysUtils;
 
-function rs(p:rItem):AnsiString;
+function rs(p:xNode):AnsiString;
 begin
-  Result:=AnsiString(Format('x%di%d',
-    [p.x div StratoSphereBlockBase
-    ,p.x mod StratoSphereBlockBase
-    ]));
+  if p.IsNone then Result:='nil' else
+    Result:=AnsiString(Format('x%di%d',
+      [SphereIndex(p.sphere)
+      ,p.index
+      ]));
 end;
 
 end.

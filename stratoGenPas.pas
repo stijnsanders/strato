@@ -12,7 +12,8 @@ type
 
 implementation
 
-uses SysUtils, Classes, stratoDecl, stratoLogic, stratoGenTools;
+uses SysUtils, Classes, stratoDecl, stratoLogic, stratoGenTools,
+  stratoTokenizer;
 
 { TStratoGenPascal }
 
@@ -41,7 +42,7 @@ type
 
 var
   c:array of record
-    p:rItem;
+    p:xNode;
     t:TCodeType;
     l:cardinal;
     c:AnsiString;
@@ -50,14 +51,16 @@ var
 const
   cGrowStep=$1000;
 
-  function Add(p:rItem;level:cardinal):rItem;
+  IndentPrefix='  ';//#9?
+
+  function Add(p:xNode;level:cardinal):xNode;
   var
     i:cardinal;
   begin
-    if p.x<>0 then
+    if not(p.IsNone) then
      begin
       i:=0;
-      while (i<ci) and (c[i].p.x<>p.x) do inc(i);
+      while (i<ci) and not(c[i].p.IsSame(p)) do inc(i);
       if i=ci then
        begin
         if ci=cl then
@@ -81,12 +84,12 @@ const
     Result:=p;
   end;
 
-  procedure AddCode(p:rItem;t:TCodeType;level:cardinal;const code:AnsiString);
+  procedure AddCode(p:xNode;t:TCodeType;level:cardinal;const code:AnsiString);
   var
     i:cardinal;
   begin
-    if p.x=0 then i:=ci else i:=0;
-    while (i<ci) and (c[i].p.x<>p.x) do inc(i);
+    if p.IsNone then i:=ci else i:=0;
+    while (i<ci) and not(c[i].p.IsSame(p)) do inc(i);
     if i=ci then
      begin
       if ci=cl then
@@ -107,35 +110,35 @@ const
     c[i].c:=code;
   end;
 
-  function Signature(p:rItem;named:boolean;level:cardinal):AnsiString;
+  function Signature(p:xNode;named:boolean;level:cardinal):AnsiString;
   var
-    p1,p2,q0,q1:rItem;
+    p1,p2,q0,q1:xNode;
     src:AnsiString;
     b:boolean;
   begin
-    case p.NodeType of
-      nSignature,nDtor:
-       begin
-        p1:=p;
-        p2.x:=0;
-       end;
-      nCtor:
-       begin
-        p1:=p.r(iSignature);
-        p2.x:=IntrinsicTypes[itPointer];
-        Add(p2,level+1);
-       end;
-      else
-       begin
-        p1:=p.r(iSignature);
-        p2:=Add(p1.r(iReturnType),level);
-       end;
+    case p.Key of
+    nSignature,nDtor:
+     begin
+      p1:=p;
+      p2.none;
+     end;
+    nCtor:
+     begin
+      p1:=p.r(iSignature);
+      p2:=IntrinsicTypes[itPointer];
+      Add(p2,level+1);
+     end;
+    else
+     begin
+      p1:=p.r(iSignature);
+      p2:=Add(p1.r(iReturnType),level);
+     end;
     end;
-    if p2.x=0 then src:='procedure' else src:='function';
+    if p2.IsNone then src:='procedure' else src:='function';
     if named then src:=src+' '+rs(p);
     b:=true;
 
-    if p.NodeType=nDtor then
+    if p.Key=nDtor then
      begin
       b:=false;
       src:=src+'(nThis: pointer';
@@ -143,7 +146,7 @@ const
     else
      begin
       q1:=Add(p1.r(iSubject),level);
-      if q1.x<>0 then
+      if not q1.IsNone then
        begin
         b:=false;
         //TODO nThis
@@ -151,8 +154,8 @@ const
         src:=src+'(nThis: pointer';
        end;
 
-      ListFirst(p1,lArguments,q1,q0);
-      while q1.x<>0 do
+      q0.Start(p1,lArguments);
+      while q0.Next(q1) do
        begin
         if b then
          begin
@@ -161,106 +164,542 @@ const
          end
         else
           src:=src+';';
-        if q1.NodeType=nSigArgByRef then src:=src+'var ';
+        if q1.Key=nSigArgByRef then src:=src+'var ';
         src:=src+rs(q1)+': '+rs(Add(q1.r(iType),level));
-        ListNext(q1,q0);
        end;
      end;
 
-    if not(b) then src:=src+')';
-    if p2.x<>0 then src:=src+': '+rs(p2);
+    if not b  then src:=src+')';
+    if not p2.IsNone then src:=src+': '+rs(p2);
     src:=src+';';
     Result:=src;
   end;
 
-  function CodeBlock(cb:rItem;level:cardinal):AnsiString;
+  function CodeBlock(cb,LastArgVar,ResultVar:xNode;level:cardinal):AnsiString;
+  type
+    sStackStep=(
+      sCodeBlockNext,//see StartCodeBlock
+      sEndOnly,//see StartBeginEnd
+      sStatement,
+      sExpress,
+      sResolveValue,
+      sAssign1,
+      sAssign2,
+      sSelection1,
+      sSelection2,
+      sIteration1,
+      sIteration2,
+      sIteration3,
+      sUnaryOp1,
+      sBinaryOp1,
+      sBinaryOp2,
+      sFCall1,
+      sCast1,
+      sArrayIndex1,
+      //add new above here
+      s_Unknown);
   var
-    p,p0:rItem;
-    src:AnsiString;
-  begin
-    src:='';
+    stack:array of record
+      Step:sStackStep;
+      What:xNode;
+      Code1,Code2:AnsiString;
+    end;
+    stackIndex,stackSize:integer;
 
-    //
-    ListFirst(cb,lLocals,p,p0);
-    if p.x<>0 then
-     begin
-      src:=src+'var'#13#10;
-      while p.x<>0 do
+    procedure Push(xStep:sStackStep;xWhat:xNode;
+      const c1:AnsiString='';const c2:AnsiString='');
+    {$IFDEF DEBUG}
+    var
+      i:integer;
+    {$ENDIF}
+    begin
+      if stackIndex=stackSize then
        begin
-        //
-        src:=src+'  '+rs(p)+': '+rs(Add(p.r(iType),level))+';'#13#10;
-        ListNext(p,p0);
+        inc(stackSize,32);//growstep
+        SetLength(stack,stackSize);
+        {$IFDEF DEBUG}
+        for i:=stackIndex to stackSize-1 do
+         begin
+          stack[i].Step:=s_Unknown;
+          stack[i].What.none;
+          stack[i].Code1:='';
+          stack[i].Code2:='';
+         end;
+        {$ENDIF}
        end;
-     end;
+      stack[stackIndex].Step:=xStep;
+      stack[stackIndex].What:=xWhat;
+      stack[stackIndex].Code1:=c1;
+      stack[stackIndex].Code2:=c2;
+      inc(stackIndex);
+    end;
 
-    src:=src+'begin //'+rs(cb)+#13#10;
+    function Pop(var p:xNode;var c1,c2:AnsiString):sStackStep;
+    begin
+      if stackIndex=0 then
+       begin
+        p.none;
+        Result:=s_Unknown;
+       end
+      else
+       begin
+        dec(stackIndex);
+        Result:=stack[stackIndex].Step;
+        p:=stack[stackIndex].What;
+        c1:=stack[stackIndex].Code1;
+        c2:=stack[stackIndex].Code2;
+        {$IFDEF DEBUG}
+        stack[stackIndex].Step:=s_Unknown;
+        stack[stackIndex].What.none;
+        stack[stackIndex].Code1:='';
+        stack[stackIndex].Code2:='';
+        {$ENDIF}
+       end;
+    end;
 
-    ListFirst(cb,lItems,p,p0);
-    while p.x<>0 do
-     begin
-      //
-      src:=src+'  '+rs(p)+';//'+AnsiString(NodeTypeToStr(p.NodeType))+#13#10;
+  var
+    src_const,src_type,src_var,src_indent,src_body,src_value,c1,c2:AnsiString;
+    p,p0,p1:xNode;
 
-      //TODO: case p.NodeType of
+    procedure StartCodeBlock(pp:xNode;const Suffix:AnsiString=';');
+    var
+      p0,p:xNode;
+    begin
+      p0.Start(pp,lCodeBlock_Locals);
+      if not LastArgVar.IsNone then
+       begin
+        while p0.Next(p) and not(p.IsSame(LastArgVar)) do ;
+        if not(p.IsSame(LastArgVar)) then
+          raise Exception.Create('LastArgVar not found in CodeBlock_Locals');
+        LastArgVar.none;
+       end;
+      while p0.Next(p) do
+        src_var:=src_var+IndentPrefix+rs(p)+': '+rs(Add(p.r(iType),level))+';'#13#10;
+      p.Start(pp,lCodeBlock_Statements);
+      Push(sCodeBlockNext,p,src_indent,Suffix);
+      src_body:=src_body+src_indent+'begin //'+rs(pp)+#13#10;
+      src_indent:=src_indent+IndentPrefix;
+    end;
 
+    procedure StartBeginEnd(pp:xNode;const Suffix:AnsiString=';');
+    begin
+      Push(sEndOnly,none,src_indent,Suffix);
+      src_body:=src_body+src_indent+'begin'#13#10;
+      src_indent:=src_indent+IndentPrefix;
+      if not(pp.IsNone) then Push(sStatement,pp);
+    end;
 
-      ListNext(p,p0);
-     end;
+  begin
+    src_const:='';
+    src_type:='';
+    src_var:='';
+    src_indent:='';
+    src_body:='';
+    src_value:='';
+
+    stackIndex:=0;
+    stackSize:=0;
+
+    StartCodeBlock(cb);
+
+    while stackIndex<>0 do
+      case Pop(p,c1,c2) of
+
+      sCodeBlockNext:
+       begin
+        p0:=p;
+        if p0.Next(p) then
+         begin
+          Push(sCodeBlockNext,p0,c1,c2);
+          Push(sStatement,p);
+         end
+        else
+         begin
+          //code block done
+          if stackIndex<>0 then //see below
+           begin
+            src_indent:=c1;
+            src_body:=src_body+src_indent+'end'+c2+#13#10;
+           end;
+         end;
+       end;
+
+      sEndOnly:
+       begin
+        src_indent:=c1;
+        src_body:=src_body+src_indent+'end'+c2+#13#10;
+       end;
+
+      sStatement:
+        //src_body:=src_body+src_indent+'//'+rs(p)+':'+AnsiString(KeyToStr(p.Key))+#13#10;
+        case p.Key of
+
+        nAssign:
+         begin
+          //src_body:=src_body+src_indent+'//'+rs(p)+':'+AnsiString(KeyToStr(p.Key))+#13#10;
+          Push(sAssign1,p);
+          p1:=p.r(iTarget);
+          if p1.IsSame(ResultVar) then
+            src_value:='Result'
+          else
+            Push(sResolveValue,p1);
+         end;
+
+        nSelection:
+         begin
+          Push(sSelection1,p);
+          Push(sResolveValue,p.r(iPredicate));
+         end;
+
+        nIteration:
+         begin
+          Push(sIteration1,p);
+          Push(sResolveValue,p.r(iPredicate));
+         end;
+
+        nIterPostEval:
+         begin
+          Push(sIteration2,p);
+          src_body:=src_body+src_indent+'repeat //'+rs(p)+#13#10;
+          StartCodeBlock(p.r(iBody));
+         end;
+
+        //TODO: dedulpicate sStatement en sResolveValue
+
+        nUnaryOp:
+         begin
+          Push(sExpress,p);
+
+          Push(sUnaryOp1,p);
+          Push(sResolveValue,p.r(iRight));
+         end;
+
+        nFCall:
+         begin
+          Push(sExpress,p);
+
+          p1:=Add(p.r(iTarget),level+1);
+          src_value:=rs(p1);
+          p0.Start(p,lArguments);
+          if p0.Next(p) then
+           begin
+            Push(sFCall1,p0,src_value+'(');
+            Push(sResolveValue,p.r(iValue));
+            src_value:='';
+           end;
+
+         end;
+
+        nSCall:
+         begin
+          //see also TStratoMachine.PerformSysCall
+          p1:=p.r(iTarget).r(iValue);
+          case StrToInt(string(p1.sphere.BinaryData(p1.index))) of
+
+            200:
+             begin
+              p0.Start(cb,lCodeBlock_Locals);
+              p0.Next(p1);
+              src_body:=src_body+src_indent+'writeln('+rs(p1)+');'#13#10;
+             end;
+
+            else raise Exception.Create('Unknown SysCall:'+
+              string(p1.sphere.BinaryData(p1.index)));
+          end;
+         end;
+
+        else
+         begin
+          src_body:=src_body+src_indent+rs(p)+';//'+AnsiString(KeyToStr(p.Key))+#13#10;
+          //raise?
+         end;
+        end;
+
+      sExpress:
+        src_body:=src_body+src_indent+src_value+'; //'+rs(p)+#13#10;
+
+      sResolveValue:
+        case p.Key of
+        nLiteral:
+         begin
+          p1:=p.r(iValue);
+          if p1.IsNone then
+            //raise?
+          else
+            src_value:=AnsiString(p1.sphere.BinaryData(p1.index));//TODO: encoding?
+         end;
+        nVar:
+          if p.IsSame(ResultVar) then
+            src_value:='Result'
+          else
+            src_value:=rs(p);
+        nVarReadOnly:
+          src_value:=rs(p);
+        nUnaryOp:
+         begin
+          Push(sUnaryOp1,p);
+          Push(sResolveValue,p.r(iRight));
+         end;
+        nBinaryOp:
+         begin
+          Push(sBinaryOp1,p);
+          Push(sResolveValue,p.r(iLeft));
+         end;
+
+        nArrayIndex:
+         begin
+          p1:=p.r(iSubject);
+          //if not(p1.r(iParent))=cb then Add(p1,level+1);//TODO
+          src_value:=rs(p1);
+          p0.Start(p,lArguments);
+          if p0.Next(p) then
+           begin
+            Push(sArrayIndex1,p0,src_value+'[');
+            Push(sResolveValue,p.r(iValue));
+            src_value:='';
+           end
+          else
+            src_value:=src_value+'[]';
+         end;
+
+        nFCall:
+         begin
+          p1:=Add(p.r(iTarget),level+1);
+          src_value:=rs(p1);
+          p0.Start(p,lArguments);
+          if p0.Next(p) then
+           begin
+            Push(sFCall1,p0,src_value+'(');
+            Push(sResolveValue,p.r(iValue));
+            src_value:='';
+           end;
+         end;
+
+        nCast:
+         begin
+          Push(sCast1,p);
+          Push(sResolveValue,p.r(iSubject));
+         end;
+
+        //xUnassigned?
+        else
+          raise Exception.Create('Unsupported value type '+p.AsString);
+        end;
+
+      sUnaryOp1:
+       begin
+        case TStratoToken(p.v(vOperator)) of
+        stOpNot:c2:='not';
+        stOpAdd:c2:='+';
+        stOpSub:c2:='-';
+        stOpInc:c2:='inc';
+        stOpDec:c2:='dec';
+        //TODO: more
+        else raise Exception.Create('Unknown operator type');
+        end;
+        src_value:=c2+'('+src_value+')';
+       end;
+      sBinaryOp1:
+       begin
+        Push(sBinaryOp2,p,src_value);
+        Push(sResolveValue,p.r(iRight));
+        src_value:='';
+       end;
+      sBinaryOp2:
+       begin
+        case TStratoToken(p.v(vOperator)) of
+
+        stOpEQ  :c2:='=';
+        stOpNEQ :c2:='<>';
+        stOpLT  :c2:='<';
+        stOpLTE :c2:='<=';
+        stOpGT  :c2:='>';
+        stOpGTE :c2:='>=';
+
+        stOpAnd :c2:='and';
+        stOpOr  :c2:='or';
+        //stOpNot, //"!"
+        stOpXor :c2:='xor';
+
+        stOpAdd :c2:='+';
+        stOpSub :c2:='-';
+        stOpMul :c2:='*';
+        stOpDiv :c2:='div'; //TODO: if not integer then '/'?
+        stOpMod :c2:='mod';
+        //stOpInc, //"++"
+        //stOpDec, //"--"
+        stOpShl :c2:='shl';
+        stOpShr :c2:='shr';
+        //stOpRange, //".."
+
+        //TODO: more
+        else raise Exception.Create('Unknown operator type');
+        end;
+        src_value:='(('+c1+') '+c2+' ('+src_value+'))';
+       end;
+
+      sAssign1:
+       begin
+        Push(sAssign2,p,src_value);
+        Push(sResolveValue,p.r(iValue));
+        src_value:='';
+       end;
+      sAssign2:
+       begin
+        src_body:=src_body+src_indent+c1+
+          ':='+ //TODO: vOperator
+          src_value+';//'+rs(p)+#13#10;
+        src_value:='';
+       end;
+
+      sSelection1:
+       begin
+        src_body:=src_body+src_indent+'if '+src_value+' then //'+rs(p)+#13#10;
+        Push(sSelection2,p);
+        p1:=p.r(iDoTrue);
+        if p.r(iDoFalse).IsNone then c2:=';' else c2:='';
+        if p1.Key=nCodeBlock then
+         begin
+          StartCodeBlock(p1,c2);
+         end
+        else
+         begin
+          StartBeginEnd(p1,c2);
+         end;
+       end;
+      sSelection2:
+       begin
+        p1:=p.r(iDoFalse);
+        if not(p1.IsNone) then
+         begin
+          src_body:=src_body+src_indent+'else'+#13#10;
+          StartCodeBlock(p1);
+         end;
+       end;
+
+      sIteration1:
+       begin
+        src_body:=src_body+src_indent+'while '+src_value+' do //'+rs(p)+#13#10;
+        StartCodeBlock(p.r(iBody));
+        //TODO: iReturnType
+       end;
+
+      sIteration2:
+       begin
+        Push(sIteration3,p);
+        Push(sResolveValue,p.r(iPredicate));
+       end;
+
+      sIteration3:
+       begin
+        src_body:=src_body+src_indent+'until not('+src_value+');'#13#10;
+        //TODO: iReturnType
+       end;
+
+      sArrayIndex1:
+       begin
+        src_value:=c1+src_value;
+        if p.Next(p1) then
+         begin
+          Push(sArrayIndex1,p0,src_value+',');
+          Push(sResolveValue,p.r(iValue));
+          src_value:='';
+         end
+        else
+          src_value:=src_value+']';
+       end;
+
+      sFCall1:
+       begin
+        src_value:=c1+src_value;
+        if p.Next(p1) then
+         begin
+          Push(sFCall1,p0,src_value+',');
+          Push(sResolveValue,p.r(iValue));
+          src_value:='';
+         end
+        else
+          src_value:=src_value+')';
+       end;
+
+      sCast1:
+       begin
+        //TODO: resolve type?
+        p1:=Add(p.r(iType),level);
+        p0:=p.r(iSubject).r(iType);
+        if p1.IsSame(IntrinsicTypes[itString]) and IsIntrinsicNumeric(p0) then
+          src_value:='IntToStr('+src_value+')'
+        else
+        if IsIntrinsicNumeric(p1) and p0.IsSame(IntrinsicTypes[itString]) then
+          src_value:='StrToInt('+src_value+')'
+        else
+          src_value:=rs(p1)+'('+src_value+')';
+       end;
+
+      //s_Unknown:
+      else
+        raise Exception.Create('Unexpected stack step');
+      end;
+
+    src_body:=src_body+'end';
+    //src:=src+'end;'#13#10#13#10;
 
     //
-    src:=src+'end';
-    //src:=src+'end;'#13#10#13#10;
-    Result:=src;
+    if src_var<>'' then src_body:='var'#13#10+src_var+src_body;
+    if src_type<>'' then src_body:='type'#13#10+src_type+src_body;
+    if src_const<>'' then src_body:='const'#13#10+src_const+src_body;
+
+    Result:=src_body;
   end;
 
-  procedure AddFuncProc(p:rItem;level:cardinal;const suffix:AnsiString);
+  procedure AddFuncProc(p:xNode;level:cardinal;const suffix:AnsiString);
   var
     sig:AnsiString;
   begin
     sig:=Signature(p,true,level+1);
     if suffix<>'' then sig:=sig+' //'+suffix;
     AddCode(p,ctInterface,level,sig);
-    AddCode(xx0,ctImplementation,level,sig+#13#10+
-      CodeBlock(p.r(iBody),level)+';'#13#10);
+    AddCode(none,ctImplementation,level,sig+#13#10+
+      CodeBlock(p.r(iBody),none,none,level)+';'#13#10);
   end;
 
   procedure pType1(tt:TStratoIntrinsicType;const pName:AnsiString);
   var
-    p:rItem;
+    p:xNode;
     n:UTF8String;
   begin
-    p.x:=IntrinsicTypes[tt];
-    if p.x<>0 then
+    p:=IntrinsicTypes[tt];
+    if not p.IsNone then
      begin
-      n:=GetName(p.v(iName));
+      n:=p.sphere.GetName(p.sphere.n(p.index));
       AddCode(p,ctInterfaceType,0,rs(p)+' = '+pName+'; //'+AnsiString(n));
      end;
   end;
 
-  procedure pType2(pp:rItem;const sName:UTF8String;const pName:AnsiString);
+  procedure pType2(pp:xNode;const sName:UTF8String;const pName:AnsiString);
   var
-    p,p0:rItem;
+    p,p0:xNode;
     n:UTF8String;
   begin
-    ListFirst(pp,lItems,p,p0);
-    while (p.x<>0) do
+    p0.Start(pp,lChildren);
+    while p0.Next(p) do
      begin
-      n:=GetName(p.v(iName));
+      n:=p.sphere.GetName(p.sphere.n(p.index));
       if n=sName then break;
-      ListNext(p,p0);
      end;
-    if p.x<>0 then
+    if not p.IsNone then
       AddCode(p,ctInterfaceType,0,rs(p)+' = '+pName+'; //'+AnsiString(n));
   end;
 
 var
   i,j:cardinal;
-  p,p0,p1,p2,q,q0,q1,q2:rItem;
+  p,p0,p1,p2,q,q0,q1,q2:xNode;
   f:TFileStream;
   src,src1,src2,n:AnsiString;
   ct:TCodeType;
   level:cardinal;
   ii:integer;
+  b:boolean;
 
 const
   CodeTypeName:array[TCodeType] of string=(
@@ -274,7 +713,8 @@ begin
   cl:=0;
 
   //defaults
-  AddCode(xxr(0),ctInterfaceUses,1,'Windows, SysUtils');//Variants?
+  level:=1;
+  AddCode(none,ctInterfaceUses,level,'Windows, SysUtils');//Variants?
 
   //intrinsic types
   pType1(itPointer,'pointer');
@@ -284,7 +724,8 @@ begin
   pType1(itString,'string');
 
   //'Strato'?
-  ListFirst(xxr(0 * StratoSphereBlockBase),lSourceFile_NameSpaces,p,p0);
+  p0.s(Spheres[0],0);
+  p0.Start(p0,lChildren);//lSourceFile_NameSpaces
 
   pType2(p,'i8','ShortInt');
   pType2(p,'i16','SmallInt');
@@ -300,49 +741,47 @@ begin
   pType2(p,'f80','extended');
 
   //global variables
-  for i:=0 to SourceFilesCount-1 do
+  for i:=0 to SpheresCount-1 do
    begin
-    ListFirst(xxr(i * StratoSphereBlockBase),lSourceFile_Globals,p,p0);
-    while p.x<>0 do
+    p0.s(Spheres[i],0);
+    p0.Start(p0,lSphere_Globals);
+    while p0.Next(p) do
      begin
       p1:=p.r(iTarget);
-      AddCode(p1,ctInterfaceVar,1,rs(p1)+': '+rs(Add(p1.r(iType),1))+'; //global '+rs(p));
+      AddCode(p1,ctInterfaceVar,level,rs(p1)+': '+rs(Add(p1.r(iType),level))+'; //global '+rs(p));
       p2:=p1.r(iValue);
-      if p2.x<>0 then
+      if not p2.IsNone then
        begin
-        AddCode(p2,ctInitialization,1,rs(p1)+':='+
+        AddCode(p2,ctInitialization,level,rs(p1)+':='+
           //TODO:
           rs(p2)+';');
        end;
 
       //Add(p);
-      ListNext(p,p0);
      end;
    end;
 
   //initialization
-  for i:=0 to SourceFilesCount-1 do
+  for i:=0 to SpheresCount-1 do
    begin
-    p.x:=i * StratoSphereBlockBase;
-    p:=p.r(iSourceFile_InitializationBlock);
-    if p.x<>0 then
+    p:=Spheres[i].r(0,iSphere_InitializationBlock);
+    if not p.IsNone then
      begin
-      AddCode(p,ctImplementation,1,'procedure '+rs(p)+';'#13#10+
-        CodeBlock(p,1)+';'#13#10);
-      AddCode(xx0,ctInitialization,1,rs(p)+';');
+      AddCode(p,ctImplementation,level,'procedure '+rs(p)+';'#13#10+
+        CodeBlock(p,none,none,level)+';'#13#10);
+      AddCode(none,ctInitialization,level,rs(p)+';');
      end;
    end;
 
   //finalization
-  for i:=SourceFilesCount-1 downto 0 do
+  for i:=SpheresCount-1 downto 0 do
    begin
-    p.x:=i * StratoSphereBlockBase;
-    p:=p.r(iSourceFile_FinalizationBlock);
-    if p.x<>0 then
+    p:=Spheres[i].r(0,iSphere_FinalizationBlock);
+    if not p.IsNone then
      begin
-      AddCode(p,ctImplementation,1,'procedure '+rs(p)+';'#13#10+
-        CodeBlock(p,1)+';'#13#10);
-      AddCode(xx0,ctFinalization,1,rs(p)+';');
+      AddCode(p,ctImplementation,level,'procedure '+rs(p)+';'#13#10+
+        CodeBlock(p,none,none,level)+';'#13#10);
+      AddCode(none,ctFinalization,level,rs(p)+';');
      end;
    end;
 
@@ -363,147 +802,184 @@ begin
       ct:=ctInterface; //default
       src:='';
       p:=c[i].p;
-      case p.NodeType of
+      case p.Key of
 
-        nArray:
-         begin
-          q:=Add(p.r(iType),level);
-          ct:=ctInterfaceType;
-          src:=rs(p)+' = array [0..'+AnsiString(IntToStr(
-            p.v(vByteSize) div ByteSize(q)))+'-1] of '+rs(q)+';';
-         end;
+      nArray:
+       begin
+        q:=Add(p.r(iType),level);
+        ct:=ctInterfaceType;
+        src:=rs(p)+' = array [0..'+AnsiString(IntToStr(
+          p.v(vByteSize) div ByteSize(q)))+'-1] of '+rs(q)+';';
+       end;
 
-        nRecord:
-         begin
-          ct:=ctInterfaceType;
-          src:=rs(p)+' = record'#13#10;
-          ListFirst(p,lItems,p1,p0);
-          while p1.x<>0 do
+      nRecord:
+       begin
+        ct:=ctInterfaceType;
+        src:=rs(p)+' = record'#13#10;
+        p0.Start(p,lChildren);
+        while p0.Next(p1) do
+          case p1.Key of
+
+          nVar:
            begin
-            case p1.NodeType of
-
-              nVar:
-               begin
-                ii:=p1.v(vOffset);
-                if ii<0 then
-                  src:=src+'    //'+rs(p1)+' offset '+AnsiString(IntToStr(ii))+#13#10
-                else
-                 begin
-                  src:=src+'    '+rs(p1)+': '+rs(Add(p1.r(iType),level))+';// offset '+
-                    AnsiString(IntToStr(ii))+#13#10;
-                  //TODO: p1.v(vOffset)
-                 end;
-               end;
-
-              nMember:
-               begin
-                ListFirst(p1,lItems,q1,q0);
-                while q1.x<>0 do
-                 begin
-                  AddFuncProc(q1,level+1,'');
-                  ListNext(q1,q0);
-                 end;
-               end;
-
-              else //TODO: raise?
-                src:=src+'    //'+rs(p1)+' '+AnsiString(
-                  NodeTypeToStr(p1.NodeType))+#13#10;
-            end;
-            ListNext(p1,p0);
+            ii:=p1.v(vOffset);
+            if ii<0 then
+              src:=src+'    //'+rs(p1)+' offset '+AnsiString(IntToStr(ii))+#13#10
+            else
+             begin
+              src:=src+'    '+rs(p1)+': '+rs(Add(p1.r(iType),level))+';// offset '+
+                AnsiString(IntToStr(ii))+#13#10;
+              //TODO: p1.v(vOffset)
+             end;
            end;
-          src:=src+'  end;';
+
+{//TODO:?
+          nMember:
+           begin
+            q0.Start(p1,lChildren);
+            while q0.Next(q1);
+              AddFuncProc(q1,level+1,'');
+           end;
+}
+
+          else //TODO: raise?
+            src:=src+'    //'+rs(p1)+' '+AnsiString(
+              KeyToStr(p1.Key))+#13#10;
+          end;
+        src:=src+'  end;';
+       end;
+
+      nClass:
+       begin
+        ct:=ctInterfaceType;
+        //TODO?
+        src:=rs(p)+' = record //class'#13#10;
+        if p.IsSame(IntrinsicTypes[itObject]) then
+          src:=rs(p)+'_d = procedure(nThis: pointer);'#13#10'  '+src;
+        src2:=rs(p)+'_v : record //vtable'#13#10+
+          '    xx_dtor:'+rs(IntrinsicTypes[itObject])+'_d;'#13#10;
+
+        //destructor pointer
+        p0.Start(p,lChildren);
+        while p0.Next(p1) and (p1.Key<>nDtor) do ;
+        if p1.IsNone then
+          AddCode(none,ctInitialization,level,rs(p)+'_v.xx_dtor:=nil')
+        else
+          AddCode(none,ctInitialization,level,rs(p)+'_v.xx_dtor:=@'+rs(p1));
+
+        p0.Start(p,lChildren);
+        while p0.Next(p1) do
+          case p1.Key of
+
+          nVar:
+           begin
+            ii:=p1.v(vOffset);
+            if ii<0 then
+              src:=src+'    //'+rs(p1)+' offset '+AnsiString(IntToStr(ii))+#13#10
+            else
+             begin
+              src:=src+'    '+rs(p1)+': '+rs(Add(p1.r(iType),level))+';// offset '+
+                AnsiString(IntToStr(ii))+#13#10;
+              //TODO: p1.v(vOffset)
+             end;
+           end;
+
+{//TODO:?
+          nMember:
+           begin
+            ListFirst(p1,lItems,q1,q0);
+            while q1.x<>0 do
+             begin
+              q2:=q1.r(iSignature);
+              AddCode(q2,ctInterfaceType,level+2,rs(q2)+' = '+Signature(q2,false,level+2));
+              n:=AnsiString(GetName(p1.v(iName)));
+              src2:=src2+'    '+n+':'+rs(q2)+';'#13#10;
+              AddCode(xxr(0),ctInitialization,level,rs(p)+'_v.'+n+':=@'+rs(q1)+';');
+              AddFuncProc(q1,level+1,'');
+              ListNext(q1,q0);
+             end;
+           end;
+
+          nCtors:
+           begin
+            ListFirst(p1,lItems,q1,q0);
+            while q1.x<>0 do
+             begin
+              Add(q1,level);
+              ListNext(q1,q0);
+             end;
+           end;
+}
+
+          nDtor:
+            AddFuncProc(p1,level,'dtor');
+
+          else //TODO: raise?
+            src:=src+'    //'+rs(p1)+' '+AnsiString(
+              KeyToStr(p1.Key))+#13#10;
+          end;
+        src:=src+'  end;';
+        AddCode(none,ctInterfaceVar,level,src2);
+       end;
+
+      nCtor:
+       begin
+        src:=Signature(p,true,level+1)+' //ctor';
+        AddCode(none,ctImplementation,level,src+#13#10+
+          CodeBlock(p.r(iBody),none,none,level)+';'#13#10);
+       end;
+
+      nClassRef:
+       begin
+        ct:=ctInterfaceType;
+        src:=rs(p)+' = pointer; //cref '+rs(p.r(iTarget))+';';
+       end;
+
+      nOverload:
+        case p.r(iParent).Key of
+
+        nNameSpace:
+         begin
+          ct:=ctImplementation;
+          p1:=p.r(iSignature).r(iReturnType);
+          if p1.IsNone then
+           begin
+            src:='procedure ';
+            p2.none;
+           end
+          else
+           begin
+            p0.Start(p.r(iBody),lCodeBlock_Locals);
+            p0.Next(p2);
+            src:='function ';
+           end;
+          src:=src+rs(p);
+          p0.Start(p.r(iSignature),lArguments);
+          q2.none;
+          if not p0.IsNone then
+           begin
+            src:=src+'(';
+            while p0.Next(q1) do
+             begin
+              q2:=q1.r(iArgVar);
+              src:=src+rs(q2)+':'+rs(Add(q1.r(iType),level))+';';
+             end;
+            src[Length(src)]:=')';
+           end;
+          if not p1.IsNone then src:=src+':'+rs(Add(p1,level));
+          src:=src+';'#13#10+CodeBlock(p.r(iBody),q2,p2,level)+';'#13#10;
          end;
 
         nClass:
-         begin
-          ct:=ctInterfaceType;
-          //TODO?
-          src:=rs(p)+' = record //class'#13#10;
-          if p.x=IntrinsicTypes[itObject] then
-            src:=rs(p)+'_d = procedure(nThis: pointer);'#13#10'  '+src;
-          src2:=rs(p)+'_v : record //vtable'#13#10+
-            '    xx_dtor:'+rs(xxr(IntrinsicTypes[itObject]))+'_d;'#13#10;
-
-          //destructor pointer
-          ListFirst(p,lItems,p1,p0);
-          while (p1.x<>0) and (p1.NodeType<>nDtor) do ListNext(p1,p0);
-          if p1.x=0 then
-            AddCode(xxr(0),ctInitialization,level,rs(p)+'_v.xx_dtor:=nil')
-          else
-            AddCode(xxr(0),ctInitialization,level,rs(p)+'_v.xx_dtor:=@'+rs(p1));
-
-          ListFirst(p,lItems,p1,p0);
-          while p1.x<>0 do
-           begin
-            case p1.NodeType of
-
-              nVar:
-               begin
-                ii:=p1.v(vOffset);
-                if ii<0 then
-                  src:=src+'    //'+rs(p1)+' offset '+AnsiString(IntToStr(ii))+#13#10
-                else
-                 begin
-                  src:=src+'    '+rs(p1)+': '+rs(Add(p1.r(iType),level))+';// offset '+
-                    AnsiString(IntToStr(ii))+#13#10;
-                  //TODO: p1.v(vOffset)
-                 end;
-               end;
-
-              nMember:
-               begin
-                ListFirst(p1,lItems,q1,q0);
-                while q1.x<>0 do
-                 begin
-                  q2:=q1.r(iSignature);
-                  AddCode(q2,ctInterfaceType,level+2,rs(q2)+' = '+Signature(q2,false,level+2));
-                  n:=AnsiString(GetName(p1.v(iName)));
-                  src2:=src2+'    '+n+':'+rs(q2)+';'#13#10;
-                  AddCode(xxr(0),ctInitialization,level,rs(p)+'_v.'+n+':=@'+rs(q1)+';');
-                  AddFuncProc(q1,level+1,'');
-                  ListNext(q1,q0);
-                 end;
-               end;
-
-              nCtors:
-               begin
-                ListFirst(p1,lItems,q1,q0);
-                while q1.x<>0 do
-                 begin
-                  Add(q1,level);
-                  ListNext(q1,q0);
-                 end;
-               end;
-
-              nDtor:
-                AddFuncProc(p1,level,'dtor');
-
-              else //TODO: raise?
-                src:=src+'    //'+rs(p1)+' '+AnsiString(
-                  NodeTypeToStr(p1.NodeType))+#13#10;
-            end;
-            ListNext(p1,p0);
-           end;
-          src:=src+'  end;';
-          AddCode(xxr(0),ctInterfaceVar,level,src2);
-         end;
-
-        nCtor:
-         begin
-          src:=Signature(p,true,level+1)+' //ctor';
-          AddCode(xx0,ctImplementation,level,src+#13#10+
-            CodeBlock(p.r(iBody),level)+';'#13#10);
-         end;
-
-        nClassRef:
-         begin
-          ct:=ctInterfaceType;
-          src:=rs(p)+' = pointer; //cref '+rs(p.r(iTarget))+';';
-         end;
+          Add(p.r(iParent),level+1);//?
 
         else
-          src:='//'+rs(c[i].p)+' '+
-            AnsiString(NodeTypeToStr(p.NodeType));//TODO: error?
+          raise Exception.Create('Overload: unsupported parent '+KeyToStr(p.r(iParent).Key));
+        end;
+
+      else
+        src:='//'+rs(c[i].p)+' '+
+          AnsiString(KeyToStr(p.Key));//TODO: error?
       end;
       c[i].t:=ct;
       c[i].c:=src;
@@ -517,8 +993,10 @@ begin
   while (i<>0) and (FilePath[i]<>'.') do dec(i);
   j:=i;
   while (j<>0) and (FilePath[j]<>PathDelim) do dec(j);
-  //src:='unit '?
-  src:='program '+AnsiString(Copy(FilePath,j,i-j-1))+
+  //src:='program '//?
+  //src:='library '//?
+  src:='unit '
+    +AnsiString(Copy(FilePath,j,i-j-1))+
     ';'#13#10#13#10'interface'#13#10#13#10;
 
   if false then//if debug
@@ -557,15 +1035,15 @@ begin
       if (c[i].l=j) and (c[i].t in [ctInterface..ctInterface_Any]) and (c[i].c<>'') then
        begin
         case c[i].t of
-          ctInterfaceType:
-            if ct<>ctInterfaceType then
-              src:=src+#13#10'type'#13#10;
-          ctInterfaceConst:
-            if ct<>ctInterfaceConst then
-              src:=src+#13#10'const'#13#10;
-          ctInterfaceVar:
-            if ct<>ctInterfaceVar then
-              src:=src+#13#10'var'#13#10;
+        ctInterfaceType:
+          if ct<>ctInterfaceType then
+            src:=src+#13#10'type'#13#10;
+        ctInterfaceConst:
+          if ct<>ctInterfaceConst then
+            src:=src+#13#10'const'#13#10;
+        ctInterfaceVar:
+          if ct<>ctInterfaceVar then
+            src:=src+#13#10'var'#13#10;
         end;
         //src:=src+#13#10;
         ct:=c[i].t;
@@ -604,15 +1082,15 @@ begin
       if (c[i].l=j) and (c[i].t in [ctImplementation..ctImplementation_Any]) and (c[i].c<>'') then
        begin
         case c[i].t of
-          ctImplementationType:
-            if ct<>ctImplementationType then
-              src:=src+#13#10'type'#13#10;
-          ctImplementationConst:
-            if ct<>ctImplementationConst then
-              src:=src+#13#10'const'#13#10;
-          ctImplementationVar:
-            if ct<>ctImplementationVar then
-              src:=src+#13#10'var'#13#10;
+        ctImplementationType:
+          if ct<>ctImplementationType then
+            src:=src+#13#10'type'#13#10;
+        ctImplementationConst:
+          if ct<>ctImplementationConst then
+            src:=src+#13#10'const'#13#10;
+        ctImplementationVar:
+          if ct<>ctImplementationVar then
+            src:=src+#13#10'var'#13#10;
         end;
         //src:=src+#13#10;
         ct:=c[i].t;

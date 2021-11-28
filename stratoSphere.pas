@@ -150,6 +150,7 @@ end;
 function KeyToStr(Key:xKey):string;
 begin
   case Key of
+
   nNameSpace   :Result:='NameSpace';
   nType        :Result:='Type';
   nLiteral     :Result:='Literal';
@@ -162,6 +163,7 @@ begin
   nSignature   :Result:='Signature';
   nSigArg      :Result:='SigArg';
   nSigArgByRef :Result:='SigArgByRef';
+  nOverload    :Result:='Overload';
   nClass       :Result:='Class';
   nClassRef    :Result:='ClassRef';
   nCtor        :Result:='Constructor';
@@ -169,6 +171,38 @@ begin
   nPropGet     :Result:='PropertyGet';
   nPropSet     :Result:='PropertySet';
   nInterface   :Result:='Interface';
+
+  nCodeBlock   :Result:='CodeBlock';
+  nVar         :Result:='Variable';
+  nVarByRef    :Result:='VarByRef';
+  nVarReadOnly :Result:='VarReadOnly';
+  nThis        :Result:='This';
+
+  nSCall       :Result:='SysCall';
+  nFCall       :Result:='FnCall';
+  nVCall       :Result:='VirtualCall';
+  nICall       :Result:='IntfCall';
+  nCallArg     :Result:='CallArg';
+
+  nCast        :Result:='Cast';
+  nAddressOf   :Result:='AddressOf';
+  nDereference :Result:='Dereference';
+  nArrayIndex  :Result:='ArrayIndex';
+  nField       :Result:='Field';
+
+  nAssign      :Result:='Assign';
+  nUnaryOp     :Result:='UnaryOp';
+  nBinaryOp    :Result:='BinaryOp';
+  nSelection   :Result:='Selection';
+  nIteration   :Result:='Iteration';
+  nIterPostEval:Result:='IterPostEval';
+  nRange       :Result:='Range';
+  nRangeIndex  :Result:='RangeIndex';
+
+  nTry         :Result:='Try';
+  nThrow       :Result:='Throw';
+  nDefer       :Result:='Defer';
+  nCatch       :Result:='Catch';
 
   //nImport      :Result:='Import';
   nSphere      :Result:='Sphere';

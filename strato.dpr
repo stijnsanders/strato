@@ -21,13 +21,15 @@ uses
   stratoParseDecl in 'stratoParseDecl.pas',
   stratoParseLogic in 'stratoParseLogic.pas',
   stratoExec in 'stratoExec.pas',
-  stratoDebugView in 'stratoDebugView.pas' {frmDebugView};
+  stratoDebugView in 'stratoDebugView.pas' {frmDebugView},
+  stratoGenTools in 'stratoGenTools.pas',
+  stratoGenPas in 'stratoGenPas.pas';
 
 var
   s:TStratoSource;
   p:TStratoParser;
   m:TStratoMachine;
-  //g:TStratoGenPascal;
+  g:TStratoGenPascal;
   i,j,k,l,ec:integer;
   x:string;
 
@@ -264,7 +266,6 @@ end;
           end;
          end;
 
-{
         //generate Pascal source
         if DoPascal<>'' then
          begin
@@ -275,7 +276,6 @@ end;
             g.Free;
           end;
          end;
-}
 
        end
       else
