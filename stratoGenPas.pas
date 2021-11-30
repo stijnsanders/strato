@@ -195,6 +195,7 @@ const
       sBinaryOp2,
       sFCall1,
       sCast1,
+      sField1,
       sArrayIndex1,
       //add new above here
       s_Unknown);
@@ -361,7 +362,11 @@ const
          begin
           Push(sIteration2,p);
           src_body:=src_body+src_indent+'repeat //'+rs(p)+#13#10;
-          StartCodeBlock(p.r(iBody));
+          p1:=p.r(iBody);
+          if p1.Key=nCodeBlock then
+            StartCodeBlock(p1)
+          else
+            StartBeginEnd(p1);
          end;
 
         //TODO: dedulpicate sStatement en sResolveValue
@@ -426,6 +431,10 @@ const
           if p1.IsNone then
             //raise?
           else
+          if p.r(iType).IsSame(IntrinsicTypes[itString]) then
+            src_value:=AnsiString(''''+StringReplace(
+              UTF8ToString(p1.sphere.BinaryData(p1.index)),'''','''''',[rfReplaceAll])+'''')
+          else
             src_value:=AnsiString(p1.sphere.BinaryData(p1.index));//TODO: encoding?
          end;
         nVar:
@@ -435,6 +444,12 @@ const
             src_value:=rs(p);
         nVarReadOnly:
           src_value:=rs(p);
+        nConstant:
+          //TODO: if type string then "'"
+         begin
+          p1:=p.r(iValue).r(iValue);
+          src_value:=AnsiString(p1.sphere.BinaryData(p1.index));
+         end;
         nUnaryOp:
          begin
           Push(sUnaryOp1,p);
@@ -478,6 +493,12 @@ const
         nCast:
          begin
           Push(sCast1,p);
+          Push(sResolveValue,p.r(iSubject));
+         end;
+
+        nField:
+         begin
+          Push(sField1,p);
           Push(sResolveValue,p.r(iSubject));
          end;
 
@@ -546,8 +567,18 @@ const
        end;
       sAssign2:
        begin
-        src_body:=src_body+src_indent+c1+
-          ':='+ //TODO: vOperator
+        case TStratoToken(p.v(vOperator)) of
+          stOpAssign:c2:=':=';
+          stOpAssignAdd:c2:=':='+c1+'+';
+          stOpAssignSub:c2:=':='+c1+'-';
+          stOpAssignMul:c2:=':='+c1+'*';
+          stOpAssignDiv:c2:=':='+c1+' div ';
+          stOpAssignMod:c2:=':='+c1+' mod ';
+          stOpAssignOr:c2:=':='+c1+' or ';
+          stOpAssignAnd:c2:=':='+c1+' and ';
+          else raise Exception.Create('Unsupported assignment operator '+p.AsString);
+        end;
+        src_body:=src_body+src_indent+c1+c2+
           src_value+';//'+rs(p)+#13#10;
         src_value:='';
        end;
@@ -558,29 +589,34 @@ const
         Push(sSelection2,p);
         p1:=p.r(iDoTrue);
         if p.r(iDoFalse).IsNone then c2:=';' else c2:='';
-        if p1.Key=nCodeBlock then
-         begin
-          StartCodeBlock(p1,c2);
-         end
-        else
-         begin
-          StartBeginEnd(p1,c2);
-         end;
+        if not p1.IsNone then
+          if p1.Key=nCodeBlock then
+            StartCodeBlock(p1,c2)
+          else
+            StartBeginEnd(p1,c2);
        end;
       sSelection2:
        begin
         p1:=p.r(iDoFalse);
-        if not(p1.IsNone) then
+        if not p1.IsNone then
          begin
           src_body:=src_body+src_indent+'else'+#13#10;
-          StartCodeBlock(p1);
+          if p1.Key=nCodeBlock then
+            StartCodeBlock(p1)
+          else
+            StartBeginEnd(p1);
          end;
        end;
 
       sIteration1:
        begin
         src_body:=src_body+src_indent+'while '+src_value+' do //'+rs(p)+#13#10;
-        StartCodeBlock(p.r(iBody));
+        p1:=p.r(iBody);
+        if not p1.IsNone then
+          if p1.Key=nCodeBlock then
+            StartCodeBlock(p1)
+          else
+            StartBeginEnd(p1);
         //TODO: iReturnType
        end;
 
@@ -594,6 +630,11 @@ const
        begin
         src_body:=src_body+src_indent+'until not('+src_value+');'#13#10;
         //TODO: iReturnType
+       end;
+
+      sField1:
+       begin
+        src_value:=src_value+'.'+rs(p.r(iTarget));
        end;
 
       sArrayIndex1:
@@ -727,18 +768,22 @@ begin
   p0.s(Spheres[0],0);
   p0.Start(p0,lChildren);//lSourceFile_NameSpaces
 
-  pType2(p,'i8','ShortInt');
-  pType2(p,'i16','SmallInt');
-  pType2(p,'i32','integer');
-  pType2(p,'i64','int64');
-  pType2(p,'u8','byte');
-  pType2(p,'u16','word');
-  pType2(p,'u32','cardinal');
-  pType2(p,'u64','Uint64');
+  if p0.Next(p) then
+   begin
+    pType2(p,'i8','ShortInt');
+    pType2(p,'i16','SmallInt');
+    pType2(p,'i32','integer');
+    pType2(p,'i64','int64');
+    pType2(p,'u8','byte');
+    pType2(p,'u16','word');
+    pType2(p,'u32','cardinal');
+    pType2(p,'u64','Uint64');
 
-  pType2(p,'f32','single');
-  pType2(p,'f64','double');
-  pType2(p,'f80','extended');
+    pType2(p,'f32','single');
+    pType2(p,'f64','double');
+    pType2(p,'f80','extended');
+   end;
+  //else raise?
 
   //global variables
   for i:=0 to SpheresCount-1 do
