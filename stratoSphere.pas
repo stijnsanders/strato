@@ -1122,7 +1122,7 @@ begin
       //TODO: check Field valid member for k[i].k
       i:=sphere.k[i].n;
       while (i<>0) and (sphere.k[i].k<>List) do i:=sphere.k[i].n;
-      if i<>0 then index:=i;
+      if i=0 then sphere:=nil else index:=i;
      end;
    end;
 end;

@@ -190,6 +190,8 @@ const
       sIteration1,
       sIteration2,
       sIteration3,
+      sIteration4,
+      sIteration5,
       sUnaryOp1,
       sBinaryOp1,
       sBinaryOp2,
@@ -354,8 +356,17 @@ const
 
         nIteration:
          begin
-          Push(sIteration1,p);
-          Push(sResolveValue,p.r(iPredicate));
+          p1:=p.r(iPredicate);
+          if p1.Key=nRangeIndex then
+           begin
+            Push(sIteration4,p);
+            Push(sResolveValue,p1.r(iRight).r(iLeft));
+           end
+          else
+           begin
+            Push(sIteration1,p);
+            Push(sResolveValue,p1);
+           end;
          end;
 
         nIterPostEval:
@@ -629,6 +640,24 @@ const
       sIteration3:
        begin
         src_body:=src_body+src_indent+'until not('+src_value+');'#13#10;
+        //TODO: iReturnType
+       end;
+
+      sIteration4:
+       begin
+        Push(sIteration5,p,src_value);
+        Push(sResolveValue,p.r(iPredicate).r(iRight).r(iRight));
+       end;
+
+      sIteration5:
+       begin
+        src_body:=src_body+src_indent+'for '+rs(p.r(iPredicate).r(iLeft))+':='+c1+' to '+src_value+' do //'+rs(p)+#13#10;
+        p1:=p.r(iBody);
+        if not p1.IsNone then
+          if p1.Key=nCodeBlock then
+            StartCodeBlock(p1)
+          else
+            StartBeginEnd(p1);
         //TODO: iReturnType
        end;
 
