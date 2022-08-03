@@ -47,6 +47,8 @@ __mfree(d:pointer){$$102;}
 
 __filetostr(fn:string):string{$$201;}
 __strtofile(fn,data:string){$$202;}
+__filetomem(fn:string):pointer{$$203;}
+__memtofile(p:pointer;size:number;fn:string){$$204;}
 
 //previously "oo.xs"
 

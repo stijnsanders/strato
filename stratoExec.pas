@@ -1648,18 +1648,18 @@ begin
   i:=ParseInteger(q1.sphere.BinaryData(q1.index));
   case i of
 
-  1://xinc
+  xSCall_inc://xinc
    begin
     p:=pointer(Data^);
     inc(xValue(p^));
    end;
-  2://xdec
+  xSCall_dec://xdec
    begin
     p:=pointer(Data^);
     dec(xValue(p^));
    end;
 
-  100://malloc
+  xSCall_malloc://malloc
    begin
     p:=Data;
     inc(xValue(p),SystemWordSize);
@@ -1676,44 +1676,94 @@ begin
 
    end;
 
-   200://writeln
-    begin
-     q1:=VtoN(PCardinal(Data)^);
-     Writeln(string(q1.sphere.BinaryData(q1.index)));
-    end;
-   201://read a file into a string
-    begin
-     //TODO: try except throw
-     q1:=VtoN(PCardinal(Data)^);
-     f:=TFileStream.Create(string(q1.sphere.BinaryData(q1.index)),
-       fmOpenRead or fmShareDenyWrite);
-     try
-       i:=f.Size-3;
-       s:=#0#0#0;
-       f.Read(s,3);
-       if s<>UTF8ByteOrderMark then
-         RunError(Fn,'Only UTF8-files supported');
-       SetLength(s,i);
-       f.Read(s[1],i);
-     finally
-       f.Free;
-     end;
-    end;
+  xSCall_writeln://write line
+   begin
+    q1:=VtoN(PCardinal(Data)^);
+    Writeln(string(q1.sphere.BinaryData(q1.index)));
+   end;
 
-   202://write a string to a file
-    begin
-     q1:=VtoN(PCardinal(Data)^);
-     f:=TFileStream.Create(string(q1.sphere.BinaryData(q1.index)),
-       fmCreate);
-     try
-       f.Write(UTF8ByteOrderMark[1],3);
-       q1:=VtoN(PCardinal(Data)^);////????
-       s:=q1.sphere.BinaryData(q1.index);
-       f.Write(s[1],Length(s));
-     finally
-       f.Free;
-     end;
-    end
+  xSCall_filetostr://read a file into a string
+   begin
+    //TODO: try except throw
+    //TODO: added security: limit access to specific folder
+    q1:=VtoN(PCardinal(Data)^);
+    f:=TFileStream.Create(string(q1.sphere.BinaryData(q1.index)),
+      fmOpenRead or fmShareDenyWrite);
+    try
+      i:=f.Size-3;
+      s:=#0#0#0;
+      f.Read(s,3);
+      if s<>UTF8ByteOrderMark then
+        RunError(Fn,'Only UTF8-files supported');
+      SetLength(s,i);
+      f.Read(s[1],i);
+    finally
+      f.Free;
+    end;
+    q1.index:=q1.sphere.AddBinaryData(s);
+    PCardinal(Data)^:=NtoV(q1);
+   end;
+
+  xSCall_strtofile://write a string to a file
+   begin
+    //TODO: added security: limit access to specific folder
+    q1:=VtoN(PCardinal(Data)^);
+    f:=TFileStream.Create(string(q1.sphere.BinaryData(q1.index)),
+      fmCreate);
+    try
+      f.Write(UTF8ByteOrderMark[1],3);
+      q1:=VtoN(PCardinal(Data)^);////????
+      s:=q1.sphere.BinaryData(q1.index);
+      f.Write(s[1],Length(s));
+    finally
+      f.Free;
+    end;
+   end;
+
+  xSCall_filetomem://read a file into memory
+   begin
+    //TODO: try except throw
+    //TODO: added security: limit access to specific folder
+    q1:=VtoN(PCardinal(Data)^);
+    f:=TFileStream.Create(string(q1.sphere.BinaryData(q1.index)),
+      fmOpenRead or fmShareDenyWrite);
+    try
+      i:=f.Size;
+      if xValue(FMemIndex)-xValue(FMem)+xValue(i)>FMemSize then
+        RunError(Fn,'Out of memory')//TODO:throw
+      else
+       begin
+        p:=FMemIndex;
+        inc(xValue(FMemIndex),i);
+        //TODO: align?
+        //TODO: mark allocated? (see also deallocation)
+       end;
+      f.Read(p^,i);
+    finally
+      f.Free;
+    end;
+    pointer(Data^):=p;
+   end;
+
+  xSCall_memtofile://write a block of data to a file
+   begin
+    //TODO: added security: limit access to specific folder
+    p:=Data;
+    inc(xValue(p),SystemWordSize);
+    i:=PCardinal(p)^;
+    inc(xValue(p),SystemWordSize);
+    q1:=VtoN(PCardinal(p)^);
+    f:=TFileStream.Create(string(q1.sphere.BinaryData(q1.index)),
+      fmCreate);
+    try
+      //TODO: check correct memory, fully allocated
+      p:=pointer(Data^);
+      f.Write(p,i);
+    finally
+      f.Free;
+    end;
+    //PCardinal(Data^):=i;//?
+   end;
 
   else
     raise Exception.Create('SysCall: unknown key '+IntToStr(i));

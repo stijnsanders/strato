@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{EF41EF7B-C8FF-4B8C-88FA-CDE9E2A1F06D}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="strato.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="xsView.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="strato">
+        <MSBuild Projects="strato.dproj"/>
+    </Target>
+    <Target Name="strato:Clean">
+        <MSBuild Projects="strato.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="strato:Make">
+        <MSBuild Projects="strato.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="xsView">
+        <MSBuild Projects="xsView.dproj"/>
+    </Target>
+    <Target Name="xsView:Clean">
+        <MSBuild Projects="xsView.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="xsView:Make">
+        <MSBuild Projects="xsView.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="strato;xsView"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="strato:Clean;xsView:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="strato:Make;xsView:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

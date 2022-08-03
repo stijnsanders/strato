@@ -64,7 +64,6 @@ type
     FSrcPath,FFilePath,FFileSignature:string;
     w1,w2:integer;
     procedure LoadFile(const FilePath:string);
-    //function JumpNode(n:TXsTreeNode;const prefix:string;k:xKey): TXsTreeNode;
     function BuildNode(Parent:TXsTreeNode;p:xNode):TXsTreeNode;
     procedure JumpTo(p:xNode);
   protected
@@ -325,7 +324,7 @@ begin
           TreeView1Expanding(nil,n,b);
         n:=n.GetNext as TXsTreeNode;
        end;
-      if n<>nil then TreeView1Expanding(nil,n,b);
+      //if n<>nil then TreeView1Expanding(nil,n,b);
      end;
     if n=nil then
      begin
@@ -378,60 +377,9 @@ begin
      end;
 end;
 
-{
-function TfrmXsViewMain.JumpNode(n:TXsTreeNode;const prefix:string;
-  k:xKey):TXsTreeNode;
-var
-  b:boolean;
-  p,q,r:xNode;
-  m:TXsTreeNode;
-begin
-  if n.Node.sphere=nil then
-    Result:=nil
-  else
-   begin
-    p:=n.Node.r(k);
-    Result:=TreeView1.Items.AddChild(n,prefix+p.AsString) as TXsTreeNode;
-    if (p.Key<>xBinaryData) and (p.Key<>nLiteral) then
-     begin
-      b:=false;
-      //try
-        q:=p.r(iParent);
-      //except
-      //  on EStratoFieldIndexNotFound do q.none;
-      //end;
-      m:=n;
-      while not(b) and (m<>nil) do
-       begin
-        if m<>nil then
-         begin
-          r:=m.Node;
-          if (r.sphere=p.sphere) and (r.index=p.index) then m:=nil else
-            if (q.sphere=p.sphere) and (q.index=p.index) then b:=true;
-         end;
-        if m<>nil then m:=m.Parent as TXsTreeNode;
-       end;
-     end
-    else
-      b:=true;
-    if b then
-     begin
-      //BuildNode(Result,i)
-      Result.HasChildren:=true;
-//TODO:Result.ExpandNode:=p;
-//      Result.ExpandSingle:=true;
-     end
-    else
-      Result.JumpNode:=p;
-    Result.ImageIndex:=iiItem;
-    Result.SelectedIndex:=iiItem;
-   end;
-end;
-}
-
 function TfrmXsViewMain.BuildNode(Parent:TXsTreeNode;p:xNode):TXsTreeNode;
 var
-  p1,p2:xNode;
+  p1,p2,p0:xNode;
   q:PxKeyValue;
   nn:xKey;
   k,sy,sx:cardinal;
@@ -618,7 +566,12 @@ begin
    begin
     n:=TreeView1.Items.AddChild(Parent,s) as TXsTreeNode;
     n.Node:=p;
-    if p1.sphere<>nil then n.JumpNode:=p1;
+    if p1.sphere<>nil then
+     begin
+      n.JumpNode:=p1;
+      p0:=p1.r(iParent);
+      if not(p0.IsNone) and p0.IsSame(p) then n.JumpedTo:=BuildNode(n,p1);
+     end;
     case nn of
     xUnassigned..n_Max1,nSphere:
       n.HasChildren:=true;
@@ -860,7 +813,6 @@ begin
             FSrcFile:=n.Node.sphere;
            end;
           //lblFileName.Caption:=Format('%s %d:%d',[FSrcPath,Line,Col]);
-
           if Line>7 then
            begin
             si.cbSize:=SizeOf(TScrollInfo);
@@ -874,7 +826,6 @@ begin
           txtSourceView.Perform(EM_SETSEL,i,i+1);
           //txtSourceView.Perform(EM_SCROLLCARET,0,0);
          end;
-
       except
         //on e:Exception do?
           txtSourceView.Text:=Format('!!![%s] "%s"%d:%d',

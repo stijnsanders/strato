@@ -262,7 +262,7 @@ const
 
   var
     src_const,src_type,src_var,src_indent,src_body,src_value,c1,c2:AnsiString;
-    p,p0,p1:xNode;
+    p,p0,p1,p2:xNode;
 
     procedure StartCodeBlock(pp:xNode;const Suffix:AnsiString=';');
     var
@@ -412,11 +412,44 @@ const
           p1:=p.r(iTarget).r(iValue);
           case StrToInt(string(p1.sphere.BinaryData(p1.index))) of
 
-            200:
+            xSCall_writeln:
              begin
               p0.Start(cb,lCodeBlock_Locals);
               p0.Next(p1);
-              src_body:=src_body+src_indent+'writeln('+rs(p1)+');'#13#10;
+              src_body:=src_body+src_indent+'WriteLn('+rs(p1)+');'#13#10;
+             end;
+
+            xSCall_filetostr:
+             begin
+              //uses StratoUtils?
+              p0.Start(cb,lCodeBlock_Locals);
+              p0.Next(p1);
+              p0.Next(p2);
+              src_body:=src_body+src_indent+'Result:=stratoFileToStr('+rs(p2)+');'#13#10;
+             end;
+            xSCall_strtofile:
+             begin
+              //uses StratoUtils?
+              p0.Start(cb,lCodeBlock_Locals);
+              p0.Next(p1);
+              p0.Next(p2);
+              src_body:=src_body+src_indent+'stratoStrToFile('+rs(p1)+','+rs(p2)+');'#13#10;
+             end;
+            xSCall_filetomem:
+             begin
+              //uses StratoUtils?
+              p0.Start(cb,lCodeBlock_Locals);
+              p0.Next(p1);
+              p0.Next(p2);
+              src_body:=src_body+src_indent+'Result:=stratoFileToMem('+rs(p2)+');'#13#10;
+             end;
+            xSCall_memtofile:
+             begin
+              //uses StratoUtils?
+              p0.Start(cb,lCodeBlock_Locals);
+              p0.Next(p1);
+              p0.Next(p2);
+              src_body:=src_body+src_indent+'stratoMemToFile('+rs(p1)+','+rs(p2)+');'#13#10;
              end;
 
             else raise Exception.Create('Unknown SysCall:'+
@@ -784,7 +817,7 @@ begin
 
   //defaults
   level:=1;
-  AddCode(none,ctInterfaceUses,level,'Windows, SysUtils');//Variants?
+  AddCode(none,ctInterfaceUses,level,'Windows, SysUtils, StratoUtils');//Variants?
 
   //intrinsic types
   pType1(itPointer,'pointer');
