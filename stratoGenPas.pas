@@ -451,6 +451,10 @@ const
               p0.Next(p2);
               src_body:=src_body+src_indent+'stratoMemToFile('+rs(p1)+','+rs(p2)+');'#13#10;
              end;
+            xSCall_commandline:
+             begin
+              src_body:=src_body+src_indent+'Result:=stratoCommandLine;'#13#10;
+             end;
 
             else raise Exception.Create('Unknown SysCall:'+
               string(p1.sphere.BinaryData(p1.index)));

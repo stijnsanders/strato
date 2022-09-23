@@ -1765,6 +1765,13 @@ begin
     //PCardinal(Data^):=i;//?
    end;
 
+  xSCall_commandline://get the command line
+   begin
+    s:=UTF8Encode(GetCommandLine);
+    q1.index:=q1.sphere.AddBinaryData(s);
+    PCardinal(Data)^:=NtoV(q1);
+   end
+
   else
     raise Exception.Create('SysCall: unknown key '+IntToStr(i));
   end;

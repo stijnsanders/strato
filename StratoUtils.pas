@@ -6,6 +6,7 @@ function stratoFileToStr(const FilePath:string):string;
 procedure stratoStrToFile(const FilePath,Data:string);
 function stratoFileToMem(const FilePath:string):pointer;
 procedure stratoMemToFile(const FilePath:string;Data:pointer;Length:NativeInt);
+function stratoCommandLine:string;
 
 implementation
 
@@ -41,15 +42,15 @@ var
   f:TFileStream;
   s:UTF8String;
 begin
- //TODO: added security: limit access to specific folder
- s:=UTF8Encode(Data);
- f:=TFileStream.Create(FilePath,fmCreate);
- try
-   f.Write(UTF8ByteOrderMark[1],3);
-   f.Write(s[1],Length(s));
- finally
-   f.Free;
- end;
+  //TODO: added security: limit access to specific folder
+  s:=UTF8Encode(Data);
+  f:=TFileStream.Create(FilePath,fmCreate);
+  try
+    f.Write(UTF8ByteOrderMark[1],3);
+    f.Write(s[1],Length(s));
+  finally
+    f.Free;
+  end;
 end;
 
 function stratoFileToMem(const FilePath:string):pointer;
@@ -68,13 +69,19 @@ procedure stratoMemToFile(const FilePath:string;Data:pointer;Length:NativeInt);
 var
   f:tFileStream;
 begin
- //TODO: added security: limit access to specific folder
- f:=TFileStream.Create(FilePath,fmCreate);
- try
-   f.Write(Data^,Length);
- finally
-   f.Free;
- end;
+  //TODO: added security: limit access to specific folder
+  f:=TFileStream.Create(FilePath,fmCreate);
+  try
+    f.Write(Data^,Length);
+  finally
+    f.Free;
+  end;
+end;
+
+function stratoCommandLine:string;
+begin
+  SetLength(Result,MAX_PATH);
+  SetLength(Result,GetCommandLine(Result,MAX_PATH));
 end;
 
 end.

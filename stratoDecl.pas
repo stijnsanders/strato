@@ -171,15 +171,16 @@ type
   end;
 
 const
-  xSCall_inc       = 1;
-  xSCall_dec       = 2;
-  xSCall_malloc    = 100;
+  xSCall_inc     = 1;
+  xSCall_dec     = 2;
+  xSCall_malloc  = 100;
 
-  xSCall_writeln   = 200;
-  xSCall_filetostr = 201;
-  xSCall_strtofile = 202;
-  xSCall_filetomem = 203;
-  xSCall_memtofile = 204;
+  xSCall_writeln     = 200;
+  xSCall_filetostr   = 201;
+  xSCall_strtofile   = 202;
+  xSCall_filetomem   = 203;
+  xSCall_memtofile   = 204;
+  xSCall_commandline = 205;
 
 implementation
 
