@@ -5,85 +5,12 @@ interface
 {$D-}
 {$L-}
 
+{$I stratoTokens_T.inc}
+
+const
+  st_EOF=TStratoToken($FFFE);
+
 type
-  TStratoToken=(
-    stIdentifier,
-    stStringLiteral,
-    stNumericLiteral,
-
-    st_Fixed, //all below have fixed content
-
-    stSemiColon,    //";"
-    stComma,        //','
-    stPeriod,       //"."
-    stColon,        //":"
-    stDefine,       //"=", specifically not ":=" or "=="!
-    stAt,           //"@"
-    stCaret,        //"^"
-    stQuestionMark, //"?"
-    stAmpersand,    //"&"
-    stDollar,       //'$'
-    stHash,         //'#'
-    stTilde,        //'~'
-
-    stPOpen,stPClose, //"()" parentheses
-    stCOpen,stCClose, //"{}" curly braces
-    stBOpen,stBClose, //"[]" brackets
-
-    stHRule,       //"---" (or more)
-    stThreeColons, //":::"
-    stThreeWhats,  //"???"
-    stThreeBangs,  //"!!!"
-    stEllipsis,    //"..."
-
-    stAtAt,     //"@@": this/self
-    stAtAtAt,   //"@@@": inherited/base
-    stWhatWhat, //"??": result
-    stHashHash, //"##": interation
-
-    stOpAssign,    //":="
-    stOpAssignAdd, //"+="
-    stOpAssignSub, //"-="
-    stOpAssignMul, //"*="
-    stOpAssignDiv, //"/="
-    stOpAssignMod, //"%="
-    stOpAssignOr,  //"||="
-    stOpAssignAnd, //"&&="
-    stOpEQ,  //"==" //see alo stDefine,stOpAssign
-    stOpNEQ, //"!="
-    stOpLT,  //"<"
-    stOpLTE, //"<="
-    stOpGT,  //">"
-    stOpGTE, //">="
-
-    stOpAnd, //"&&"
-    stOpOr,  //"||"
-    stOpNot, //"!"
-    stOpXor, //"|!"
-
-    stOpAdd, //"+"
-    stOpSub, //"-"
-    stOpMul, //"*"
-    stOpDiv, //"/"
-    stOpMod, //"%"
-    stOpInc, //"++"
-    stOpDec, //"--"
-    stOpShl, //"<<"
-    stOpShr, //">>"
-    stOpRange, //".."
-
-    stThreeLT,//"<<<" stOpRol, 'import'
-    stThreeGT,//">>>" stOpRor, 'export'
-
-    stOpSizeOf,//"@?"
-    stOpWhatIs,//"?="
-
-    stOp_Last, //all operators in [stOpAssign..stOp_Last]
-
-    st_EOF, //(past) end of file
-    st_Unknown
-  );
-
   TStratoSourceToken=record
     Token:TStratoToken;
     Index,Length,SrcPos:cardinal;
@@ -113,331 +40,246 @@ end;
 procedure StratoTokenizeNext(const Code: UTF8String; LineIndex: cardinal;
   const CurrentToken: TStratoSourceToken; var NextToken: TStratoSourceToken);
 var
-  CodeIndex,CodeLength:cardinal;
-  ln,ls:cardinal;
+  CodeIndex,CodeLength,ln,ls:cardinal;
+  n,n1,n2:UTF8Char;
 
-  procedure Add(Len:cardinal;t:TStratoToken);
-  begin
-    NextToken.Token:=t;
-    NextToken.Index:=CodeIndex;
-    NextToken.Length:=Len;
-    NextToken.SrcPos:=ln*LineIndex+(CodeIndex-ls);
-    //TODO: count tab as 4 (or 8 or 2)?
-  end;
-
-  function CodeNext(Fwd:cardinal):AnsiChar;
-  begin
-    if CodeIndex+Fwd<=CodeLength then
-      Result:=Code[CodeIndex+Fwd]
-    else
-      Result:=#0;
-  end;
-
-  procedure incCodeIndexX; //inc(CodeIndex) detecting EOL's
-  begin
-    case Code[CodeIndex] of
-      #13:
-       begin
-        inc(ln);
-        if CodeNext(1)=#10 then inc(CodeIndex);
-        ls:=CodeIndex;
-       end;
-      #10:
-       begin
-        inc(ln);
-        ls:=CodeIndex;
-       end;
-    end;
-    inc(CodeIndex);
-  end;
-
-  procedure SkipWhiteSpace;
-  begin
-    while (CodeIndex<=CodeLength) and (Code[CodeIndex]<=' ') do incCodeIndexX;
-  end;
-
-  procedure GetIdentifier;
+  function nn(Fwd:cardinal):UTF8Char;
   var
-    i:cardinal;
+    x:cardinal;
   begin
-    i:=CodeIndex;
-    while (i<=CodeLength) and (Code[i] in ['0'..'9','A'..'Z','_','a'..'z']) do inc(i);
-    Add(i-CodeIndex,stIdentifier);
+    x:=CodeIndex+Fwd;
+    if x<=CodeLength then Result:=Code[x] else Result:=#0;
   end;
 
-  procedure AddX(Len:cardinal;t:TStratoToken); //add, but detect EOL's
+  procedure doWhiteSpace; //inc(CodeIndex) detecting EOL's
+  begin
+    inc(CodeIndex);
+    case n of
+      #13://CR
+       begin
+        if nn(0)=#10 then inc(CodeIndex);//CRLF
+        inc(ln);
+        ls:=CodeIndex;
+       end;
+      #10://LF
+       begin
+        inc(ln);
+        ls:=CodeIndex;
+       end;
+      //TODO: #9: count tabs as 4 of 8
+      //TODO: #12: page count?
+    end;
+  end;
+
+  procedure doToken(t:TStratoToken;n:cardinal);
+  begin
+    inc(CodeIndex,n);
+    NextToken.Token:=t;
+    NextToken.Length:=CodeIndex-NextToken.Index;
+  end;
+
+  procedure doSkipToEOL;
+  begin
+    while (CodeIndex<=CodeLength)
+      and not(Code[CodeIndex] in [#13,#10,#12])
+      do inc(CodeIndex);
+    if (CodeIndex<CodeLength)
+      and (Code[CodeIndex]=#13)
+      and (Code[CodeIndex+1]=#10)
+      then inc(CodeIndex);
+    inc(CodeIndex);
+    inc(ln);
+    ls:=CodeIndex;
+  end;
+
+  procedure doSkipToEndOfBlock(const Delimiter:UTF8String);
   var
     i,l:cardinal;
   begin
-    i:=CodeIndex;
-    l:=CodeIndex+Len;
-    if l>CodeLength then l:=CodeLength;
-    while CodeIndex<>l do incCodeIndexX;
-    CodeIndex:=i;
-    Add(Len,t);
+    l:=Length(Delimiter);
+    inc(CodeIndex,l);//assert start-stop delimiters same length
+    i:=0;
+    repeat
+      if (CodeIndex+l>CodeLength) then
+       begin
+        //too close to EOF for a delimiter
+        CodeIndex:=CodeLength+1;//?
+        //Fail('Undelimited block "'+Delimiter+'"');//?
+        i:=l;
+       end
+      else
+      if (Code[CodeIndex+i]=Delimiter[i+1]) then
+        inc(i)
+      else
+       begin
+        i:=0;
+        n:=Code[CodeIndex];
+        doWhiteSpace;//keep counting lines with EOL's
+       end;
+    until i=l;
+    inc(CodeIndex,l);
   end;
 
-var
-  i:cardinal;
+  procedure doIdentifier;
+  begin
+    inc(CodeIndex);
+    while (CodeIndex<=CodeLength)
+      and (Code[CodeIndex] in ['0'..'9','A'..'Z','_','a'..'z'])
+      do inc(CodeIndex);
+    doToken(stIdentifier,0);
+  end;
+
+  procedure doCString;
+  var
+    inStr:boolean;
+  begin
+    //assert n='"'
+    inc(CodeIndex);
+    inStr:=true;
+    while inStr do
+     begin
+      if CodeIndex>CodeLength then
+        n:=#0
+      else
+       begin
+        n:=Code[CodeIndex];
+        inc(CodeIndex);
+       end;
+      case n of
+        #0,#13,#10:
+          //Fail('Unterminated string')
+          inStr:=false;
+        '\':
+          if nn(0) in ['\','"','0'..'9','A'..'Z','a'..'z'] then
+            inc(CodeIndex)
+          else
+            //Fail('Unsupported escape character')
+            inc(CodeIndex);//inStr:=false;
+        '"':
+          inStr:=false;
+      end;
+     end;
+    doToken(stStringLiteral,0);
+  end;
+
+  procedure doPascalString;
+  var
+    inStr:boolean;
+  begin
+    //assert n=''''
+    inc(CodeIndex);
+    inStr:=true;
+    while inStr do
+     begin
+      if CodeIndex>CodeLength then
+        n:=#0
+      else
+       begin
+        n:=Code[CodeIndex];
+        inc(CodeIndex);
+       end;
+      if n in [#0,#13,#10] then
+        //Fail('Unterminated string')
+        inStr:=false
+      else
+      if n='''' then
+        if nn(0)='''' then
+          inc(CodeIndex)
+        else
+          inStr:=false;
+     end;
+    doToken(stStringLiteral,0);
+  end;
+
+  procedure doMultiLineString;
+  begin
+    doSkipToEndOfBlock('"""');
+    doToken(stStringLiteral,0);
+  end;
+
+  procedure doNumeric;
+  var
+    isFloat,isSciNot:boolean;
+  begin
+    //n='-': is a separate token (and unary operator)
+    n1:=nn(1);
+    if (n='0') and (n1 in ['X','x']) then //hexadecimal
+     begin
+      inc(CodeIndex);
+      while (CodeIndex<=CodeLength)
+        and (Code[CodeIndex] in ['0'..'9','A'..'F','a'..'f'])
+        do inc(CodeIndex);
+     end
+    else
+    if (n='0') and (n1 in ['B','b']) then //binary
+     begin
+      inc(CodeIndex);
+      while (CodeIndex<=CodeLength)
+        and (Code[CodeIndex] in ['0','1','_'])
+        do inc(CodeIndex);
+     end
+    else
+    if (n='0') and (n1 in ['O','o']) then //octal
+     begin
+      inc(CodeIndex);
+      while (CodeIndex<=CodeLength)
+        and (Code[CodeIndex] in ['0'..'7','_'])
+        do inc(CodeIndex);
+     end
+    else
+     begin
+      isFloat:=false;//default
+      isSciNot:=false;//default
+      while Code[CodeIndex] in ['0'..'9'] do
+       begin
+        inc(CodeIndex);
+        if not(IsFloat) and (nn(0)='.') then //floating point
+         begin
+          isFloat:=true;
+          inc(CodeIndex);//'.'
+         end;
+        if not(isSciNot) and (nn(0) in ['E','e']) then
+         begin
+          isSciNot:=true;
+          inc(CodeIndex);
+          if nn(0) in ['-','+'] then inc(CodeIndex);
+         end;
+       end;
+     end;
+    doToken(stNumericLiteral,0);
+  end;
+
+  procedure doCoalesce;
+  begin
+    while (CodeIndex<=CodeLength) and (Code[CodeIndex]=n) do inc(CodeIndex);
+    doToken(stHRule,0);
+  end;
+
 const
-  st_Invalid=TStratoToken(-1);
+  st_Invalid=TStratoToken($FFFF);
 begin
   CodeIndex:=CurrentToken.Index+CurrentToken.Length;
   CodeLength:=Length(Code);
-  ls:=CurrentToken.Index-(CurrentToken.SrcPos mod LineIndex);//line start
+  ls:=CurrentToken.Index-(CurrentToken.SrcPos mod LineIndex)+1;//line start
   ln:=CurrentToken.SrcPos div LineIndex;//line number
   NextToken.Token:=st_Invalid;
-  while NextToken.Token=st_Invalid do
-   begin
-    SkipWhiteSpace;
+  repeat
+    NextToken.Index:=CodeIndex;
+    NextToken.SrcPos:=ln*LineIndex+(CodeIndex+1-ls);
     if CodeIndex>CodeLength then
+      NextToken.Token:=st_EOF
+    else
      begin
-      NextToken.Token:=st_EOF;
-      NextToken.Index:=CodeLength+1;
-      NextToken.SrcPos:=(ln+1)*LineIndex+1;
-      Exit;
+      n:=Code[CodeIndex];
+      if n<=' ' then
+        doWhiteSpace
+      else
+
+        {$I stratoTokens.inc} //see "-Z"
+
      end;
-    case Code[CodeIndex] of
-      '/':
-        case CodeNext(1) of
-          '/'://comment to EOL
-           begin
-            inc(CodeIndex,2);
-            while (CodeIndex<=CodeLength) and not(Code[CodeIndex] in [#10,#12,#13]) do inc(CodeIndex);
-            //EOL itself: see ShipWhiteSpace below
-           end;
-          '*'://comment block
-           begin
-            inc(CodeIndex,2);
-            //TODO: nested comment blocks
-            while (CodeIndex<CodeLength) and not((Code[CodeIndex]='*') and (Code[CodeIndex+1]='/')) do incCodeIndexX;
-            inc(CodeIndex,2);
-           end;
-          else
-            Add(1,stOpDiv);
-        end;
-      '(':Add(1,stPOpen);
-      ')':Add(1,stPClose);
-      '{':Add(1,stCOpen);
-      '}':Add(1,stCClose);
-      '[':Add(1,stBOpen);
-      ']':Add(1,stBClose);
-      '&':
-        case CodeNext(1) of
-          '&':
-            case CodeNext(2) of
-              '=':Add(3,stOpAssignAnd);
-              else Add(2,stOpAnd);
-            end;
-          else Add(1,stAmpersand);
-        end;
-      '$':Add(1,stDollar);
-      '#':
-        case CodeNext(1) of
-          '#':Add(2,stHashHash);
-          else Add(1,stHash);
-        end;
-      '~':Add(1,stTilde);
-      '|':
-        case CodeNext(1) of
-          '!':Add(2,stOpXor);
-          '|':
-            case CodeNext(2) of
-              '=':Add(3,stOpAssignOr);
-              else Add(2,stOpOr);
-            end;
-          else Add(1,st_Unknown);//stPipe
-        end;
-      ''''://string
-       begin
-        i:=CodeIndex+1;
-        //TODO: support # syntax?
-        while (i<=CodeLength) and (Code[i]<>'''') do
-         begin
-          inc(i);
-          if (i<CodeLength) and (Code[i]='''') and (Code[i+1]='''') then
-            inc(i,2);
-         end;
-        AddX(i-CodeIndex+1,stStringLiteral);
-       end;
-      '"'://string
-        if (CodeNext(1)='"') and (CodeNext(2)='"') then
-         begin
-          i:=CodeIndex+3;
-          while (i+2<=CodeLength) and not((Code[i]='"') and
-            (Code[i+1]='"') and (Code[i+2]='"')) do
-           begin
-            if Code[i]='\' then inc(i);//?
-            inc(i);
-           end;
-          AddX(i-CodeIndex+3,stStringLiteral);
-         end
-        else
-         begin
-          i:=CodeIndex+1;
-          while (i<=CodeLength) and (Code[i]<>'"') do
-           begin
-            if Code[i]='\' then inc(i);
-            inc(i);
-           end;
-          AddX(i-CodeIndex+1,stStringLiteral);
-         end;
-      '0'..'9'://digits
-       begin
-        i:=CodeIndex;
-        if Code[CodeIndex]='0' then
-          case CodeNext(1) of //see also ParseInteger
-            'x','X'://hex
-             begin
-              inc(i,2);
-              while (i<=CodeLength) and (Code[i] in ['0'..'9','A'..'F','a'..'f']) do inc(i);
-             end;
-            'b','B'://binary
-             begin
-              inc(i,2);
-              while (i<=CodeLength) and (Code[i] in ['0','1','_']) do inc(i);
-             end;
-            'o','O'://octal
-             begin
-              inc(i,2);
-              while (i<=CodeLength) and (Code[i] in ['0'..'7']) do inc(i);
-             end;
-            //TODO more?
-          end;
-        if i=CodeIndex then
-         begin
-          inc(i);
-          while (i<=CodeLength) and (Code[i] in ['0'..'9']) do inc(i);
-         end;
-        Add(i-CodeIndex,stNumericLiteral);
-        //TODO: scientific, floating point
-       end;
-      '+':
-        case CodeNext(1) of
-          '+':Add(2,stOpInc);
-          '=':Add(2,stOpAssignAdd);
-          else Add(1,stOpAdd);
-        end;
-      '-':
-        case CodeNext(1) of
-          '-':
-            case CodeNext(2) of
-              '-':
-               begin
-                i:=CodeIndex+3;
-                while (i<=CodeLength) and (Code[i]='-') do inc(i);
-                Add(i-CodeIndex,stHRule);
-               end;
-               //'>':Add(3,stLongArrow);
-              else Add(2,stOpDec);
-            end;
-          '=':Add(2,stOpAssignSub);
-          //'>':Add(2,stArrow);
-          else Add(1,stOpSub);
-        end;
-      '%':
-        case CodeNext(1) of
-          '=':Add(2,stOpAssignMod);
-          else Add(1,stOpMod);
-        end;
-      '*':
-        case CodeNext(1) of
-          //'*':Add(2,stOpPower);
-          '=':Add(2,stOpAssignMul);
-          else Add(1,stOpMul);
-        end;
-      '@':
-        case CodeNext(1) of
-          '@':
-            case CodeNext(2) of
-              '@':Add(3,stAtAtAt);
-              else Add(2,stAtAt);
-            end;
-          '?':Add(2,stOpSizeOf);
-          else Add(1,stAt);
-        end;
-      '^':
-        Add(1,stCaret);
-      '<':
-        case CodeNext(1) of
-          '>':Add(2,stOpNEQ);
-          '<':
-            case CodeNext(2) of
-              '<':Add(3,stThreeLT);//decl:import, logic:roll left
-              else Add(2,stOpShl);
-            end;
-          '=':Add(2,stOpLTE);
-          else Add(1,stOpLT);
-        end;
-      '>':
-        case CodeNext(1) of
-          '>':
-            case CodeNext(2) of
-              '>':Add(3,stThreeGT);
-              else Add(2,stOpShr);
-            end;
-          '=':Add(2,stOpGTE);
-          else Add(1,stOpGT);
-        end;
-      '=':
-        case CodeNext(1) of
-          //'?':Add(2,stOpWhatIs);
-          //'>':Add(2,stFatArrow);//TODO
-          '=':Add(2,stOpEq);
-          else Add(1,stDefine);
-        end;
-      '?':
-        case CodeNext(1) of
-          '?':
-            case CodeNext(2) of
-              '?':Add(3,stThreeWhats);
-              else Add(2,stWhatWhat);
-            end;
-          '=':Add(2,stOpWhatIs);
-          //':':Add(2,stOpElvis);//TODO: https://en.wikipedia.org/wiki/Elvis_operator
-          //'.':Add(2,stWhatPeriod);
-          else Add(1,stQuestionMark);//stOpIf
-        end;
-      '!':
-        case CodeNext(1) of
-          '=':Add(2,stOpNEQ);
-          '!':
-            case CodeNext(2) of
-              '!':Add(3,stThreeBangs);
-              else
-               begin
-                Add(1,stOpNot);
-                Add(1,stOpNot);
-               end;
-            end;
-          else Add(1,stOpNot);
-        end;
-      '.':
-        case CodeNext(1) of
-          '.':
-            case CodeNext(2) of
-              '.':Add(3,stEllipsis);
-              else Add(2,stOpRange);
-            end;
-          else Add(1,stPeriod);
-        end;
-      ',':Add(1,stComma);
-      ';':Add(1,stSemiColon);
-      ':':
-        case CodeNext(1) of
-          ':':
-            case CodeNext(2) of
-              ':':Add(3,stThreeColons);
-              else Add(2,st_Unknown);//stNameSpace?
-            end;
-          '=':Add(2,stOpAssign);
-          else Add(1,stColon);
-        end;
-      'A'..'Z','_','a'..'z':GetIdentifier;
-      else Add(1,st_Unknown);
-    end;
-   end;
-  //SetLength(Result,ri);
+  until NextToken.Token<>st_Invalid;
+  //Writeln(Format('%s %d:%d',[StratoTokenNames[NextToken.Token],NextToken.SrcPos,NextToken.Length]));
 end;
 
 function ParseInteger(const lit: UTF8string): Int64;

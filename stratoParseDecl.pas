@@ -350,8 +350,8 @@ begin
   else
    begin
     ptr:=0;
-    while Source.IsNext([stCaret]) do inc(ptr);
-    if Source.IsNext([stIdentifier]) then
+    while Source.IsNext(stCaret) do inc(ptr);
+    if Source.IsNext(stIdentifier) then
       Result:=LookUpDecl
     else
       Result.none;
@@ -377,8 +377,8 @@ begin
           Source.Error(tname+' is not a type');
       end;
       //array
-      if Source.IsNext([stBOpen]) then
-        if Source.IsNext([stBClose]) then
+      if Source.IsNext(stBOpen) then
+        if Source.IsNext(stBClose) then
           Source.Error('//TODO: dyn array')
         else
          begin
@@ -422,7 +422,7 @@ var
   SrcPos:xSrcPos;
 begin
   //namespace
-  if Source.IsNext([stIdentifier]) then
+  if Source.IsNext(stIdentifier) then
    begin
     ID(nx,nn,SrcPos);
     ns:=Add(0,lChildren,nNameSpace,4,
@@ -440,7 +440,7 @@ begin
         ]).index;
      end;
 {
-    while Source.IsNext([stAt]) do
+    while Source.IsNext(stAt) do
       case Source.Token of
         stNumericLiteral:
           Sphere.MarkIndex(ParseInteger(Source.GetID(SrcPos1)))
@@ -490,13 +490,12 @@ begin
   while (SyntaxClass=scDeclarative) and Source.NextToken(st) do
   case st of
 
-  stThreeLT:
+  stOpThreeLT:
     ParseImport;
 
   stIdentifier: //declaration
    begin
-    p.sphere:=Sphere;
-    p.index:=0;
+    p.s(Sphere,0);
     LookUpDecl_Lazy(p.index,nx,SrcPos,fqn);
 
     //operator override?
@@ -533,17 +532,26 @@ begin
       q:=LookUpDecl_Type('type');
 
       //property "p.x:q{"
-      if Source.IsNext([stCOpen]) then
+      if Source.IsNext(stCOpen) then
        begin
-        r:=StratoFnAdd(Self,nPropGet,Fn(Local(p),nx),
-          Add(nSignature,8,
-            [kn(iParent,p)
-            ,kv(vSrcPos,0,SrcPos)
-            ,kn(iSubject,p)
-            ,kv(dName,0,nx)//+'_get'?
-            ,kn(iReturnType,q)
-            ]),SrcPos);
-       if Source.IsNext([stCClose]) then
+        if p.Key=nNameSpace then //TODO: more cases?
+          r:=StratoFnAdd(Self,nOverload,Fn(Local(p),nx),
+            Add(nSignature,6,
+              [kv(iParent,0,ns)
+              ,kv(vSrcPos,0,SrcPos)
+              ,kv(dName,0,nx)
+              ,kn(iReturnType,q)
+              ]),SrcPos)
+        else
+          r:=StratoFnAdd(Self,nPropGet,Fn(Local(p),nx),
+            Add(nSignature,8,
+              [kn(iParent,p)
+              ,kv(vSrcPos,0,SrcPos)
+              ,kn(iSubject,p)
+              ,kv(dName,0,nx)//+'_get'?
+              ,kn(iReturnType,q)
+              ]),SrcPos);
+       if Source.IsNext(stCClose) then
          begin
           //forward only
           if Source.IsNext([stCOpen,stCClose]) then //empty setter also? skip
@@ -580,23 +588,25 @@ begin
       else
 
       //variable "p.x:q"
-      if not Add(Local(p),lChildren,nVar,8,nx,
-        [kn(iParent,p)
-        ,kv(vSrcPos,0,SrcPos)
-        ,kn(iType,q)
-        ],r) then
-        Source.ErrorN('duplicate identifier',nn);
-      if Source.IsNext([stDefine]) then
-        Sphere.SetRef(Local(r),iValue,ParseLiteral(Source.Token,nil));
-      //TODO: check InitialValue.EvaluatesTo with EvaluatesTo
-      case p.Key of
-        nNameSpace:
-          Sphere.Append(0,lSphere_Globals,Local(r));
-        nClass,nRecord:
-          Sphere.a(Local(p),vByteSize,q.v(vByteSize));
-        else
-          Source.Error('unexpected variable parent');
-      end;
+       begin
+        if not Add(Local(p),lChildren,nVar,8,nx,
+          [kn(iParent,p)
+          ,kv(vSrcPos,0,SrcPos)
+          ,kn(iType,q)
+          ],r) then
+          Source.ErrorN('duplicate identifier',nn);
+        if Source.IsNext(stDefine) then
+          Sphere.SetRef(Local(r),iValue,ParseLiteral(Source.Token,nil));
+        //TODO: check InitialValue.EvaluatesTo with EvaluatesTo
+        case p.Key of
+          nNameSpace:
+            Sphere.Append(0,lSphere_Globals,Local(r));
+          nClass,nRecord:
+            Sphere.a(Local(p),vByteSize,q.v(vByteSize));
+          else
+            Source.Error('unexpected variable parent');
+        end;
+       end;
 
      end;
 
@@ -661,8 +671,8 @@ begin
                   ],q) then
                   Source.ErrorN('duplicate identifier',nn);
               nType,nRecord,nEnum:
-                if Source.IsNext([stBOpen]) then //array
-                  if Source.IsNext([stBClose]) then //dyn array
+                if Source.IsNext(stBOpen) then //array
+                  if Source.IsNext(stBClose) then //dyn array
                     Source.Error('//TODO: dyn arrays')
                   else
                    begin
@@ -703,7 +713,7 @@ begin
             ,kn(iValue,q)
             ],p) then
             Source.ErrorN('duplicate identifier',nn);
-          if Source.IsNext([stColon]) then //here or in ParseLiteral?
+          if Source.IsNext(stColon) then //here or in ParseLiteral?
             Sphere.SetRef(Local(q),iType,LookUpDecl_Type('literal type'));
           Sphere.SetRef(Local(p),iType,q.r(iType));
          end;
@@ -772,7 +782,7 @@ begin
               else
                 Source.ErrorN('duplicate identifier',nn);
             end;
-          //TODO: Source.IsNext([stAOpen])?
+          //TODO: Source.IsNext(stAOpen)?
          end;
         stCOpen://code block
          begin
@@ -816,7 +826,7 @@ begin
      end;
 
     stOpAssign://"p.x:="
-      if Source.IsNext([stCOpen]) then
+      if Source.IsNext(stCOpen) then
        begin
         //accept only one object:={}
         if p.IsNone then p.s(Sphere,ns);
@@ -840,7 +850,7 @@ begin
      begin
       q:=StratoFnAdd(Self,nPropGet,Fn(Local(p),nx),
         ParseSignature(Local(p),nx,stBClose,SrcPos),SrcPos);
-      if Source.IsNext([stCOpen]) then
+      if Source.IsNext(stCOpen) then
         CbStart(q,true);
      end;
 
@@ -870,8 +880,7 @@ begin
 
   stQuestionMark: //interface
    begin
-    p.sphere:=Sphere;
-    p.index:=0;
+    p.s(Sphere,0);
     LookUpDecl_Lazy(p.index,nx,SrcPos,fqn);
     st:=Source.Token;
     case st of
@@ -912,8 +921,7 @@ begin
   stOpSub,stTilde://'-','~': destructor?
     if Source.IsNextID([stPOpen,stPClose,stCOpen]) then
      begin
-      p.sphere:=Sphere;
-      p.index:=0;
+      p.s(Sphere,0);
       LookUpDecl_Lazy(p.index,nx,SrcPos,fqn);
       //ParseSignature? destructor doesn't have arguments/overloads
       Source.Skip(stPOpen);
@@ -978,7 +986,7 @@ begin
 }
 
   stColon:
-    if Source.IsNext([stIdentifier]) then
+    if Source.IsNext(stIdentifier) then
      begin
       ID(nx,nn,SrcPos);
       p:=Add(ns,lChildren,nType,6,
@@ -1094,7 +1102,7 @@ begin
       try
         ss.OnError:=Source.OnError;//?
         ss.LoadFromFile(fn);
-        if ss.IsNext([st_EOF]) then
+        if ss.IsNext(st_EOF) then
           ns.none //raise?
         else
          begin
@@ -1152,8 +1160,8 @@ begin
     offset:=OffsetUseDefault;//default
     p.none;//default
     fn:=Source.GetID(SrcPos);
-    if Source.IsNext([stColon]) then
-      if Source.IsNext([stCOpen]) then //TODO move this into LookUpType?
+    if Source.IsNext(stColon) then
+      if Source.IsNext(stCOpen) then //TODO move this into LookUpType?
        begin
         p:=Add(nRecord,6,
           [kv(iParent,0,rd)
@@ -1166,7 +1174,7 @@ begin
       else
         p:=LookUpDecl_Type('field type');
     //offset
-    if Source.IsNext([stAt]) then
+    if Source.IsNext(stAt) then
      begin
       offset:=0;
       //TODO: replace following with ParseLiteral?
@@ -1192,7 +1200,7 @@ begin
             i:=q.v(vOffset);
          end;
         stOpSizeOf:
-          if Source.IsNext([stNumericLiteral]) then
+          if Source.IsNext(stNumericLiteral) then
            begin
             Source.Skip(st);//Source.GetID;
             i:=SystemWordSize;//ByteSize(Sphere,Type_number);
@@ -1220,8 +1228,8 @@ begin
             inc(offset,i);
        end;
      end;
-    //TODO: else if Source.IsNext([stCOpen]) then tt:=ttProperty?
-    if Source.IsNext([stSemiColon]) then
+    //TODO: else if Source.IsNext(stCOpen) then tt:=ttProperty?
+    if Source.IsNext(stSemiColon) then
       if p.IsNone then
        begin
         Source.Error('record field requires type declaration');
@@ -1378,13 +1386,13 @@ begin
         until not p0.Next(r);
         pUntyped.none;
        end;
-      if Source.IsNext([stDefine]) then //default value
+      if Source.IsNext(stDefine) then //default value
        begin
         q:=ParseLiteral(Source.Token,nil);
         Sphere.SetRef(Local(q),iParent,Signature);
        end;
       AddArgument(q);
-      if Source.IsNext([stComma]) or Source.IsNext([stSemiColon]) then
+      if Source.IsNext(stComma) or Source.IsNext(stSemiColon) then
         ;//skip
      end;
     stComma:
@@ -1395,7 +1403,7 @@ begin
       if byref then
         Source.Error('default value on by-reference-argument not supported');
       AddArgument(q);
-      if not Source.IsNext([stComma]) then
+      if not Source.IsNext(stComma) then
         Source.Error('argument with default value but no type'+
           ' requires a subsequent argument with type');
      end;
@@ -1412,7 +1420,7 @@ begin
   //TODO: check default values with type
   if Sphere[ns].k<>nNameSpace then //nRecord,nInterface,nTypeDecl
     Sphere.SetVal(Local(Signature),iSubject,0,ns);
-  if Source.IsNext([stColon]) then
+  if Source.IsNext(stColon) then
     Sphere.SetRef(Local(Signature),iReturnType,LookUpDecl_Type('returns type'))
   else
     if CloseToken=stBClose then
@@ -1435,7 +1443,7 @@ begin
   stIdentifier:
    begin
     ID(nx,nn,SrcPos);
-    if Source.IsNext([stDefine]) then
+    if Source.IsNext(stDefine) then
       ParseLiteral(Source.Token,@i);
     if Add(Local(p),lChildren,nConstant,6,nx,
       [kn(iType,p)
@@ -1469,7 +1477,7 @@ var
   q:xNode;
 begin
   //assert previous token stCOpen
-  while not(Source.IsNext([stCClose])) and Source.NextToken(st) do
+  while not(Source.IsNext(stCClose)) and Source.NextToken(st) do
   case st of
 
   stIdentifier:

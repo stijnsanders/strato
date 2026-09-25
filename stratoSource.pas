@@ -28,9 +28,9 @@ type
     procedure LoadFromFile(const FilePath:string);
     function NextToken(var st:TStratoToken):boolean;
     function Token:TStratoToken; //advances index
-    function IsNext(const st:array of TStratoToken):boolean; //advances index on true!
+    function IsNext(st:TStratoToken):boolean; overload; //advances index on true!
+    function IsNext(const st:array of TStratoToken):boolean; overload; //advances index on true!
     function IsNextID(const st:array of TStratoToken):boolean; //(doesn't advance index)
-    function IsNextBetween(st1,st2:TStratoToken):boolean;//(doesn't advance index)
     procedure Skip(st:TStratoToken);
     function GetID(var SrcPos: xSrcPos): UTF8String;
     function GetStr: UTF8String;
@@ -134,6 +134,17 @@ begin
   PeekToken(FTA);
 end;
 
+function TStratoSource.IsNext(st:TStratoToken): boolean;
+begin
+  if FTokens[FTA].Token=st then
+   begin
+    Result:=true;
+    PeekToken(FTA);//advance
+   end
+  else
+    Result:=false;
+end;
+
 function TStratoSource.IsNext(const st: array of TStratoToken): boolean;
 var
   i,j,l:cardinal;
@@ -216,11 +227,6 @@ begin
       Result:=false;
 end;
 
-function TStratoSource.IsNextBetween(st1, st2: TStratoToken): boolean;
-begin
-  Result:=(st1<=FTokens[FTA].Token) and (st2>=FTokens[FTA].Token);
-end;
-
 procedure TStratoSource.Skip(st: TStratoToken);
 begin
   if st=FTokens[FTA].Token then PeekToken(FTA);
@@ -241,7 +247,7 @@ end;
 function TStratoSource.GetStrs: UTF8String;
 begin
   Result:=GetStr;
-  while IsNext([stStringLiteral]) do
+  while IsNext(stStringLiteral) do
     Result:=Result+GetStr;
 end;
 

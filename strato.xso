@@ -49,6 +49,7 @@ __filetostr(fn:string):string{$$201;}
 __strtofile(fn,data:string){$$202;}
 __filetomem(fn:string):pointer{$$203;}
 __memtofile(p:pointer;size:number;fn:string){$$204;}
+__commandline:string{$$205;}
 
 //previously "oo.xs"
 

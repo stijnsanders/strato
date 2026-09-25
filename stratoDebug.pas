@@ -15,17 +15,7 @@ procedure StratoDumpSphereData(const fn:string;ReverseFilesOrder:boolean);
 var
   IncludeDictionaryNodes:boolean;
 
-const
-  TokenName:array[TStratoToken] of UTF8String=(
-    'id','string','numeric','',
-    ';',',','.',':','=','@','^','?','&','$','#','~',
-    '(',')','{','}','[',']',
-    '---',':::','???','!!!','...','@@','@@@','??','##',
-    ':=','+=','-=','*=','/=','%=','||=','&&=',
-    '==','<>','<','<=','>','>=','&&','||','!','|!',
-    '+','-','*','/','%','++','--','<<','>>','..',
-    '<<<','>>>','@?','?=',
-    '','EOF','');
+{$I stratoTokens_N.inc}
 
 implementation
 
@@ -227,7 +217,7 @@ begin
         vOffset:
           Result:=Result+' @'+IntToStr8(integer(q.v));
         vOperator:
-          Result:=Result+' _="'+TokenName[TStratoToken(q.v)]+'"';
+          Result:=Result+' _="'+StratoTokenNames[TStratoToken(q.v)]+'"';
 
         iSubject:
           Result:=Result+' subject='+rr(q);

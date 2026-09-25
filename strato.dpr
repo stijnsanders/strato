@@ -23,7 +23,8 @@ uses
   stratoExec in 'stratoExec.pas',
   stratoDebugView in 'stratoDebugView.pas' {frmDebugView},
   stratoGenTools in 'stratoGenTools.pas',
-  stratoGenPas in 'stratoGenPas.pas';
+  stratoGenPas in 'stratoGenPas.pas',
+  stratoTokGen in 'stratoTokGen.pas';
 
 var
   s:TStratoSource;
@@ -52,7 +53,7 @@ var
 
 var
   DoRun,DoDebug,DoRunTime,DoInlineErrors,DoDumpHRF,DoDumpHRR:boolean;
-  DoDump,DoDumpHR,DoPascal,LastFN:string;
+  DoDump,DoDumpHR,DoPascal,DoDebugBPs,LastFN:string;
 
 begin
   if ParamCount=0 then
@@ -70,8 +71,10 @@ begin
     Writeln('  -I <filename>  import sphere');
     Writeln('  -E             inline errors into sphere as binary entries');
     Writeln('  -D             enable debug viewer');
+    Writeln('  -B <breakpoint(s)> debug using these breakpoints');
     Writeln('  -X             shorthand for -EUHD');
     Writeln('  -P <filename>  generate Pascal source');
+    Writeln('  -Z <filename>  generate tokenizer source');
 
     //TODO: export LLVMIR
     //TODO: params from file
@@ -91,6 +94,7 @@ begin
       DoDumpHRF:=false;
       DoDumpHRR:=true;
       DoPascal:='';
+      DoDebugBPs:='';
       LastFN:='';
 
       ec:=0;
@@ -123,6 +127,11 @@ begin
               DoPascal:=xNext;
              end;
             'D':DoDebug:=true;
+            'B':
+             begin
+              DoDebug:=true;//?
+              DoDebugBPs:=xNext;
+             end;
             'U':DoDump:=xNext;
             'H':DoDumpHR:=xNext;
             'F':DoDumpHRF:=true;
@@ -142,6 +151,7 @@ begin
               DoInlineErrors:=true;
               DoDebug:=true;
              end;
+            'Z':StratoGenerateTokenizer(xNext);
             else
               Writeln('unknown switch "'+x[j]+'"');
             end;
@@ -199,7 +209,7 @@ if ec=0 then begin
           try
             s.LoadFromFile(x);
             LastFN:=x;//used by -X above
-            if not s.IsNext([st_EOF]) then
+            if not s.IsNext(st_EOF) then
              begin
               p:=TStratoParser.Create(TStratoSphere.Create,s,DoInlineErrors);
               try
@@ -258,7 +268,7 @@ end;
         //run
         if DoRun then
          begin
-          m:=TStratoMachine.Create(DoDebug);
+          m:=TStratoMachine.Create(DoDebug,DoDebugBPs);
           try
             m.Run;
           finally
@@ -291,4 +301,4 @@ end;
         ExitCode:=1;
        end;
     end;
-end.
+  end.

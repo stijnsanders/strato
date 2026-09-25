@@ -35,7 +35,7 @@ type
     procedure lvStackData(Sender: TObject; li: TListItem);
     procedure lvMemData(Sender: TObject; li: TListItem);
   public
-    constructor Create(DoDebug:boolean=false);
+    constructor Create(DoDebug:boolean=false;const Breakpoints:string='');
     destructor Destroy; override;
     procedure Run;
   end;
@@ -49,7 +49,8 @@ const
   InitialMemSize=$100000;//?
   InitialStackSize=$10000;//?
 
-  NtoV_Margin=$400;
+  //NtoV_Base=1 shl ?;
+  NtoV_Base=10000;//TODO: auto-increase on really lots of spheres
 
 {$IFDEF DEBUG}
 type
@@ -73,7 +74,7 @@ end;
 
 { TStratoMachine }
 
-constructor TStratoMachine.Create(DoDebug:boolean);
+constructor TStratoMachine.Create(DoDebug:boolean;const Breakpoints:string);
 begin
   inherited Create;
   FMemSize:=InitialMemSize;
@@ -83,14 +84,20 @@ begin
   FGlobalsSize:=0;
   FGlobalsIndex:=0;
   FDebugCount:=0;
+  stackBase:=nil;
   FData:=TStratoSphere.Create;
   //TODO: restore previous position
   if DoDebug then
    begin
+    IncludeDictionaryNodes:=true;
     FDebugView:=TfrmDebugView.Create(nil);
     FDebugView.lvStack.OnData:=lvStackData;
     FDebugView.lvMem.OnData:=lvMemData;
-    IncludeDictionaryNodes:=true;
+    if Breakpoints<>'' then
+     begin
+      FDebugView.txtBreakPoints.Text:=Breakpoints;
+      FDebugView.btnRunTo.Click;
+     end;
    end
   else
     FDebugView:=nil;
@@ -98,32 +105,28 @@ end;
 
 destructor TStratoMachine.Destroy;
 begin
-  VirtualFree(FMem,0,MEM_RELEASE);
-  FreeAndNil(FDebugView);
   FreeAndNil(FData);
+  FreeAndNil(FDebugView);
+  VirtualFree(FMem,0,MEM_RELEASE);
+  if stackBase<>nil then VirtualFree(stackBase,0,MEM_RELEASE);
   inherited;
 end;
 
 function TStratoMachine.VtoN(v:cardinal):xNode;
 var
-  i,j:cardinal;
+  i,x:cardinal;
 begin
-  if v<=NtoV_Margin then Result.none else
+  if v<=NtoV_Base then Result.none else
    begin
-    i:=0;
-    j:=v-NtoV_Margin;
-    while (i<SpheresCount) and (j>=Spheres[i].kCount) do
-     begin
-      dec(j,Spheres[i].kCount);
-      inc(i);
-     end;
-    if i=SpheresCount then
-      if j<(FData as TStratoSphere).kCount then
-        Result.s(FData as TStratoSphere,j)
-      else
-        Result.none //raise Exception.Create('Unexpected node reference')
+    i:=(v mod NtoV_Base)-1;//(v and (NtoV_Base-1))-1;
+    x:=v div NtoV_Base;//v shr ...
+    if i<SpheresCount then
+      Result.s(Spheres[i],x)
     else
-      Result.s(Spheres[i],j);
+    if i=SpheresCount then
+      Result.s(FData as TstratoSphere,x)
+    else
+      Result.none; //raise Exception.Create('Unexpected node reference')
    end;
 end;
 
@@ -131,15 +134,10 @@ function TStratoMachine.NtoV(n:xNode):cardinal;
 var
   i:cardinal;
 begin
-  if n.IsNone then Result:=NtoV_Margin else
+  if n.IsNone then Result:=NtoV_Base else
    begin
-    if n.sphere=FData then i:=SpheresCount else i:=SphereIndex(n.sphere)-1;
-    Result:=NtoV_Margin+n.index;
-    while (i<>0) do
-     begin
-      dec(i);
-      inc(Result,Spheres[i].kCount);
-     end;
+    if n.sphere=FData then i:=SpheresCount+1 else i:=SphereIndex(n.sphere);
+    Result:=(NtoV_Base*n.Index) or i;
    end;
 end;
 
@@ -157,6 +155,9 @@ begin
 
   //allocate globals
   FGlobalsIndex:=0;
+  if SpheresCount=0 then
+    raise Exception.Create('No program loaded to run')
+  else
   for i:=0 to SpheresCount-1 do
    begin
     p:=Spheres[i].r(0,lSphere_Globals);
@@ -471,7 +472,7 @@ var
             li:=FDebugView.lvStackTrace.Items.Add;
             li.Caption:=PtrToStr(p);
             Peek(p,pointer(v));
-            if v<NtoV_Margin then
+            if v<NtoV_Base then
              begin
               li.SubItems.Add(IntToStr(v));
               li.SubItems.Add('');
@@ -530,45 +531,303 @@ var
   ipt:xKey;
 begin
   OpCount:=0;
-  stackBase:=VirtualAlloc(nil,InitialStackSize,
-    MEM_RESERVE or MEM_COMMIT,PAGE_READWRITE);//MEM_LARGE_PAGES?
-  try
-    stackTop:=stackBase;
-    ip:=Entry;
-    ep:=nil;
-    new:=true;
-    cp:=nil;
-    vp:=nil;
-    vt.none;
+  if stackBase=nil then
+    stackBase:=VirtualAlloc(nil,InitialStackSize,
+      MEM_RESERVE or MEM_COMMIT,PAGE_READWRITE);//MEM_LARGE_PAGES?
+  stackTop:=stackBase;
+  ip:=Entry;
+  ep:=nil;
+  new:=true;
+  cp:=nil;
+  vp:=nil;
+  vt.none;
 
-    while not(ip.IsNone) do
-     begin
+  while not(ip.IsNone) do
+   begin
+    //try
+    //TODO: check ip with block base pointers
+    ipNext.none;
+    ipt:=ip.Key;
 
-      if RefreshDebugView then
-        asm int 3 end;//DebugBreak;//forced breakpoint
+    if RefreshDebugView then
+      asm int 3 end;//DebugBreak;//forced breakpoint
 
-      //try
+    case ipt of
 
-      //TODO: check ip with block base pointers
-      ipNext.none;
-      ipt:=ip.Key;
-      case ipt of
-
-      nCodeBlock:
-        if new then
+    nCodeBlock:
+      if new then
+       begin
+        CbStart(ip,cp);
+        vp:=nil;
+        vt.none;
+       end
+      else
+       begin
+        Pop(q1);
+        q1.Next(q2);
+        if q2.IsNone then
          begin
-          CbStart(ip,cp);
-          vp:=nil;
-          vt.none;
+          //resulting value
+          if ip.r(iReturnType).IsNone then
+           begin
+            //if vt<>0 then raise?throw?
+            vt.none;
+            vp:=nil;
+           end
+          else
+           begin
+            if vt.IsNone then
+              raise Exception.Create('CodeBlock with ReturnType didn''t resolve to value');
+           end;
+
+{
+          //resulting value
+          vt:=ip.r(iReturnType);
+          if vt.x=0 then
+           begin
+            vp:=nil;
+           end
+          else
+           begin
+            vp:=cp;
+            //assert resulting value's nVar.vOffset=0
+           end;
+}
+          //code-block done (see also StartCB)
+          stackTop:=cp;//dec(xValue(stackTop),Sphere.n(cb0,vByteSize)^);
+          Pop(q1);//=ip (used for debug display)
+          Pop(cp);
          end
         else
          begin
-          Pop(q1);
-          q1.Next(q2);
+          //next statement
+          Push(q1);
+          Push(ip);
+          ipNext:=q2;
+          vt.none;
+          vp:=nil;
+         end;
+       end;
+
+    nFCall,//static call (no subject)
+    nVCall,//virtual call (subject.target)
+    nICall://inherited call (subject.target)
+     begin
+      if new then
+        if ipt=nVCall then x:=0 else x:=1
+      else
+        x:=Pass;
+      case x of
+        0://start, evaluate subject
+          Next(1,ip.r(iSubject));
+
+        1://subject evaluated, arguments?
+         begin
+          q2.none;//see below
+          case ipt of
+            nFCall:
+             begin
+              p1:=ip.r(iTarget);
+              if p1.IsNone then RunError(ip,'F-Call target not defined');
+             end;
+            nVCall:
+             begin
+              if vt.IsNone then RunError(ip,'V-Call subject not resolved');
+              p1:=StratoFnCallFindVirtual(ip,vt,vp);
+              if p1.IsNone then
+               begin
+                RunError(ip,'V-Call target implementation not found');
+                q2.none;
+               end
+              else
+               begin
+                Push(p1);
+                if p1.Key=nCtor then q2:=VtoN(PCardinal(vp)^);
+               end;
+             end;
+            nICall:
+             begin
+              p1:=ip.r(iSubject);
+              if p1.IsNone then RunError(ip,'I-Call subject not defined');
+              p1:=ip.r(iTarget);
+              if p1.IsNone then RunError(ip,'I-Call target not defined');
+             end;
+          end;
+
+          if not p1.IsNone then
+           begin
+            Next(3);
+            CbStart(p1.r(iBody),xp);//not cp here! see below
+
+            case p1.Key of
+
+              nOverload,nPropGet,nPropSet:
+               begin
+                p2.Start(p1.r(iBody),lCodeBlock_Locals);
+                if p2.Next(p2) and (p2.Key=nThis) then
+                 begin
+                  //assert "@@".vOffset=0
+                  //TODO: check SameType(t,ResType("@@"?
+                  case vt.Key of //auto-dereference
+                    nClass:PCardinal(xp)^:=NtoV(q1);
+                    else PCardinal(xp)^:=cardinal(vp);
+                  end;
+                 end;
+                end;
+
+              nCtor:
+               begin
+                PCardinal(xp)^:=0;//"@@":this default nil until malloc
+                yp:=xp;
+                inc(xValue(yp),SystemWordSize);
+                //calling an inherited constructor?
+                q1.none;
+                if (ipt=nFCall) or (cp=nil) then p2.none else
+                 begin
+                  zp:=cp;
+                  Peek(zp,p2);
+                  q1:=p2.r(iParent);
+                  while q1.Key=nCodeBlock do
+                   begin
+                    Peek(zp,zp);
+                    if zp=nil then
+                     begin
+                      p2.none;
+                      q1.none;
+                     end
+                    else
+                     begin
+                      Peek(zp,p2);
+                      q1:=p2.r(iParent);
+                     end;
+                   end;
+                 end;
+                if q1.Key=nCtor then
+                 begin
+                  inc(xValue(zp),SystemWordSize*2); //var "?@@"
+                  PCardinal(yp)^:=PCardinal(zp)^;
+                 end
+                else
+                 begin
+                  //q2 from subject evaluation above!
+                  if q2.IsNone then q2:=ip.r(iTarget).r(iSignature).r(iReturnType);
+                  PCardinal(yp)^:=NtoV(q2);
+                 end;
+               end;
+
+              nDtor:
+                PCardinal(xp)^:=NToV(q2);//assert "@@".vOffset=0
+
+              else
+                raise Exception.Create('//TODO:');
+            end;
+
+            //arguments to evaluate first?
+            q1.Start(ip,lArguments);
+            if not(q1.Next(q1)) then
+             begin
+              cp:=xp;
+              //ipNext:= by CbStart above
+             end
+            else
+             begin
+              Push(xp);//new cp after arguments
+              if ipt=nVCall then Push(p1);//nOverload
+              Push(ip.r(iTarget).r(iSignature).rl(lArguments));//first sig arg
+              Push(p2);//nCallArg
+              Next(2,q1.r(iValue));
+             end;
+           end;
+
+          vp:=nil;
+          vt.none;
+         end;
+
+        2://store argument value
+         begin
+          Pop(p2);//nCallArg
+          Pop(q2);//nVarDecl
+          if ipt=nVCall then Pop(p1) else p1:=ip.r(iTarget);
+          Pop(xp);//new cp after arguments
+
+          if q2.Next(r1) then
+           begin
+            r1:=r1.r(iArgVar);
+            if r1.IsNone then
+              RunError(ip,'Unable to obtain argument variable');
+           end
+          else
+            RunError(ip,'Unexpectedly ran out of signature arguments');
+
+          //store value
+          yp:=xp;
+          inc(xValue(yp),r1.v(vOffset));
+          if p2.Key=nSigArgByRef then
+            PCardinal(yp)^:=cardinal(vp) //Move(vp,yp^,SystemWordSize)
+          else
+            Move(vp^,yp^,ByteSize(vt));
+
+          //next argument
+          p2.Next(q2);
           if q2.IsNone then
            begin
-            //resulting value
-            if ip.r(iReturnType).IsNone then
+            //all done, do first of body (StartCB already done by Pass=1 above)
+            cp:=xp;
+            q1:=p1.r(iBody);
+            //Sphere.First(q1,fItems,ipNext,);
+            ipNext.Start(q1,lCodeBlock_Statements);
+            ipNext.Next(ipNext);
+           end
+          else
+           begin
+            Push(xp);//new cp after arguments
+            if ipt=nVCall then Push(p1);//nOverload
+            Push(q2);//nVarDecl
+            Push(p2);//nCallArg
+            Next(2,p2.r(iValue));
+           end;
+
+          vp:=nil;
+          vt.none;
+         end;
+
+        3://post-block (returned value?)
+         begin
+          if ipt=nVCall then Pop(p1) else p1:=ip.r(iTarget);
+
+          //inherited constructor? propagate this
+          if p1.Key=nCtor then
+           begin
+            xp:=stackTop;//previous 'cp' from freshly ended codeblock of body
+            inc(xValue(xp),SystemWordSize*4);
+            if ipt=nVCall then inc(xValue(xp),SystemWordSize);
+            vp:=xp;
+            inc(xValue(xp),SystemWordSize);
+            vt:=VtoN(PCardinal(xp)^);
+
+            //calling an inherited constructor?
+            if cp=nil then p2.none else
+             begin
+              xp:=cp;
+              Peek(xp,p2);
+              while p2.r(iParent).Key=nCodeBlock do
+               begin
+                Peek(xp,xp);
+                if xp=nil then p2.none else Peek(xp,p2);
+               end;
+             end;
+            if p2.r(iParent).Key=nCtor then
+             begin
+              inc(xValue(xp),SystemWordSize);
+              PCardinal(xp)^:=PCardinal(vp)^;
+             end;
+           end
+          else
+           begin
+            //check return value
+            q2:=p1.r(iSignature).r(iReturnType);
+            //if q2<>0 and p1.iBody.iReturnType=0 then?
+            if q2.IsNone then
              begin
               //if vt<>0 then raise?throw?
               vt.none;
@@ -576,1006 +835,745 @@ begin
              end
             else
              begin
+              //assert return value first (past this)
               if vt.IsNone then
-                raise Exception.Create('CodeBlock with ReturnType didn''t resolve to value');
+               begin
+                vt:=q2;
+                q1.Start(p1.r(iBody),lCodeBlock_Locals);
+                q1.Next(q2);
+                if q2.Key=nThis then q1.Next(q2);
+                xp:=stackTop;//previous 'cp' from freshly ended codeblock of body
+                inc(xValue(xp),SystemWordSize*4);
+                if ipt=nVCall then inc(xValue(xp),SystemWordSize);
+                inc(xValue(xp),q2.v(vOffset));
+                vp:=xp;
+               end;
+              //else check SameType(Sphere,vt,q2)?
              end;
-
-{
-            //resulting value
-            vt:=ip.r(iReturnType);
-            if vt.x=0 then
-             begin
-              vp:=nil;
-             end
-            else
-             begin
-              vp:=cp;
-              //assert resulting value's nVar.vOffset=0
-             end;
-}
-            //code-block done (see also StartCB)
-            stackTop:=cp;//dec(xValue(stackTop),Sphere.n(cb0,vByteSize)^);
-            Pop(q1);//=ip (used for debug display)
-            Pop(cp);
-           end
-          else
-           begin
-            //next statement
-            Push(q1);
-            Push(ip);
-            ipNext:=q2;
-            vt.none;
-            vp:=nil;
            end;
          end;
+      end;
+     end;
 
-      nFCall,//static call (no subject)
-      nVCall,//virtual call (subject.target)
-      nICall://inherited call (subject.target)
+    nSCall://system call
+     begin
+      q1.Start(ip,lArguments);
+      if q1.Next(q2) then
+        RunError(ip,'interpreter doesn''t support syscalls with arguments');
+      PerformSysCall(ip,cp);
+     end;
+
+    nClass:
+      //TODO: all Sphere.Add(nClass do Sphere.Add(nClassRef onbeforehand?
+     begin
+      q1.sphere:=(FData as TStratoSphere);
+      q1.index:=q1.sphere.Add(nClassRef,2);
+      q1.sphere.SetRef(q1.index,iTarget,ip);
+      PCardinal(Volatile(q1))^:=NToV(ip);
+     end;
+
+    nVar,nVarReadOnly,nVarByRef,nThis://calculate address
+     begin
+      //assert vp=nil
+      vt:=ip.r(iType);
+      vp:=nil;//calulated below
+      q1:=ip;
+      while not q1.IsNone do
        begin
-        if new then
-          if ipt=nVCall then x:=0 else x:=1
-        else
-          x:=Pass;
-        case x of
-          0://start, evaluate subject
-            Next(1,ip.r(iSubject));
-
-          1://subject evaluated, arguments?
+        q2.none;//next...
+        case q1.Key of
+          nVar,nVarReadOnly,nThis://offset
            begin
-            q2.none;//see below
-            case ipt of
-              nFCall:
-               begin
-                p1:=ip.r(iTarget);
-                if p1.IsNone then RunError(ip,'F-Call target not defined');
-               end;
-              nVCall:
-               begin
-                if vt.IsNone then RunError(ip,'V-Call subject not resolved');
-                p1:=StratoFnCallFindVirtual(ip,vt,vp);
-                if p1.IsNone then
-                 begin
-                  RunError(ip,'V-Call target implementation not found');
-                  q2.none;
-                 end
-                else
-                 begin
-                  Push(p1);
-                  if p1.Key=nCtor then q2:=VtoN(PCardinal(vp)^);
-                 end;
-               end;
-              nICall:
-               begin
-                p1:=ip.r(iSubject);
-                if p1.IsNone then RunError(ip,'I-Call subject not defined');
-                p1:=ip.r(iTarget);
-                if p1.IsNone then RunError(ip,'I-Call target not defined');
-               end;
-            end;
-
-            if not p1.IsNone then
-             begin
-              Next(3);
-              CbStart(p1.r(iBody),xp);//not cp here! see below
-
-              case p1.Key of
-
-                nOverload,nPropGet,nPropSet:
-                 begin
-                  p2.Start(p1.r(iBody),lCodeBlock_Locals);
-                  if p2.Next(p2) and (p2.Key=nThis) then
-                   begin
-                    //assert "@@".vOffset=0
-                    //TODO: check SameType(t,ResType("@@"?
-                    case vt.Key of //auto-dereference
-                      nClass:PCardinal(xp)^:=NtoV(q1);
-                      else PCardinal(xp)^:=cardinal(vp);
-                    end;
-                   end;
-                  end;
-
-                nCtor:
-                 begin
-                  PCardinal(xp)^:=0;//"@@":this default nil until malloc
-                  yp:=xp;
-                  inc(xValue(yp),SystemWordSize);
-                  //calling an inherited constructor?
-                  q1.none;
-                  if (ipt=nFCall) or (cp=nil) then p2.none else
-                   begin
-                    zp:=cp;
-                    Peek(zp,p2);
-                    q1:=p2.r(iParent);
-                    while q1.Key=nCodeBlock do
-                     begin
-                      Peek(zp,zp);
-                      if zp=nil then
-                       begin
-                        p2.none;
-                        q1.none;
-                       end
-                      else
-                       begin
-                        Peek(zp,p2);
-                        q1:=p2.r(iParent);
-                       end;
-                     end;
-                   end;
-                  if q1.Key=nCtor then
-                   begin
-                    inc(xValue(zp),SystemWordSize*2); //var "?@@"
-                    PCardinal(yp)^:=PCardinal(zp)^;
-                   end
-                  else
-                   begin
-                    //q2 from subject evaluation above!
-                    if q2.IsNone then q2:=ip.r(iTarget).r(iSignature).r(iReturnType);
-                    PCardinal(yp)^:=NtoV(q2);
-                   end;
-                 end;
-
-                nDtor:
-                  PCardinal(xp)^:=NToV(q2);//assert "@@".vOffset=0
-
-                else
-                  raise Exception.Create('//TODO:');
-              end;
-
-              //arguments to evaluate first?
-              q1.Start(ip,lArguments);
-              if not(q1.Next(q1)) then
-               begin
-                cp:=xp;
-                //ipNext:= by CbStart above
-               end
-              else
-               begin
-                Push(xp);//new cp after arguments
-                if ipt=nVCall then Push(p1);//nOverload
-                Push(ip.r(iTarget).r(iSignature).rl(lArguments));//first sig arg
-                Push(p2);//nCallArg
-                Next(2,q1.r(iValue));
-               end;
-             end;
-
-            vp:=nil;
-            vt.none;
+            inc(xValue(vp),q1.v(vOffset));
+            q2:=q1.r(iParent);
            end;
 
-          2://store argument value
+          nVarByRef:
            begin
-            Pop(p2);//nCallArg
-            Pop(q2);//nVarDecl
-            if ipt=nVCall then Pop(p1) else p1:=ip.r(iTarget);
-            Pop(xp);//new cp after arguments
-
-            if q2.Next(r1) then
-             begin
-              r1:=r1.r(iArgVar);
-              if r1.IsNone then
-                RunError(ip,'Unable to obtain argument variable');
-             end
-            else
-              RunError(ip,'Unexpectedly ran out of signature arguments');
-
-            //store value
-            yp:=xp;
-            inc(xValue(yp),r1.v(vOffset));
-            if p2.Key=nSigArgByRef then
-              PCardinal(yp)^:=cardinal(vp) //Move(vp,yp^,SystemWordSize)
-            else
-              Move(vp^,yp^,ByteSize(vt));
-
-            //next argument
-            p2.Next(q2);
-            if q2.IsNone then
-             begin
-              //all done, do first of body (StartCB already done by Pass=1 above)
-              cp:=xp;
-              q1:=p1.r(iBody);
-              //Sphere.First(q1,fItems,ipNext,);
-              ipNext.Start(q1,lCodeBlock_Statements);
-              ipNext.Next(ipNext);
-             end
-            else
-             begin
-              Push(xp);//new cp after arguments
-              if ipt=nVCall then Push(p1);//nOverload
-              Push(q2);//nVarDecl
-              Push(p2);//nCallArg
-              Next(2,p2.r(iValue));
-             end;
-
-            vp:=nil;
-            vt.none;
+            xValue(vp):=PCardinal(vp)^;
+            q2.none;
            end;
 
-          3://post-block (returned value?)
+          nNameSpace://was global var
+            ;//end loop (assert vOffset set by init)
+          nCodeBlock://was local var
            begin
-            if ipt=nVCall then Pop(p1) else p1:=ip.r(iTarget);
-
-            //inherited constructor? propagate this
-            if p1.Key=nCtor then
+            //but to which code block: go up the chain
+            xp:=cp;
+            yp:=nil;
+            p2.none;
+            while (xp<>nil) and not(p2.IsSame(q1)) do
              begin
-              xp:=stackTop;//previous 'cp' from freshly ended codeblock of body
-              inc(xValue(xp),SystemWordSize*4);
-              if ipt=nVCall then inc(xValue(xp),SystemWordSize);
-              vp:=xp;
-              inc(xValue(xp),SystemWordSize);
-              vt:=VtoN(PCardinal(xp)^);
-
-              //calling an inherited constructor?
-              if cp=nil then p2.none else
-               begin
-                xp:=cp;
-                Peek(xp,p2);
-                while p2.r(iParent).Key=nCodeBlock do
-                 begin
-                  Peek(xp,xp);
-                  if xp=nil then p2.none else Peek(xp,p2);
-                 end;
-               end;
-              if p2.r(iParent).Key=nCtor then
-               begin
-                inc(xValue(xp),SystemWordSize);
-                PCardinal(xp)^:=PCardinal(vp)^;
-               end;
-             end
-            else
-             begin
-              //check return value
-              q2:=p1.r(iSignature).r(iReturnType);
-              //if q2<>0 and p1.iBody.iReturnType=0 then?
-              if q2.IsNone then
-               begin
-                //if vt<>0 then raise?throw?
-                vt.none;
-                vp:=nil;
-               end
-              else
-               begin
-                //assert return value first (past this)
-                if vt.IsNone then
-                 begin
-                  vt:=q2;
-                  q1.Start(p1.r(iBody),lCodeBlock_Locals);
-                  q1.Next(q2);
-                  if q2.Key=nThis then q1.Next(q2);
-                  xp:=stackTop;//previous 'cp' from freshly ended codeblock of body
-                  inc(xValue(xp),SystemWordSize*4);
-                  if ipt=nVCall then inc(xValue(xp),SystemWordSize);
-                  inc(xValue(xp),q2.v(vOffset));
-                  vp:=xp;
-                 end;
-                //else check SameType(Sphere,vt,q2)?
-               end;
+              yp:=xp;
+              Peek(xp,p2);//codeblock
+              Peek(xp,xp);//previous cp
              end;
+            if yp=nil then
+              RunError(ip,'local block not found on stack')
+            else
+              inc(xValue(vp),xValue(yp));
            end;
+          //nRecord://TODO: dereference pointer
+
+          nClass,nRecord:;//just calculate offset, assert here via nField...
+
+          else RunError(ip,'invalid relativity chain');
         end;
+        q1:=q2;//next!
        end;
+     end;
 
-      nSCall://system call
-       begin
-        q1.Start(ip,lArguments);
-        if q1.Next(q2) then
-          RunError(ip,'interpreter doesn''t support syscalls with arguments');
-        PerformSysCall(ip,cp);
-       end;
+    nConstant:
+      LiteralToMemory(ip.r(iValue),Volatile(ip.r(iType)));
+    nLiteral:
+      LiteralToMemory(ip,Volatile(ip.r(iType)));
 
-      nClass:
-        //TODO: all Sphere.Add(nClass do Sphere.Add(nClassRef onbeforehand?
-       begin
-        q1.sphere:=(FData as TStratoSphere);
-        q1.index:=q1.sphere.Add(nClassRef,2);
-        q1.sphere.SetRef(q1.index,iTarget,ip);
-        PCardinal(Volatile(q1))^:=NToV(ip);
-       end;
-
-      nVar,nVarReadOnly,nVarByRef,nThis://calculate address
-       begin
-        //assert vp=nil
-        vt:=ip.r(iType);
-        vp:=nil;//calulated below
-        q1:=ip;
-        while not q1.IsNone do
+    nArrayIndex:
+      case Pass of
+        0://start, evaluate subject
+          Next(1,ip.r(iSubject));
+        1://evaluate index
          begin
-          q2.none;//next...
-          case q1.Key of
-            nVar,nVarReadOnly,nThis://offset
-             begin
-              inc(xValue(vp),q1.v(vOffset));
-              q2:=q1.r(iParent);
-             end;
+          if vt.IsNone then
+            RunError(ip,'array to index into didn''t resolve');
+          Push(vp);
+          //TODO: more than one array index
+          q1.Start(ip,lArguments);
+          q1.Next(q1);
+          Next(2,q1.r(iValue));//nCalArg
+         end;
+        2://combine
+         begin
+          Pop(xp);
 
-            nVarByRef:
-             begin
-              xValue(vp):=PCardinal(vp)^;
-              q2.none;
-             end;
+          //assert vt=IntrinsicType(itNumber)
+          vt:=ip.r(iType);
+          vp:=pointer(xValue(xp)+xValue(vp^)*ByteSize(vt));
+         end;
+      end;
 
-            nNameSpace://was global var
-              ;//end loop (assert vOffset set by init)
-            nCodeBlock://was local var
-             begin
-              //but to which code block: go up the chain
-              xp:=cp;
-              yp:=nil;
-              p2.none;
-              while (xp<>nil) and not(p2.IsSame(q1)) do
+    nField:
+      case Pass of
+        0://start, evaluate subject
+          Next(1,ip.r(iSubject));
+        1://evaluate target
+         begin
+          if vt.IsNone then
+            RunError(ip,'subject didn''t resolve');
+          //TODO: check vt and ip.fSubject.fTypeDecl?
+          Push(vt);
+          Push(vp);
+          Next(2,ip.r(iTarget));
+         end;
+        2://combine
+         begin
+          Pop(xp);
+
+          //auto-dereferencing
+          //TODO: calculate deference count parse-time?
+          Pop(p2);//subject type
+          while not p2.IsNone do
+           begin
+            p1:=p2;
+            p2.none;//default
+            case p1.Key of
+              nThis:
+                xp:=pointer(xValue(xp^));//assert p1.r(iType).NodeType=nClass
+              nVar,nVarReadOnly:
+                p2:=p1.r(iType);
+              nVarByRef:
                begin
-                yp:=xp;
-                Peek(xp,p2);//codeblock
-                Peek(xp,xp);//previous cp
+                xp:=pointer(xValue(xp^));
+                p2:=p1.r(iType);
                end;
-              if yp=nil then
-                RunError(ip,'local block not found on stack')
-              else
-                inc(xValue(vp),xValue(yp));
-             end;
-            //nRecord://TODO: dereference pointer
+              nPointer:
+               begin
+                xp:=pointer(xValue(xp^));
+                p2:=p1.r(iTarget);
+               end;
+              nClass:
+                xp:=pointer(xValue(xp^));
+            end;
+           end;
 
-            nClass,nRecord:;//just calculate offset, assert here via nField...
+          vp:=pointer(xValue(xp)+xValue(vp));
+          //vt:=vt;//assert same as ip.fSubject
+         end;
+      end;
 
-            else RunError(ip,'invalid relativity chain');
+    {
+    nOverload://resolve to address?
+     begin
+      vp:=pointer(ip);//?
+      vt:=Sphere.n(ip,fSignature)^;
+     end;
+    }
+
+
+    nUnaryOp:
+      case Pass of
+        0://evaluate operand
+         begin
+          x:=0;//default
+          case TStratoToken(ip.v(vOperator)) of
+            stOpSizeOf,stQuestionMark:
+              if ip.r(iRight).Key=nThis then
+               begin
+                if cp=nil then p2.none else
+                 begin
+                  xp:=cp;
+                  Peek(xp,p2);
+                  while p2.r(iParent).Key=nCodeBlock do
+                   begin
+                    Peek(xp,xp);
+                    if xp=nil then p2.none else Peek(xp,p2);
+                   end;
+                 end;
+                if p2.r(iParent).Key=nCtor then
+                 begin
+                  inc(xValue(xp),SystemWordSize*2); //var "?@@"
+                  case TStratoToken(ip.v(vOperator)) of
+                    stOpSizeOf:
+                      PCardinal(Volatile(IntrinsicTypes[itNumber]))^:=
+                        VtoN(PCardinal(xp)^).v(vByteSize);
+                    stQuestionMark:
+                      PCardinal(Volatile(IntrinsicTypes[itNumber]))^:=
+                        PCardinal(xp)^;
+                  end;
+                  x:=1;//skip Next() below
+                 end;
+               end;
           end;
-          q1:=q2;//next!
+          if x=0 then Next(1,ip.r(iRight));
          end;
-       end;
-
-      nConstant:
-        LiteralToMemory(ip.r(iValue),Volatile(ip.r(iType)));
-      nLiteral:
-        LiteralToMemory(ip,Volatile(ip.r(iType)));
-
-      nArrayIndex:
-        case Pass of
-          0://start, evaluate subject
-            Next(1,ip.r(iSubject));
-          1://evaluate index
-           begin
-            if vt.IsNone then
-              RunError(ip,'array to index into didn''t resolve');
-            Push(vp);
-            //TODO: more than one array index
-            q1.Start(ip,lArguments);
-            q1.Next(q1);
-            Next(2,q1.r(iValue));//nCalArg
-           end;
-          2://combine
-           begin
-            Pop(xp);
-
-            //assert vt=IntrinsicType(itNumber)
-            vt:=ip.r(iType);
-            vp:=pointer(xValue(xp)+xValue(vp^)*ByteSize(vt));
-           end;
-        end;
-
-      nField:
-        case Pass of
-          0://start, evaluate subject
-            Next(1,ip.r(iSubject));
-          1://evaluate target
-           begin
-            if vt.IsNone then
-              RunError(ip,'subject didn''t resolve');
-            //TODO: check vt and ip.fSubject.fTypeDecl?
-            Push(vt);
-            Push(vp);
-            Next(2,ip.r(iTarget));
-           end;
-          2://combine
-           begin
-            Pop(xp);
-
-            //auto-dereferencing
-            //TODO: calculate deference count parse-time?
-            Pop(p2);//subject type
-            while not p2.IsNone do
-             begin
-              p1:=p2;
-              p2.none;//default
-              case p1.Key of
-                nThis:
-                  xp:=pointer(xValue(xp^));//assert p1.r(iType).NodeType=nClass
-                nVar,nVarReadOnly:
-                  p2:=p1.r(iType);
-                nVarByRef:
-                 begin
-                  xp:=pointer(xValue(xp^));
-                  p2:=p1.r(iType);
-                 end;
-                nPointer:
-                 begin
-                  xp:=pointer(xValue(xp^));
-                  p2:=p1.r(iTarget);
-                 end;
-                nClass:
-                  xp:=pointer(xValue(xp^));
-              end;
-             end;
-
-            vp:=pointer(xValue(xp)+xValue(vp));
-            //vt:=vt;//assert same as ip.fSubject
-           end;
-        end;
-
-      {
-      nOverload://resolve to address?
-       begin
-        vp:=pointer(ip);//?
-        vt:=Sphere.n(ip,fSignature)^;
-       end;
-      }
-
-
-      nUnaryOp:
-        case Pass of
-          0://evaluate operand
-           begin
-            x:=0;//default
-            case TStratoToken(ip.v(vOperator)) of
-              stOpSizeOf,stQuestionMark:
-                if ip.r(iRight).Key=nThis then
-                 begin
-                  if cp=nil then p2.none else
-                   begin
-                    xp:=cp;
-                    Peek(xp,p2);
-                    while p2.r(iParent).Key=nCodeBlock do
-                     begin
-                      Peek(xp,xp);
-                      if xp=nil then p2.none else Peek(xp,p2);
-                     end;
-                   end;
-                  if p2.r(iParent).Key=nCtor then
-                   begin
-                    inc(xValue(xp),SystemWordSize*2); //var "?@@"
-                    case TStratoToken(ip.v(vOperator)) of
-                      stOpSizeOf:
-                        PCardinal(Volatile(IntrinsicTypes[itNumber]))^:=
-                          VtoN(PCardinal(xp)^).v(vByteSize);
-                      stQuestionMark:
-                        PCardinal(Volatile(IntrinsicTypes[itNumber]))^:=
-                          PCardinal(xp)^;
-                    end;
-                    x:=1;//skip Next() below
-                   end;
-                 end;
-            end;
-            if x=0 then Next(1,ip.r(iRight));
-           end;
-          1://TODO: move to runtime/namespaces/intrinsics
-            case TStratoToken(ip.v(vOperator)) of
-              stOpSub,stOpInc,stOpDec,stTilde:
-                if IsIntrinsicNumeric(vt) then
-                 begin
-                  x:=ByteSize(vt);
-                  xx:=0;
-                  Move(vp^,xx,x);
-                  case TStratoToken(ip.v(vOperator)) of
-                    stOpSub:xx:=-xx;
-                    stOpInc:xx:=xx+1;
-                    stOpDec:xx:=xx-1;
-                    stTilde:xx:=not(xx);//xx:=-(xx+1);?
-                  end;
-                  Move(xx,vp^,x);
-                  vt:=ip.r(iReturnType);
-                 end
-                else
-                  RunError(ip,'Unknown operation');
-              stOpNot:
-                if vt.IsSame(IntrinsicTypes[itBoolean]) then
-                  if PCardinal(vp)^=0 then PCardinal(vp)^:=1 else PCardinal(vp)^:=0
-                else
-                  RunError(ip,'Unknown operation');
-              stOpSizeOf:
+        1://TODO: move to runtime/namespaces/intrinsics
+          case TStratoToken(ip.v(vOperator)) of
+            stOpSub,stOpInc,stOpDec,stTilde:
+              if IsIntrinsicNumeric(vt) then
                begin
-                if vt.IsSame(IntrinsicTypes[itType]) then
-                  x:=ByteSize(VtoN(PCardinal(vp)^))
-                else
-                  x:=ByteSize(vt);
-                PCardinal(Volatile(IntrinsicTypes[itNumber]))^:=x;
-               end;
-              stQuestionMark://type of
-                if vt.Key=nClass then
-                 begin
-                  //live object? extract base class
-                  xp:=pointer(vp^);
-                  //inc(xValue(xp),Lookup(itObject,Name('_baseclass')).v(vOffset));
-                  dec(xValue(xp),SystemWordSize);//assert object._baseclass offset -4
-                  PCardinal(Volatile(IntrinsicTypes[itType]))^:=PCardinal(xp)^;
-                  //Sphere.Add(nClassRef,[iTarget,PxValue(xp)^]);?
-                 end
-                else
-                  PCardinal(Volatile(IntrinsicTypes[itType]))^:=NtoV(vt);
-              else RunError(ip,'Unknown operator');
-            end;
-        end;
-
-      nBinaryOp:
-        case Pass of
-          0://evaluate left
-            Next(1,ip.r(iLeft));
-          1://evaluate right
-           begin
-            //stored volatile on stack? keep it there!
-            xp:=stackTop;
-            inc(xValue(xp),SystemWordSize*2);
-            if cardinal(vp)>=cardinal(xp) then
-             begin
-              x:=ByteSize(vt);
-              Move(vp^,stackTop^,x);
-              inc(xValue(stackTop),x+SystemWordSize*2);
-              Push(x);
-              Push(0);
-             end
-            else
-              Push(vp);
-            Push(vt);
-            Next(2,ip.r(iRight));
-            vp:=nil;
-            vt.none;
-           end;
-          2://
-           begin
-            Pop(p1);
-            Pop(xp);
-            if xp=nil then //stored volatile? roll back!
-             begin
-              Pop(x);
-              dec(xValue(stackTop),x+SystemWordSize*2);
-              xp:=stackTop;
-              //inc(xValue(xp),SystemWordSize*2);
-             end;
-            case TStratoToken(ip.v(vOperator)) of
-              stOpEQ,stOpNEQ:
-                if SameType(vt,p1) then
-                 begin
-                  x:=ByteSize(vt);
-                  while (x<>0) and (PByte(vp)^=PByte(xp)^) do
-                   begin
-                    dec(x);
-                    inc(xValue(vp));
-                    inc(xValue(xp));
-                   end;
-                  Volatile(IntrinsicTypes[itBoolean]);//sets vp
-                  case TStratoToken(ip.v(vOperator)) of
-                    stOpEQ:
-                      if x=0 then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
-                    stOpNEQ:
-                      if x=0 then PCardinal(vp)^:=0 else PCardinal(vp)^:=1;
-                  end;
-                 end
-                else
-                  RunError(ip,'Unknown operation');
-              stOpAdd:
-                if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
-                 begin
-                  x:=ByteSize(p1);
-                  xx:=0;
-                  Move(xp^,xx,x);
-                  y:=ByteSize(vt);
-                  yy:=0;
-                  Move(vp^,yy,y);
-                  xx:=xx+yy;
-                  Move(xx,Volatile(ip.r(iReturnType))^,y);
-                 end
-                else
-                if p1.IsSame(IntrinsicTypes[itString]) and
-                   vt.IsSame(IntrinsicTypes[itString]) then
-                 begin
-                  //TODO: strings in memory (by runtime?)
-                  q1:=VtoN(PCardinal(xp)^);
-                  q2:=VtoN(PCardinal(vp)^);
-
-                  p2.sphere:=FData as TStratoSphere;
-                  p2.index:=p2.sphere.AddBinaryData(
-                    q1.sphere.BinaryData(q1.index)+
-                    q2.sphere.BinaryData(q2.index));
-                  PCardinal(Volatile(IntrinsicTypes[itString]))^:=NtoV(p2);
-                 end
-                else
-                  RunError(ip,'Unknown operation');
-              stOpSub,stOpMul,stOpDiv,stOpMod:
-                if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
-                 begin
-                  x:=ByteSize(p1);
-                  xx:=0;
-                  Move(xp^,xx,x);
-                  y:=ByteSize(vt);
-                  yy:=0;
-                  Move(vp^,yy,y);
-                  case TStratoToken(ip.v(vOperator)) of
-                    stOpSub:xx:=xx-yy;
-                    stOpMul:xx:=xx*yy;
-                    stOpDiv:xx:=xx div yy;
-                    stOpMod:xx:=xx mod yy;
-                  end;
-                  Move(xx,Volatile(ip.r(iReturnType))^,x);
-                 end
-                else
-                  RunError(ip,'Unknown operation');
-              stOpLT,stOpLTE,stOpGT,stOpGTE:
-                if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
-                 begin
-                  x:=ByteSize(p1);
-                  xx:=0;
-                  Move(xp^,xx,x);
-                  y:=ByteSize(vt);
-                  yy:=0;
-                  Move(vp^,yy,y);
-                  Volatile(IntrinsicTypes[itBoolean]);//sets vp
-                  case TStratoToken(ip.v(vOperator)) of
-                    stOpLT: if xx<yy  then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
-                    stOpLTE:if xx<=yy then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
-                    stOpGT: if xx>yy  then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
-                    stOpGTE:if xx>=yy then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
-                  end;
-                 end
-                else
-                  RunError(ip,'Unknown operation');
-              stOpAnd,stOpOr,stOpXor:
-                if p1.IsSame(IntrinsicTypes[itBoolean]) and
-                   vt.IsSame(IntrinsicTypes[itBoolean]) then
-                 begin
-                  x:=PCardinal(xp)^;
-                  y:=PCardinal(vp)^;
-                  Volatile(IntrinsicTypes[itBoolean]);//sets vp
-                  case TStratoToken(ip.v(vOperator)) of
-                    stOpAnd:if (x<>0) and (y<>0) then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
-                    stOpOr: if (x<>0) or  (y<>0) then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
-                    stOpXor:if (x<>0) xor (y<>0) then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
-                  end;
-                 end
-                else
-                  RunError(ip,'Unknown operation');
-              //TODO: stOpSub,stOpMul,stOpDiv,stOpMod,stOpShl,stOpShr,stThreeLT,stThreeGT:
-              //TODO: stOpNEQ,stOpLT,stOpLTE,stOpGT,stOpGTE:
-              //TODO: stOpAnd,stOpOr,stOpXor
-              //stOpWhatIs: //'type is'
-              else RunError(ip,'Unknown operator');
-            end;
-           end;
-        end;
-
-      nAssign:
-        case Pass of
-          0://evaluate left
-           begin
-            p1:=ip.r(iTarget);
-            if p1.Key=nCast then //'dirty cast'?
-              Next(3,p1.r(iSubject))
-            else
-              Next(1,p1);
-           end;
-          1://evaluate right
-           begin
-            //if vp=nil then throw?
-            Push(vp);//vt?
-            Next(2,ip.r(iValue));
-            vp:=nil;
-            vt.none;
-           end;
-          2://copy value
-           begin
-            Pop(xp);//pt? assert =vt
-            if xp=nil then
-              raise Exception.Create('nil pointer assignment');//TODO: proper throw
-            case TStratoToken(ip.v(vOperator)) of
-              stOpAssign:Move(vp^,xp^,ByteSize(vt));
-              stOpAssignAdd:
-               begin
-                //TODO: merge with binaryop
-                //if =TypeDecl_number!!
-                x:=ByteSize(vt);//ByteSize(ResType(ip.r(iTarget?
+                x:=ByteSize(vt);
                 xx:=0;
-                Move(xp^,xx,x);
-                yy:=0;
-                Move(vp^,yy,x);
-                xx:=xx+yy;
-                Move(xx,xp^,x);
-               end;
-              //TODO: stOpAssignSub,stOpAssignMul,stOpAssignDiv,stOpAssignMod,stOpAssignOr,stOpAssignAnd
+                Move(vp^,xx,x);
+                case TStratoToken(ip.v(vOperator)) of
+                  stOpSub:xx:=-xx;
+                  stOpInc:xx:=xx+1;
+                  stOpDec:xx:=xx-1;
+                  stTilde:xx:=not(xx);//xx:=-(xx+1);?
+                end;
+                Move(xx,vp^,x);
+                vt:=ip.r(iReturnType);
+               end
               else
-                RunError(ip,'unknown assignment type');
-            end;
-            vp:=nil;//drop value (!!! by language design)
-            vt.none;
-           end;
-          3://dirty cast, evaluate right
-           begin
-            Push(vp);//vt?
-            Next(4,ip.r(iValue));
-            vp:=nil;
-            vt.none;
-           end;
-          4://dirty cast, push value
-           begin
-            Pop(xp);//pt? assert =vt
-            case TStratoToken(ip.v(vOperator)) of
-              stOpAssign://plain
-                Move(vp^,xp^,ByteSize(ip.r(iTarget).r(iType)));
-              stOpAssignAdd:
+                RunError(ip,'Unknown operation');
+            stOpNot:
+              if vt.IsSame(IntrinsicTypes[itBoolean]) then
+                if PCardinal(vp)^=0 then PCardinal(vp)^:=1 else PCardinal(vp)^:=0
+              else
+                RunError(ip,'Unknown operation');
+            stOpSizeOf:
+             begin
+              if vt.IsSame(IntrinsicTypes[itType]) then
+                x:=ByteSize(VtoN(PCardinal(vp)^))
+              else
+                x:=ByteSize(vt);
+              PCardinal(Volatile(IntrinsicTypes[itNumber]))^:=x;
+             end;
+            stQuestionMark://type of
+              if vt.Key=nClass then
                begin
-                //TODO: merge with binaryop
-                //TODO: switch pointer arith (default off!)
-                //if =TypeDecl_number!!
-                x:=ByteSize(vt);//ByteSize(ResType(ip.r(iTarget?
-                xx:=0;
-                Move(xp^,xx,x);
-                yy:=0;
-                Move(vp^,yy,x);
-                xx:=xx+yy;
-                Move(xx,xp^,x);
-               end;
+                //live object? extract base class
+                xp:=pointer(vp^);
+                //inc(xValue(xp),Lookup(itObject,Name('_baseclass')).v(vOffset));
+                dec(xValue(xp),SystemWordSize);//assert object._baseclass offset -4
+                PCardinal(Volatile(IntrinsicTypes[itType]))^:=PCardinal(xp)^;
+                //Sphere.Add(nClassRef,[iTarget,PxValue(xp)^]);?
+               end
               else
-                RunError(ip,'unknown assignment type');
-            end;
-            vp:=nil;//drop value (!!! by language design)
-            vt.none;
-           end;
-        end;
+                PCardinal(Volatile(IntrinsicTypes[itType]))^:=NtoV(vt);
+            else RunError(ip,'Unknown operator');
+          end;
+      end;
 
-      nCast:
-        if new then
+    nBinaryOp:
+      case Pass of
+        0://evaluate left
+          Next(1,ip.r(iLeft));
+        1://evaluate right
          begin
-          Push(ip);
-          ipNext:=ip.r(iSubject);
+          //stored volatile on stack? keep it there!
+          xp:=stackTop;
+          inc(xValue(xp),SystemWordSize*2);
+          if cardinal(vp)>=cardinal(xp) then
+           begin
+            x:=ByteSize(vt);
+            Move(vp^,stackTop^,x);
+            inc(xValue(stackTop),x+SystemWordSize*2);
+            Push(x);
+            Push(0);
+           end
+          else
+            Push(vp);
+          Push(vt);
+          Next(2,ip.r(iRight));
+          vp:=nil;
+          vt.none;
+         end;
+        2://
+         begin
+          Pop(p1);
+          Pop(xp);
+          if xp=nil then //stored volatile? roll back!
+           begin
+            Pop(x);
+            dec(xValue(stackTop),x+SystemWordSize*2);
+            xp:=stackTop;
+            //inc(xValue(xp),SystemWordSize*2);
+           end;
+          case TStratoToken(ip.v(vOperator)) of
+            stOpEQ,stOpNEQ:
+              if SameType(vt,p1) then
+               begin
+                x:=ByteSize(vt);
+                while (x<>0) and (PByte(vp)^=PByte(xp)^) do
+                 begin
+                  dec(x);
+                  inc(xValue(vp));
+                  inc(xValue(xp));
+                 end;
+                Volatile(IntrinsicTypes[itBoolean]);//sets vp
+                case TStratoToken(ip.v(vOperator)) of
+                  stOpEQ:
+                    if x=0 then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
+                  stOpNEQ:
+                    if x=0 then PCardinal(vp)^:=0 else PCardinal(vp)^:=1;
+                end;
+               end
+              else
+                RunError(ip,'Unknown operation');
+            stOpAdd:
+              if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
+               begin
+                x:=ByteSize(p1);
+                xx:=0;
+                Move(xp^,xx,x);
+                y:=ByteSize(vt);
+                yy:=0;
+                Move(vp^,yy,y);
+                xx:=xx+yy;
+                Move(xx,Volatile(ip.r(iReturnType))^,y);
+               end
+              else
+              if p1.IsSame(IntrinsicTypes[itString]) and
+                 vt.IsSame(IntrinsicTypes[itString]) then
+               begin
+                //TODO: strings in memory (by runtime?)
+                q1:=VtoN(PCardinal(xp)^);
+                q2:=VtoN(PCardinal(vp)^);
+
+                p2.sphere:=FData as TStratoSphere;
+                p2.index:=p2.sphere.AddBinaryData(
+                  q1.sphere.BinaryData(q1.index)+
+                  q2.sphere.BinaryData(q2.index));
+                PCardinal(Volatile(IntrinsicTypes[itString]))^:=NtoV(p2);
+               end
+              else
+                RunError(ip,'Unknown operation');
+            stOpSub,stOpMul,stOpDiv,stOpMod:
+              if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
+               begin
+                x:=ByteSize(p1);
+                xx:=0;
+                Move(xp^,xx,x);
+                y:=ByteSize(vt);
+                yy:=0;
+                Move(vp^,yy,y);
+                case TStratoToken(ip.v(vOperator)) of
+                  stOpSub:xx:=xx-yy;
+                  stOpMul:xx:=xx*yy;
+                  stOpDiv:xx:=xx div yy;
+                  stOpMod:xx:=xx mod yy;
+                end;
+                Move(xx,Volatile(ip.r(iReturnType))^,x);
+               end
+              else
+                RunError(ip,'Unknown operation');
+            stOpLT,stOpLTE,stOpGT,stOpGTE:
+              if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
+               begin
+                x:=ByteSize(p1);
+                xx:=0;
+                Move(xp^,xx,x);
+                y:=ByteSize(vt);
+                yy:=0;
+                Move(vp^,yy,y);
+                Volatile(IntrinsicTypes[itBoolean]);//sets vp
+                case TStratoToken(ip.v(vOperator)) of
+                  stOpLT: if xx<yy  then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
+                  stOpLTE:if xx<=yy then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
+                  stOpGT: if xx>yy  then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
+                  stOpGTE:if xx>=yy then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
+                end;
+               end
+              else
+                RunError(ip,'Unknown operation');
+            stOpAnd,stOpOr,stOpXor:
+              if p1.IsSame(IntrinsicTypes[itBoolean]) and
+                 vt.IsSame(IntrinsicTypes[itBoolean]) then
+               begin
+                x:=PCardinal(xp)^;
+                y:=PCardinal(vp)^;
+                Volatile(IntrinsicTypes[itBoolean]);//sets vp
+                case TStratoToken(ip.v(vOperator)) of
+                  stOpAnd:if (x<>0) and (y<>0) then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
+                  stOpOr: if (x<>0) or  (y<>0) then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
+                  stOpXor:if (x<>0) xor (y<>0) then PCardinal(vp)^:=1 else PCardinal(vp)^:=0;
+                end;
+               end
+              else
+                RunError(ip,'Unknown operation');
+            //TODO: stOpSub,stOpMul,stOpDiv,stOpMod,stOpShl,stOpShr,stThreeLT,stThreeGT:
+            //TODO: stOpNEQ,stOpLT,stOpLTE,stOpGT,stOpGTE:
+            //TODO: stOpAnd,stOpOr,stOpXor
+            //stOpWhatIs: //'type is'
+            else RunError(ip,'Unknown operator');
+          end;
+         end;
+      end;
+
+    nAssign:
+      case Pass of
+        0://evaluate left
+         begin
+          p1:=ip.r(iTarget);
+          if p1.Key=nCast then //'dirty cast'?
+            Next(3,p1.r(iSubject))
+          else
+            Next(1,p1);
+         end;
+        1://evaluate right
+         begin
+          //if vp=nil then throw?
+          Push(vp);//vt?
+          Next(2,ip.r(iValue));
+          vp:=nil;
+          vt.none;
+         end;
+        2://copy value
+         begin
+          Pop(xp);//pt? assert =vt
+          if xp=nil then
+            raise Exception.Create('nil pointer assignment');//TODO: proper throw
+          case TStratoToken(ip.v(vOperator)) of
+            stOpAssign:Move(vp^,xp^,ByteSize(vt));
+            stOpAssignAdd:
+             begin
+              //TODO: merge with binaryop
+              //if =TypeDecl_number!!
+              x:=ByteSize(vt);//ByteSize(ResType(ip.r(iTarget?
+              xx:=0;
+              Move(xp^,xx,x);
+              yy:=0;
+              Move(vp^,yy,x);
+              xx:=xx+yy;
+              Move(xx,xp^,x);
+             end;
+            //TODO: stOpAssignSub,stOpAssignMul,stOpAssignDiv,stOpAssignMod,stOpAssignOr,stOpAssignAnd
+            else
+              RunError(ip,'unknown assignment type');
+          end;
+          vp:=nil;//drop value (!!! by language design)
+          vt.none;
+         end;
+        3://dirty cast, evaluate right
+         begin
+          Push(vp);//vt?
+          Next(4,ip.r(iValue));
+          vp:=nil;
+          vt.none;
+         end;
+        4://dirty cast, push value
+         begin
+          Pop(xp);//pt? assert =vt
+          case TStratoToken(ip.v(vOperator)) of
+            stOpAssign://plain
+              Move(vp^,xp^,ByteSize(ip.r(iTarget).r(iType)));
+            stOpAssignAdd:
+             begin
+              //TODO: merge with binaryop
+              //TODO: switch pointer arith (default off!)
+              //if =TypeDecl_number!!
+              x:=ByteSize(vt);//ByteSize(ResType(ip.r(iTarget?
+              xx:=0;
+              Move(xp^,xx,x);
+              yy:=0;
+              Move(vp^,yy,x);
+              xx:=xx+yy;
+              Move(xx,xp^,x);
+             end;
+            else
+              RunError(ip,'unknown assignment type');
+          end;
+          vp:=nil;//drop value (!!! by language design)
+          vt.none;
+         end;
+      end;
+
+    nCast:
+      if new then
+       begin
+        Push(ip);
+        ipNext:=ip.r(iSubject);
+       end
+      else
+       begin
+        //TODO: move these specifics over to runtime (with intrinsics? syscalls?)
+        p1:=ip.r(iType);//TODO: check ByteSize?
+        if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
+         begin
+          //TODO: zero-extend sign-extend
+          x:=ByteSize(vt);
+          xx:=0;
+          Move(vp^,xx,x);
+          Move(xx,Volatile(p1)^,ByteSize(p1));
          end
         else
+        if vt.IsSame(IntrinsicTypes[itString]) and IsIntrinsicNumeric(p1) then
          begin
-          //TODO: move these specifics over to runtime (with intrinsics? syscalls?)
-          p1:=ip.r(iType);//TODO: check ByteSize?
-          if IsIntrinsicNumeric(vt) and IsIntrinsicNumeric(p1) then
-           begin
-            //TODO: zero-extend sign-extend
-            x:=ByteSize(vt);
-            xx:=0;
-            Move(vp^,xx,x);
-            Move(xx,Volatile(p1)^,ByteSize(p1));
-           end
+          q1:=VtoN(PCardinal(vp)^);
+          if not TryStrToInt64(string(
+            q1.sphere.BinaryData(q1.index)),xx) then
+            RunError(ip,'invalid integer value');//TODO: raise
+          PCardinal(Volatile(p1))^:=xx;//Move(xx,vp^,ByteSize(p1));
+         end
+        else
+        if IsIntrinsicNumeric(vt) and p1.IsSame(IntrinsicTypes[itString]) then
+         begin
+          x:=ByteSize(vt);
+          xx:=0;
+          Move(vp^,xx,x);
+          q1.sphere:=FData as TStratoSphere;
+          q1.index:=q1.sphere.AddBinaryData(
+            UTF8String(IntToStr(xx)));
+          PCardinal(Volatile(p1))^:=NtoV(q1);//Move(q1,vp^,ByteSize(p1));
+         end
+        else
+        if vt.IsSame(IntrinsicTypes[itBoolean]) and
+           p1.IsSame(IntrinsicTypes[itString]) then
+         begin
+          x:=PCardinal(vp)^;//Move(vp^,x,SystemWordSize);
+          q1.sphere:=FData as TStratoSphere;
+          if x=0 then
+            q1.index:=q1.sphere.AddBinaryData('0')
           else
-          if vt.IsSame(IntrinsicTypes[itString]) and IsIntrinsicNumeric(p1) then
+            q1.index:=q1.sphere.AddBinaryData('1');
+          PCardinal(Volatile(p1))^:=NtoV(q1);//Move(q1,vp^,SystemWordSize);
+         end
+        else
+        if vt.IsSame(IntrinsicTypes[itNumber]) and (p1.Key=nEnum) then
+         begin
+          x:=PCardinal(vp)^;//Move(vp^,x,SystemWordSize);
+          //check enumeration index in range?
+          PCardinal(Volatile(p1))^:=x;//Move(x,vp^,SystemWordSize);
+         end
+        else
+        if (vt.Key=nEnum) and p1.IsSame(IntrinsicTypes[itNumber]) then
+         begin
+          //x:=PxValue(vp)^;//Move(vp^,x,SystemWordSize);
+          vt:=p1;
+          //PxValue(Volatile(p1))^:=x;//Move(x,vp^,SystemWordSize);
+         end
+        else
+        {//TODO
+        if (p1>=TypeDecl_number) and (p1<=TypeDecl_intLast) and
+           (vt>=TypeDecl_number) and (vt<=TypeDecl_intLast) then
+         begin
+          x:=ByteSize(Sphere,vt);
+          xx:=0;
+          Move(vp^,xx,x);
+          Move(xx,Volatile(p1)^,ByteSize(Sphere,p1));
+         end
+        else
+        }
+        if vt.IsSame(IntrinsicTypes[itNumber]) and
+           p1.IsSame(IntrinsicTypes[itPointer]) then
+         begin
+          x:=PCardinal(vp)^;//Move(vp^,x,SystemWordSize);
+          //if i<>x then //TODO: protect against pointer arith
+          PCardinal(Volatile(p1))^:=x;//Move(x,vp^,SystemWordSize);
+         end
+        else
+        if not(IntrinsicTypes[itObject].IsNone) and
+          (vt.Key=nClass) and (p1.Key=nClass) then
+         begin
+          //cast to base class?
+          if vp=nil then q1:=vt else
            begin
-            q1:=VtoN(PCardinal(vp)^);
-            if not TryStrToInt64(string(
-              q1.sphere.BinaryData(q1.index)),xx) then
-              RunError(ip,'invalid integer value');//TODO: raise
-            PCardinal(Volatile(p1))^:=xx;//Move(xx,vp^,ByteSize(p1));
-           end
-          else
-          if IsIntrinsicNumeric(vt) and p1.IsSame(IntrinsicTypes[itString]) then
+            //dereference
+            xp:=pointer(PCardinal(vp)^-SystemWordSize);
+            //assert object._baseclass @-SystemWordSize
+            q1:=VtoN(PCardinal(xp)^);
+           end;
+          while not(q1.IsNone) and not(q1.IsSame(p1)) do
+            q1:=q1.r(iInheritsFrom);
+          if not q1.IsNone then
            begin
-            x:=ByteSize(vt);
-            xx:=0;
-            Move(vp^,xx,x);
-            q1.sphere:=FData as TStratoSphere;
-            q1.index:=q1.sphere.AddBinaryData(
-              UTF8String(IntToStr(xx)));
-            PCardinal(Volatile(p1))^:=NtoV(q1);//Move(q1,vp^,ByteSize(p1));
-           end
-          else
-          if vt.IsSame(IntrinsicTypes[itBoolean]) and
-             p1.IsSame(IntrinsicTypes[itString]) then
-           begin
-            x:=PCardinal(vp)^;//Move(vp^,x,SystemWordSize);
-            q1.sphere:=FData as TStratoSphere;
-            if x=0 then
-              q1.index:=q1.sphere.AddBinaryData('0')
-            else
-              q1.index:=q1.sphere.AddBinaryData('1');
-            PCardinal(Volatile(p1))^:=NtoV(q1);//Move(q1,vp^,SystemWordSize);
-           end
-          else
-          if vt.IsSame(IntrinsicTypes[itNumber]) and (p1.Key=nEnum) then
-           begin
-            x:=PCardinal(vp)^;//Move(vp^,x,SystemWordSize);
-            //check enumeration index in range?
-            PCardinal(Volatile(p1))^:=x;//Move(x,vp^,SystemWordSize);
-           end
-          else
-          if (vt.Key=nEnum) and p1.IsSame(IntrinsicTypes[itNumber]) then
-           begin
-            //x:=PxValue(vp)^;//Move(vp^,x,SystemWordSize);
-            vt:=p1;
-            //PxValue(Volatile(p1))^:=x;//Move(x,vp^,SystemWordSize);
-           end
-          else
-          {//TODO
-          if (p1>=TypeDecl_number) and (p1<=TypeDecl_intLast) and
-             (vt>=TypeDecl_number) and (vt<=TypeDecl_intLast) then
-           begin
-            x:=ByteSize(Sphere,vt);
-            xx:=0;
-            Move(vp^,xx,x);
-            Move(xx,Volatile(p1)^,ByteSize(Sphere,p1));
-           end
-          else
-          }
-          if vt.IsSame(IntrinsicTypes[itNumber]) and
-             p1.IsSame(IntrinsicTypes[itPointer]) then
-           begin
-            x:=PCardinal(vp)^;//Move(vp^,x,SystemWordSize);
-            //if i<>x then //TODO: protect against pointer arith
-            PCardinal(Volatile(p1))^:=x;//Move(x,vp^,SystemWordSize);
-           end
-          else
-          if not(IntrinsicTypes[itObject].IsNone) and
-            (vt.Key=nClass) and (p1.Key=nClass) then
-           begin
-            //cast to base class?
-            if vp=nil then q1:=vt else
-             begin
-              //dereference
-              xp:=pointer(PCardinal(vp)^-SystemWordSize);
-              //assert object._baseclass @-SystemWordSize
-              q1:=VtoN(PCardinal(xp)^);
-             end;
-            while not(q1.IsNone) and not(q1.IsSame(p1)) do
-              q1:=q1.r(iInheritsFrom);
-            if not q1.IsNone then
-             begin
-              //TODO: check @@._baseclass!
-              //vp:=vp;
-              vt:=q1;
-             end;
-            //else?
-           end
-          else
-            RunError(ip,'unsupported cast');
-         end;
+            //TODO: check @@._baseclass!
+            //vp:=vp;
+            vt:=q1;
+           end;
+          //else?
+         end
+        else
+          RunError(ip,'unsupported cast');
+       end;
 
 {
-      nAddressOf:
-        if new then
-         begin
-          Push(ip);
-          ipNext:=Sphere.n(ip,fSubject)^;
-         end
-        else
-         begin
-          //assert p1<>0
-          PxValue(Volatile(Sphere.n(ip,fReturnType)^))^:=xItem(vp);
-         end;
+    nAddressOf:
+      if new then
+       begin
+        Push(ip);
+        ipNext:=Sphere.n(ip,fSubject)^;
+       end
+      else
+       begin
+        //assert p1<>0
+        PxValue(Volatile(Sphere.n(ip,fReturnType)^))^:=xItem(vp);
+       end;
 
 }
-      nSelection:
-        case Pass of
-          0:
-            Next(1,ip.r(iPredicate));
-          1:
-            if not vt.IsSame(IntrinsicTypes[itBoolean]) then
-              RunError(ip,'selection predicate didn''t evaluate to boolean')
+    nSelection:
+      case Pass of
+        0:
+          Next(1,ip.r(iPredicate));
+        1:
+          if not vt.IsSame(IntrinsicTypes[itBoolean]) then
+            RunError(ip,'selection predicate didn''t evaluate to boolean')
+          else
+            if PCardinal(vp)^=0 then
+              ipNext:=ip.r(iDoFalse)
             else
-              if PCardinal(vp)^=0 then
-                ipNext:=ip.r(iDoFalse)
-              else
-                ipNext:=ip.r(iDoTrue);
-        end;
+              ipNext:=ip.r(iDoTrue);
+      end;
 
-      nIteration:
-       begin
-        p1:=ip.r(iPredicate);
-        if p1.Key=nRangeIndex then
-          case Pass of
-            0://first resolve iterator
-              Next(1,p1.r(iLeft));
-            1://store it on stack, then range start
+    nIteration:
+     begin
+      p1:=ip.r(iPredicate);
+      if p1.Key=nRangeIndex then
+        case Pass of
+          0://first resolve iterator
+            Next(1,p1.r(iLeft));
+          1://store it on stack, then range start
+           begin
+            if not vt.IsSame(IntrinsicTypes[itNumber]) then
+              RunError(ip,'iteration currently only supports number ranges');//TODO
+            Push(vp);
+            Next(2,p1.r(iRight).r(iLeft));
+           end;
+          2://store range start, then range end
+           begin
+            if not vt.IsSame(IntrinsicTypes[itNumber]) then
+              RunError(ip,'iteration currently only supports number ranges');//TODO
+            Pop(xp);
+            PCardinal(xp)^:=PCardinal(vp)^;
+            Push(xp);
+            Next(3,p1.r(iRight).r(iRight));
+           end;
+          3://store range end, then do body
+           begin
+            if not vt.IsSame(IntrinsicTypes[itNumber]) then
+              RunError(ip,'iteration currently only supports number ranges');//TODO
+            Push(PCardinal(vp)^);
+            Next(4,ip.r(iBody));
+           end;
+          4://body done, iterate more or is iteration done?
+           begin
+            Pop(x);
+            Pop(xp);
+            inc(PCardinal(xp)^);
+            if PCardinal(xp)^>x then
              begin
-              if not vt.IsSame(IntrinsicTypes[itNumber]) then
-                RunError(ip,'iteration currently only supports number ranges');//TODO
-              Push(vp);
-              Next(2,p1.r(iRight).r(iLeft));
-             end;
-            2://store range start, then range end
+              //done
+              //TODO: return value
+             end
+            else
              begin
-              if not vt.IsSame(IntrinsicTypes[itNumber]) then
-                RunError(ip,'iteration currently only supports number ranges');//TODO
-              Pop(xp);
-              PCardinal(xp)^:=PCardinal(vp)^;
               Push(xp);
-              Next(3,p1.r(iRight).r(iRight));
-             end;
-            3://store range end, then do body
-             begin
-              if not vt.IsSame(IntrinsicTypes[itNumber]) then
-                RunError(ip,'iteration currently only supports number ranges');//TODO
-              Push(PCardinal(vp)^);
+              Push(x);
               Next(4,ip.r(iBody));
              end;
-            4://body done, iterate more or is iteration done?
-             begin
-              Pop(x);
-              Pop(xp);
-              inc(PCardinal(xp)^);
-              if PCardinal(xp)^>x then
-               begin
-                //done
-                //TODO: return value
-               end
-              else
-               begin
-                Push(xp);
-                Push(x);
-                Next(4,ip.r(iBody));
-               end;
-             end;
-          end
-        else
-          case Pass of
-            0:
-              Next(1,p1);
-            1:
-              if not vt.IsSame(IntrinsicTypes[itBoolean]) then
-                RunError(ip,'iteration predicate didn''t evaluate to boolean')
-              else
-                if PCardinal(vp)^=0 then
-                  //done
-                else
-                  Next(0,ip.r(iBody));//TODO: store result value
-          end;
-       end;
-
-      nIterPostEval:
+           end;
+        end
+      else
         case Pass of
           0:
-            Next(1,ip.r(iBody));
+            Next(1,p1);
           1:
-            Next(2,ip.r(iPredicate));//TODO: store result value
-          2:
             if not vt.IsSame(IntrinsicTypes[itBoolean]) then
               RunError(ip,'iteration predicate didn''t evaluate to boolean')
             else
               if PCardinal(vp)^=0 then
                 //done
               else
-                Next(1,ip.r(iBody));
+                Next(0,ip.r(iBody));//TODO: store result value
         end;
-
-      else
-        RunError(ip,'unknown logic item '+ip.AsString+':'+
-          KeyToStr(ipt));
-      end;
-
-      {
-      except
-        on e:Exception do
-         begin
-          RunError(ip,'Fatal:['+e.ClassName+']'+e.Message);
-          //TODO: proper !!!throw
-          //TODO: show on debugview!!!
-         end;
-      end;
-      }
-
-      {//TODO
-      if (vt0<>0) and (vt=vt0) then
-       begin
-        RunError(ip,'unused resulting value');
-        vp:=nil;
-        vt:=0;
-       end;
-      }
-
-      if ipNext.IsNone then
-       begin
-        if stackTop=stackBase then ip.none else Pop(ip);
-        new:=false;
-       end
-      else
-       begin
-        ip:=ipNext;
-        new:=true;
-       end;
-
      end;
-    //
 
-  finally
-    VirtualFree(stackBase,0,MEM_RELEASE);//TODO: move this to DebugView close?
-  end;
+    nIterPostEval:
+      case Pass of
+        0:
+          Next(1,ip.r(iBody));
+        1:
+          Next(2,ip.r(iPredicate));//TODO: store result value
+        2:
+          if not vt.IsSame(IntrinsicTypes[itBoolean]) then
+            RunError(ip,'iteration predicate didn''t evaluate to boolean')
+          else
+            if PCardinal(vp)^=0 then
+              //done
+            else
+              Next(1,ip.r(iBody));
+      end;
+
+    else
+      RunError(ip,'unknown logic item '+ip.AsString+':'+
+        KeyToStr(ipt));
+    end;
+
+    {
+    except
+      on e:Exception do
+       begin
+        RunError(ip,'Fatal:['+e.ClassName+']'+e.Message);
+        //TODO: proper !!!throw
+        //TODO: show on debugview!!!
+        ip:=ExceptionHandler!
+       end;
+    end;
+    }
+
+    {//TODO
+    if (vt0<>0) and (vt=vt0) then
+     begin
+      RunError(ip,'unused resulting value');
+      vp:=nil;
+      vt:=0;
+     end;
+    }
+
+    if ipNext.IsNone then
+     begin
+      if stackTop=stackBase then ip.none else Pop(ip);
+      new:=false;
+     end
+    else
+     begin
+      ip:=ipNext;
+      new:=true;
+     end;
+
+   end;
+
+  //VirtualFree(stackBase,0,MEM_RELEASE); moded to destructor
 end;
 
 procedure TStratoMachine.RunError(p:xNode;const Msg:string);
@@ -1639,7 +1637,7 @@ var
   f:TFileStream;
   s:UTF8String;
 const
-  UTF8ByteOrderMark:UTF8STring=#$EF#$BB#$BF;
+  UTF8ByteOrderMark:array[1..3] of UTF8Char=(#$EF,#$BB,#$BF);
 begin
   q:=Fn.r(iTarget);
   if q.Key<>nLiteral then
@@ -1686,20 +1684,23 @@ begin
    begin
     //TODO: try except throw
     //TODO: added security: limit access to specific folder
-    q1:=VtoN(PCardinal(Data)^);
+    p:=Data;
+    inc(xValue(p),SystemWordSize);
+    q1:=VtoN(PCardinal(p)^);
     f:=TFileStream.Create(string(q1.sphere.BinaryData(q1.index)),
       fmOpenRead or fmShareDenyWrite);
     try
       i:=f.Size-3;
       s:=#0#0#0;
-      f.Read(s,3);
-      if s<>UTF8ByteOrderMark then
-        RunError(Fn,'Only UTF8-files supported');
+      f.Read(s[1],3);
+      if s<>UTF8String(UTF8ByteOrderMark) then
+        raise Exception.Create('Only UTF8BOM-files supported');
       SetLength(s,i);
       f.Read(s[1],i);
     finally
       f.Free;
     end;
+    q1.sphere:=FData as TStratoSphere;
     q1.index:=q1.sphere.AddBinaryData(s);
     PCardinal(Data)^:=NtoV(q1);
    end;
@@ -1724,13 +1725,15 @@ begin
    begin
     //TODO: try except throw
     //TODO: added security: limit access to specific folder
-    q1:=VtoN(PCardinal(Data)^);
+    p:=Data;
+    inc(xValue(p),SystemWordSize);
+    q1:=VtoN(PCardinal(p)^);
     f:=TFileStream.Create(string(q1.sphere.BinaryData(q1.index)),
       fmOpenRead or fmShareDenyWrite);
     try
       i:=f.Size;
       if xValue(FMemIndex)-xValue(FMem)+xValue(i)>FMemSize then
-        RunError(Fn,'Out of memory')//TODO:throw
+        raise EOutOfMemory.Create('Out of memory')
       else
        begin
         p:=FMemIndex;
@@ -1768,6 +1771,7 @@ begin
   xSCall_commandline://get the command line
    begin
     s:=UTF8Encode(GetCommandLine);
+    q1.sphere:=FData as TStratoSphere;
     q1.index:=q1.sphere.AddBinaryData(s);
     PCardinal(Data)^:=NtoV(q1);
    end
@@ -1805,7 +1809,7 @@ begin
   try
     v:=PCardinal(p)^;
     li.SubItems.Add(IntToStr(v));
-    if v<NtoV_margin then
+    if v<NtoV_Base then
       li.SubItems.Add('')
     else
     if v>=cardinal(stackBase) then

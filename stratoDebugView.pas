@@ -14,7 +14,7 @@ type
     actRunTo: TAction;
     actRunToFocus: TAction;
     PageControl1: TPageControl;
-    txContext: TTabSheet;
+    tsContext: TTabSheet;
     tsTrail: TTabSheet;
     lblUpNext: TLabel;
     lblFileName: TLabel;
@@ -35,6 +35,11 @@ type
     lvStackTrace: TListView;
     actRefresh: TAction;
     cbStackTrace: TCheckBox;
+    tsInspect: TTabSheet;
+    txtInpectNr: TEdit;
+    btnInspect: TButton;
+    txtInspect: TMemo;
+    cbInspectSphere: TComboBox;
     procedure FormClose(Sender: TObject; var Action: TCloseAction);
     procedure btnNextClick(Sender: TObject);
     procedure btnRunToClick(Sender: TObject);
@@ -46,6 +51,8 @@ type
     procedure lvStackDblClick(Sender: TObject);
     procedure Splitter1Moved(Sender: TObject);
     procedure Panel1Resize(Sender: TObject);
+    procedure txtInpectNrKeyPress(Sender: TObject; var Key: Char);
+    procedure btnInspectClick(Sender: TObject);
   private
     FDoNext,y1,y2:integer;
     FBreakAt:array of xNode;
@@ -57,6 +64,7 @@ type
     procedure DoCreate; override;
     procedure DoDestroy; override;
     procedure DoShow; override;
+    procedure DoClose(var Action: TCloseAction); override;
   public
     function WaitNext:boolean;
     function CheckBreakPoint(p:xNode):boolean;
@@ -116,6 +124,15 @@ end;
 procedure TfrmDebugView.btnBreakClick(Sender: TObject);
 begin
   FDoNext:=2;//see WaitNext call
+end;
+
+procedure TfrmDebugView.btnInspectClick(Sender: TObject);
+var
+  p:xNode;
+begin
+  p.s(Spheres[cbInspectSphere.ItemIndex],StrToInt(txtInpectNr.Text));
+  txtInspect.Text:=UTF8ToString('$'+IntToStr8(cbInspectSphere.ItemIndex+1)+'#'+
+    IntToStr8(p.index)+': '+StratoDumpThing(p));
 end;
 
 procedure TfrmDebugView.btnRunToClick(Sender: TObject);
@@ -239,9 +256,9 @@ begin
       k:=0;
       while j<5 do
        begin
-        if (i<1) or (i>=cardinal(FSrcData.Count)) then
+        if (i<1) or (i>cardinal(FSrcData.Count)) then
          begin
-          txtSourceView.Lines[j]:='//???pastEOF???//';
+          txtSourceView.Lines[j]:='///// ---- past EOF ----- /////';
           if j<2 then inc(k,7);
          end
         else
@@ -277,6 +294,15 @@ end;
 procedure TfrmDebugView.txtBreakPointsExit(Sender: TObject);
 begin
   btnRunTo.Default:=false;
+end;
+
+procedure TfrmDebugView.txtInpectNrKeyPress(Sender: TObject; var Key: Char);
+begin
+  if Key=#13 then
+   begin
+    Key:=#0;
+    btnInspect.Click;
+   end;
 end;
 
 procedure TfrmDebugView.Done;
@@ -345,10 +371,86 @@ begin
 end;
 
 procedure TfrmDebugView.DoShow;
+var
+  wp:TWindowPlacement;
+  sl:TStringList;
+  i:integer;
+  s:TStratoSphere;
 begin
   inherited;
   y1:=lvStack.Height;
   y2:=Panel1.Height;
+
+  //retrieve window placement (if any)
+  sl:=TStringList.Create;
+  try
+    try
+      sl.LoadFromFile(ChangeFileExt(ParamStr(0),'_debug.ini'));
+      wp.length:=SizeOf(TWindowPlacement);
+      wp.flags:=StrToInt(sl.Values['Flags']);
+      wp.showCmd:=StrToInt(sl.Values['Show']);
+      wp.ptMinPosition.X:=StrToInt(sl.Values['Min.X']);
+      wp.ptMinPosition.Y:=StrToInt(sl.Values['Min.Y']);
+      wp.ptMaxPosition.X:=StrToInt(sl.Values['Max.X']);
+      wp.ptMaxPosition.Y:=StrToInt(sl.Values['Max.Y']);
+      wp.rcNormalPosition.Left:=StrToInt(sl.Values['Pos.PX']);
+      wp.rcNormalPosition.Top:=StrToInt(sl.Values['Pos.PY']);
+      wp.rcNormalPosition.Width:=StrToInt(sl.Values['Pos.SX']);
+      wp.rcNormalPosition.Height:=StrToInt(sl.Values['Pos.SY']);
+      SetWindowPlacement(Handle,wp);
+      lvStack.Height:=StrToInt(sl.Values['Stack']);
+    except
+      //silent
+    end;
+  finally
+    sl.Free;
+  end;
+
+  cbInspectSphere.Items.BeginUpdate;
+  try
+    for i:=0 to SpheresCount-1 do
+     begin
+      s:=Spheres[i];
+      cbInspectSphere.Items.Add(UTF8ToString('$'+IntToStr8(i+1)+':'+
+        s.BinaryData(s.r(0,iSphere_FileName).index)));
+     end;
+    cbInspectSphere.ItemIndex:=SpheresCount-1;
+  finally
+    cbInspectSphere.Items.EndUpdate;
+  end;
+end;
+
+procedure TfrmDebugView.DoClose(var Action: TCloseAction);
+var
+  wp:TWindowPlacement;
+  sl:TStringList;
+begin
+  inherited;
+  //store window placement
+  if GetWindowPlacement(Handle,wp) then
+   begin
+    sl:=TStringList.Create;
+    try
+      sl.Values['Flags']:=IntToStr(wp.flags);
+      sl.Values['Show']:=IntToStr(wp.showCmd);
+      sl.Values['Min.X']:=IntToStr(wp.ptMinPosition.X);
+      sl.Values['Min.Y']:=IntToStr(wp.ptMinPosition.Y);
+      sl.Values['Max.X']:=IntToStr(wp.ptMaxPosition.X);
+      sl.Values['Max.Y']:=IntToStr(wp.ptMaxPosition.Y);
+      sl.Values['Pos.PX']:=IntToStr(wp.rcNormalPosition.Left);
+      sl.Values['Pos.PY']:=IntToStr(wp.rcNormalPosition.Top);
+      sl.Values['Pos.SX']:=IntToStr(wp.rcNormalPosition.Width);
+      sl.Values['Pos.SY']:=IntToStr(wp.rcNormalPosition.Height);
+      sl.Values['Stack']:=IntToStr(lvStack.Height);
+      try
+        sl.SaveToFile(ChangeFileExt(ParamStr(0),'_debug.ini'));
+      except
+        //silent
+      end;
+    finally
+      sl.Free;
+    end;
+   end;
 end;
 
 procedure TfrmDebugView.Splitter1Moved(Sender: TObject);

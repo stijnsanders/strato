@@ -282,46 +282,41 @@ begin
      end;
     end;
     if not(vt.IsNone) then
-      if Parser.Source.IsNextBetween(stOpAssign,stOp_Last) then
-       begin
-        st:=Parser.Source.Token;
-        case st of
-        stOpAdd:Push(pAddSub,'+');
-        stOpSub:Push(pAddSub,'-');
-        stOpMul:Push(pMulDiv,'*');
-        stOpDiv:Push(pMulDiv,'/');
-        stOpMod:Push(pMulDiv,'%');
-        stOpShl:Push(pShift,'shl');
-        stOpShr:Push(pShift,'shr');
-        stThreeLT:Push(pShift,'rol');
-        stThreeGT:Push(pShift,'ror');
-        stOpAnd:
-          if SameType(vt,IntrinsicTypes[itBoolean]) then
-            Push(pLogicalAnd,'&')
-          else
-            Push(pBitwiseAnd,'&');
-        stOpOr:
-          if SameType(vt,IntrinsicTypes[itBoolean]) then
-            Push(pLogicalOr,'|')
-          else
-            Push(pBitwiseOr,'|');
-        stOpNot:Push(pUnary,'!');
-        stTilde:Push(pUnary,'~');
-        stOpXor:
-          if SameType(vt,IntrinsicTypes[itBoolean]) then
-            Push(pLogicalXor,'X')
-          else
-            Push(pBitwiseXor,'X');
-        stOpEQ:Push(pEqual,'=');
-        stOpLT:Push(pComparative,'<');
-        stOpLTE:Push(pComparative,'l');
-        stOpGT:Push(pComparative,'>');
-        stOpGTE:Push(pComparative,'g');
-        else Parser.Source.Error('unsupported constant operator');
-        end;
-       end
+      if Parser.Source.IsNext(stOpAdd) then Push(pAddSub,'+') else
+      if Parser.Source.IsNext(stOpSub) then Push(pAddSub,'-') else
+      if Parser.Source.IsNext(stOpMul) then Push(pMulDiv,'*') else
+      if Parser.Source.IsNext(stOpDiv) then Push(pMulDiv,'/') else
+      if Parser.Source.IsNext(stOpMod) then Push(pMulDiv,'%') else
+      if Parser.Source.IsNext(stOpShl) then Push(pShift,'shl') else
+      if Parser.Source.IsNext(stOpShr) then Push(pShift,'shr') else
+      if Parser.Source.IsNext(stOpThreeLT) then Push(pShift,'rol') else
+      if Parser.Source.IsNext(stOpThreeGT) then Push(pShift,'ror') else
+      if Parser.Source.IsNext(stOpAnd) then
+        if SameType(vt,IntrinsicTypes[itBoolean]) then
+          Push(pLogicalAnd,'&')
+        else
+          Push(pBitwiseAnd,'&')
       else
-        Combine(p_Something);//something between pParentheses and operators
+      if Parser.Source.IsNext(stOpOr) then
+        if SameType(vt,IntrinsicTypes[itBoolean]) then
+          Push(pLogicalOr,'|')
+        else
+          Push(pBitwiseOr,'|')
+      else
+      if Parser.Source.IsNext(stOpNot) then Push(pUnary,'!') else
+      if Parser.Source.IsNext(stTilde) then Push(pUnary,'~') else
+      if Parser.Source.IsNext(stOpXor) then
+        if SameType(vt,IntrinsicTypes[itBoolean]) then
+          Push(pLogicalXor,'X')
+        else
+          Push(pBitwiseXor,'X')
+      else
+      if Parser.Source.IsNext(stOpEQ) then Push(pEqual,'=') else
+      if Parser.Source.IsNext(stOpLT) then Push(pComparative,'<') else
+      if Parser.Source.IsNext(stOpLTE) then Push(pComparative,'l') else
+      if Parser.Source.IsNext(stOpGT) then Push(pComparative,'>') else
+      if Parser.Source.IsNext(stOpGTE) then Push(pComparative,'g') else
+      Combine(p_Something);//something between pParentheses and operators
    end;
 
   if NeedValue=nil then

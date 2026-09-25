@@ -10,7 +10,7 @@ function stratoCommandLine:string;
 
 implementation
 
-uses SysUtils, Classes;
+uses SysUtils, Windows, Classes;
 
 const
   UTF8ByteOrderMark:UTF8STring=#$EF#$BB#$BF;
@@ -80,8 +80,7 @@ end;
 
 function stratoCommandLine:string;
 begin
-  SetLength(Result,MAX_PATH);
-  SetLength(Result,GetCommandLine(Result,MAX_PATH));
+  Result:=GetCommandLine;
 end;
 
 end.

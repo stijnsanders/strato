@@ -1,28 +1,29 @@
 object frmDebugView: TfrmDebugView
   Left = 337
   Top = 165
+  ActiveControl = PageControl1
   Caption = 'Strato Debug View'
   ClientHeight = 528
   ClientWidth = 624
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
-  Font.Height = -13
-  Font.Name = 'Lucida Console'
+  Font.Height = -12
+  Font.Name = 'Consolas'
   Font.Style = []
   OldCreateOrder = False
   OnClose = FormClose
   PixelsPerInch = 96
-  TextHeight = 13
+  TextHeight = 14
   object PageControl1: TPageControl
     Left = 0
     Top = 0
     Width = 624
     Height = 528
-    ActivePage = txContext
+    ActivePage = tsContext
     Align = alClient
     TabOrder = 0
-    object txContext: TTabSheet
+    object tsContext: TTabSheet
       BorderWidth = 4
       Caption = 'Context'
       DesignSize = (
@@ -31,16 +32,17 @@ object frmDebugView: TfrmDebugView
       object lblUpNext: TLabel
         Left = 0
         Top = 248
-        Width = 56
-        Height = 13
+        Width = 49
+        Height = 14
         Anchors = [akLeft, akBottom]
         Caption = 'Up next'
+        ExplicitTop = 247
       end
       object lblFileName: TLabel
         Left = 0
         Top = 360
-        Width = 64
-        Height = 13
+        Width = 56
+        Height = 14
         Anchors = [akLeft, akBottom]
         Caption = '[Source]'
       end
@@ -168,7 +170,7 @@ object frmDebugView: TfrmDebugView
         Left = 176
         Top = 470
         Width = 400
-        Height = 21
+        Height = 22
         Anchors = [akLeft, akRight, akBottom]
         TabOrder = 7
         OnEnter = txtBreakPointsEnter
@@ -357,11 +359,55 @@ object frmDebugView: TfrmDebugView
         ViewStyle = vsReport
       end
     end
+    object tsInspect: TTabSheet
+      BorderWidth = 4
+      Caption = 'Inspect'
+      ImageIndex = 3
+      DesignSize = (
+        608
+        491)
+      object txtInpectNr: TEdit
+        Left = 351
+        Top = 2
+        Width = 121
+        Height = 22
+        TabOrder = 0
+        OnKeyPress = txtInpectNrKeyPress
+      end
+      object btnInspect: TButton
+        Left = 478
+        Top = 2
+        Width = 25
+        Height = 22
+        TabOrder = 1
+        OnClick = btnInspectClick
+      end
+      object txtInspect: TMemo
+        Left = 0
+        Top = 30
+        Width = 613
+        Height = 458
+        Anchors = [akLeft, akTop, akRight, akBottom]
+        ReadOnly = True
+        ScrollBars = ssBoth
+        TabOrder = 2
+        WordWrap = False
+        ExplicitWidth = 605
+      end
+      object cbInspectSphere: TComboBox
+        Left = 0
+        Top = 2
+        Width = 345
+        Height = 22
+        Style = csDropDownList
+        TabOrder = 3
+      end
+    end
   end
   object ActionList1: TActionList
     OnChange = btnNextClick
-    Left = 16
-    Top = 32
+    Left = 40
+    Top = 72
     object actNext: TAction
       Caption = '&Next'
       ShortCut = 119

@@ -509,7 +509,7 @@ begin
   vOffset:
     s:=':Offset='+IntToStr(integer(q.v));
   vOperator:
-    s:=':Operator "'+string(TokenName[TStratoToken(q.v)])+'"';
+    s:=':Operator "'+string(StratoTokenNames[TStratoToken(q.v)])+'"';
 
   iSubject:
     t:=':Subject=';

@@ -76,7 +76,7 @@ begin
     if p.IsNone then
       Source.Error('unexpected "."')
     else
-    if Source.IsNext([stIdentifier]) then
+    if Source.IsNext(stIdentifier) then
      begin
       //Combine?
       ID(nx,nn,SrcPos);
@@ -117,7 +117,7 @@ begin
       ,kn(iType,pt)
       ,kv(iValue,0,Sphere.AddBinaryData(Source.GetID(SrcPos)))
       ]);
-    if Source.IsNext([stColon]) then
+    if Source.IsNext(stColon) then
      begin
       pt:=LookUpDecl_Type('literal type');
       if pt.IsNone then Source.Error('unknown literal type');
@@ -130,7 +130,7 @@ begin
     if Peek=pIfThen then Combine(pUntypedVar,p,pt);//TODO: un-hack this, revise pIfThen?
     if p.IsNone then
       if not(Source.IsNext([stIdentifier,stPeriod]))
-        and Source.IsNext([stIdentifier]) then
+        and Source.IsNext(stIdentifier) then
        begin
         //new local variable(s)
         ID(nx,nn,SrcPos);
@@ -164,7 +164,7 @@ begin
           if r1.IsSame(p2) then r.none;
         until r.IsNone or not(r.Next(r1));
 
-        if Source.IsNext([stSemiColon]) then
+        if Source.IsNext(stSemiColon) then
          begin
           p.none;//don't add as statement
           pt.none;
@@ -280,7 +280,7 @@ begin
       pUnTypedVar:
         if p.IsSame(Peek1) then
           if not(Source.IsNext([stIdentifier,stPeriod]))
-            and Source.IsNext([stIdentifier]) then
+            and Source.IsNext(stIdentifier) then
            begin
             Pop(z,p1,p2,SrcPos1);
             //new local variable(s)
@@ -441,7 +441,7 @@ begin
         nPropGet://property getter done? parse setter
          begin
           //TODO: if not(cbInheritedCalled)
-          if Source.IsNext([stCOpen]) then
+          if Source.IsNext(stCOpen) then
            begin
             //TODO: construct setter signature? (use the same for now)
             xxxxxxxxxxxxxxxxx
@@ -551,7 +551,7 @@ begin
    end;
   stOpMul,stOpDiv,stOpMod:
     PushBinary(pMulDiv,st,p,pt);
-  stOpShl,stOpShr,stThreeLT://stThreeGT: see below
+  stOpShl,stOpShr,stOpThreeLT://stThreeGT: see below
     PushBinary(pShift,st,p,pt);
   stOpAnd:
     if SameType(pt,IntrinsicTypes[itBoolean]) then
@@ -687,7 +687,7 @@ begin
       ,kv(vSrcPos,0,Source.SrcPos)
       ]);
    end;
-  stThreeGT://">>>"
+  stOpThreeGT://">>>"
    begin
     Combine(pShift,p,pt);
     if p.IsNone then //defer
@@ -723,7 +723,7 @@ begin
       Source.Skip(stPClose);//TODO: enforce
      end
     else
-    if Source.IsNext([stPOpen]) then
+    if Source.IsNext(stPOpen) then
      begin
       p1:=Add(nCatch,4,
         [kv(iParent,0,cb)
@@ -735,7 +735,7 @@ begin
           ,kv(vSrcPos,0,Source.SrcPos)
           ,kn(iTarget,LookUpDecl_Type('catch filter'))
           ]);
-      until not Source.IsNext([stComma]);
+      until not Source.IsNext(stComma);
       Source.Skip(stPClose);
      end
     else
@@ -803,7 +803,7 @@ begin
     p.none;
     pt.none;
     //type-of this in constructor?
-    if Source.IsNext([stAtAt]) then
+    if Source.IsNext(stAtAt) then
      begin
       p0.s(Sphere,cb);
       p1:=p0.r(iParent);
@@ -862,7 +862,7 @@ begin
    begin
     Juxta(p,pt);
     SrcPos:=Source.SrcPos;
-    if Source.IsNext([stPOpen]) then
+    if Source.IsNext(stPOpen) then
      begin
       //see also StratoFnAddOverload
       p1.s(Sphere,cb);

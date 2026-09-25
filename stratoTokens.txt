@@ -1,0 +1,86 @@
+Strato Tokenizer Data
+Lines formatted like this:
+[start]<tab>[stop]<tab>[command]<tab>[remark]
+lines with empty start and stop are ignored
+empty stop uses same start
+command is a token with an optional task and its arguments delimited by ":"
+
+/		OpDiv
+//		:SkipToEOL:10,12,13	comment to EOL
+/*		:SkipToEndOfBlock('*/'):"*/"	comment block
+/=		OpAssignDiv
+(		POpen
+)		PClose
+{		COpen
+}		CClose
+[		BOpen
+]		BClose
+&		Ampersand
+&&		OpAnd
+&&=		OpAssignAnd
+$		Dollar
+#		Hash
+##		HashHash
+~		Tilde
+|		Pipe	(reserved)
+||		OpOr
+||=		OpAssignOr
+|!		OpXor
+'		StringLiteral:PascalString
+"		StringLiteral:CString
+"""		StringLiteral:MultiLineString
+0	9	NumericLiteral:Numeric
++		OpAdd
+++		OpInc
++=		OpAssignAdd
+-		OpSub
+--		OpDec
+-=		OpAssignSub
+---		HRule:Coalesce
+-->		LongArrow	(reserved)
+%		OpMod
+%=		OpAssignMod
+*		OpMul
+*=		OpAssignMul
+**		OpExp
+@		At
+@@		AtAt
+@@@		AtAtAt
+@?		OpSizeOf
+^		Caret
+<		OpLT
+<=		OpLTE
+<>		OpNEQ
+<<		OpShl
+<<=		OpAssignShl
+<<<		OpThreeLT
+>		OpGT
+>=		OpGTE
+>>		OpShr
+>>=		OpAssignShr
+>>>		OpThreeGT
+=		Define	(attention! see OpAssign below)
+==		OpEQ
+=?		OpWhatIs
+=>		FatArrow	(reserved)
+?		QuestionMark
+??		WhatWhat
+???		ThreeWhats
+?=		OpWhatIs
+?:		OpElvis	//TODO: https://en.wikipedia.org/wiki/Elvis_operator
+?.		WhatPeriod	(reserved)
+!		OpNot
+!=		OpNEQ
+!!!		ThreeBangs
+.		Period
+..		OpRange
+...		Ellipsis
+,		Comma
+;		Semicolon
+:		Colon
+:=		OpAssign
+::		ColonColon	(reserved)
+:::		ThreeColons
+A	Z	Identifier:Identifier
+_		Identifier:Identifier
+a	z	Identifier:Identifier

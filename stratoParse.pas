@@ -23,7 +23,7 @@ procedure TStratoParser.Parse;
 begin
   inherited;
   SyntaxClass:=scDeclarative;
-  while not Source.IsNext([st_EOF]) do
+  while not Source.IsNext(st_EOF) do
     case SyntaxClass of
       scDeclarative:
         ParseDeclaration;
