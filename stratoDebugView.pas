@@ -376,6 +376,7 @@ var
   sl:TStringList;
   i:integer;
   s:TStratoSphere;
+  r:TRect;
 begin
   inherited;
   y1:=lvStack.Height;
@@ -397,8 +398,15 @@ begin
       wp.rcNormalPosition.Top:=StrToInt(sl.Values['Pos.PY']);
       wp.rcNormalPosition.Width:=StrToInt(sl.Values['Pos.SX']);
       wp.rcNormalPosition.Height:=StrToInt(sl.Values['Pos.SY']);
-      SetWindowPlacement(Handle,wp);
-      lvStack.Height:=StrToInt(sl.Values['Stack']);
+      r:=Screen.DesktopRect;
+      if (wp.rcNormalPosition.Left<=r.Right) and
+        (wp.rcNormalPosition.Right>=r.Left) and
+        (wp.rcNormalPosition.Top<=r.Bottom) and
+        (wp.rcNormalPosition.Bottom>=r.Top) then
+       begin
+        SetWindowPlacement(Handle,wp);
+        lvStack.Height:=StrToInt(sl.Values['Stack']);
+       end;
     except
       //silent
     end;

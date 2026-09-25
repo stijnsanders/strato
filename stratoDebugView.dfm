@@ -11,9 +11,7 @@ object frmDebugView: TfrmDebugView
   Font.Height = -12
   Font.Name = 'Consolas'
   Font.Style = []
-  OldCreateOrder = False
   OnClose = FormClose
-  PixelsPerInch = 96
   TextHeight = 14
   object PageControl1: TPageControl
     Left = 0
@@ -385,7 +383,7 @@ object frmDebugView: TfrmDebugView
       object txtInspect: TMemo
         Left = 0
         Top = 30
-        Width = 613
+        Width = 621
         Height = 458
         Anchors = [akLeft, akTop, akRight, akBottom]
         ReadOnly = True
